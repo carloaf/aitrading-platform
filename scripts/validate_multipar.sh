@@ -21,7 +21,8 @@ set -e  # Exit on error
 STRATEGY=${1:-"default"}
 START_DATE=${2:-"2023-01-01"}
 END_DATE=${3:-"2023-12-31"}
-API_URL="http://localhost:3008/api/meta-backtest/run"
+# API_URL usa porta 8001 dentro do container, 3008 fora
+API_URL="${API_URL:-http://localhost:8001/api/meta-backtest/run}"
 
 # Cores para output
 GREEN='\033[0;32m'
@@ -60,12 +61,12 @@ run_backtest() {
         \"end_date\": \"$END_DATE\"
       }" 2>/dev/null)
     
-    # Extrai métricas
-    local RETURN=$(echo "$RESULT" | jq -r '.metrics.return_pct // 0')
-    local SHARPE=$(echo "$RESULT" | jq -r '.metrics.sharpe_ratio // 0')
-    local MAX_DD=$(echo "$RESULT" | jq -r '.metrics.max_drawdown_pct // 0')
-    local WIN_RATE=$(echo "$RESULT" | jq -r '.metrics.win_rate // 0' | awk '{print $1 * 100}')
-    local TOTAL_TRADES=$(echo "$RESULT" | jq -r '.metrics.total_trades // 0')
+    # Extrai métricas (corrigido para API real)
+    local RETURN=$(echo "$RESULT" | jq -r '.performance.total_return_pct // 0')
+    local SHARPE=$(echo "$RESULT" | jq -r '.risk_metrics.sharpe_ratio // 0')
+    local MAX_DD=$(echo "$RESULT" | jq -r '.performance.max_drawdown_pct // 0')
+    local WIN_RATE=$(echo "$RESULT" | jq -r '.trade_stats.win_rate // 0')
+    local TOTAL_TRADES=$(echo "$RESULT" | jq -r '.trade_stats.total_trades // 0')
     
     # Armazena resultados
     RETURNS+=("$RETURN")
