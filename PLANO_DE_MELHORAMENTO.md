@@ -949,7 +949,9 @@ O PASSO 27 expande o WFO básico (PASSO 26) com 4 componentes avançados:
 | **27.1: Auto-Recalibration** | Aplicar ajustes automaticamente baseado em WFO results | 2 horas | 🔥 ALTA | ✅ CONCLUÍDO |
 | **27.2: Multi-Asset WFO** | WFO simultâneo BTC+ETH+SOL com comparação | 1.5 horas | 🔥 ALTA | ✅ CONCLUÍDO |
 | **27.3: Adaptive Parameters** | ML-based parameter adjustment usando histórico CSV | 3 horas | 🟡 MÉDIA | ✅ CONCLUÍDO |
-| **27.4: Grafana Dashboard** | Visualização real-time de métricas WFO | 2 horas | 🟢 BAIXA | ⏳ Pendente |
+| **27.4: Grafana Dashboard** | Visualização real-time de métricas WFO | 2 horas | 🟢 BAIXA | ✅ CONCLUÍDO |
+
+**🎉 PASSO 27: 100% COMPLETO! Todos os 4 componentes implementados.**
 
 #### PASSO 27.1: Auto-Recalibration System ✅ CONCLUÍDO
 
@@ -1364,6 +1366,150 @@ docker exec aitrading-execution-engine python3 scripts/ml_parameter_optimizer.py
 - [ ] Instalar sklearn no container para ML mode
 - [ ] Integrar com recalibrate.sh para aplicação automática
 - [ ] Adicionar mais features (sentiment, volume profile)
+
+---
+
+#### PASSO 27.4: Grafana Dashboard WFO ✅ CONCLUÍDO
+
+**Data**: 16 de Dezembro de 2025
+**Status**: ✅ Implementado e testado
+**Commit**: b2fd897
+
+**Objetivo**: Monitoramento em tempo real de métricas WFO com Prometheus + Grafana
+
+**Implementação Completa**:
+
+1. ✅ **wfo_exporter.py** (280 linhas)
+   - Prometheus metrics exporter HTTP server
+   - Lê CSV do WFO e expõe métricas
+   - Health check endpoint
+   - Robustness score calculado (heurística)
+   - Auto-refresh a cada scrape
+
+2. ✅ **Stack de Monitoramento Docker**
+   - `docker-compose.monitoring.yml`: 3 containers
+   - Prometheus (porta 9091)
+   - Grafana (porta 3000)
+   - WFO Exporter (porta 9090)
+   - Volumes persistentes para dados
+
+3. ✅ **Grafana Dashboard** (9 painéis)
+   - 3 Gauges: Return, Sharpe, Robustness
+   - 2 Time Series: Return/Robustness over time
+   - 4 Stats: Max DD, Win Rate, Trades, Total Runs
+   - Auto-refresh: 10s
+   - Thresholds coloridos
+
+**Métricas Exportadas** (8 total):
+
+| Métrica | Tipo | Descrição | Threshold |
+|---------|------|-----------|-----------|
+| `wfo_return_percent` | Gauge | Retorno % último WFO | red<0, yellow 0-2, green>2 |
+| `wfo_sharpe_ratio` | Gauge | Sharpe ratio | red<0.5, yellow 0.5-1.5, green>1.5 |
+| `wfo_max_drawdown_percent` | Gauge | Max drawdown % | green<10, yellow 10-15, red>15 |
+| `wfo_win_rate_percent` | Gauge | Win rate % | red<45, yellow 45-55, green>55 |
+| `wfo_total_trades` | Gauge | Total trades | - |
+| `wfo_robustness_score` | Gauge | Score 0-100 | green<50, yellow 50-70, red>70 |
+| `wfo_runs_total` | Counter | Total execuções | - |
+| `wfo_last_run_timestamp` | Gauge | Timestamp última exec | - |
+
+**Teste Real** (dados Jan/2025):
+```bash
+$ python3 monitoring/wfo_exporter.py --csv logs/wfo/history.csv --port 9095
+
+📊 WFO PROMETHEUS METRICS EXPORTER - PASSO 27.4
+📁 CSV Path: logs/wfo/history.csv
+🌐 Server: http://localhost:9095
+📈 Metrics: http://localhost:9095/metrics
+
+$ curl http://localhost:9095/metrics
+
+# Output:
+wfo_return_percent 0.37
+wfo_sharpe_ratio 1.73
+wfo_max_drawdown_percent 0.21
+wfo_win_rate_percent 100.00
+wfo_total_trades 1
+wfo_robustness_score 90
+wfo_runs_total 11
+wfo_last_run_timestamp 1765915389
+```
+
+**Setup Rápido**:
+```bash
+# 1. Iniciar stack
+docker compose -f monitoring/docker-compose.monitoring.yml up -d
+
+# 2. Acessar Grafana
+open http://localhost:3000
+# Login: admin / admin
+
+# 3. Dashboard automático
+# Já configurado em: /d/wfo-dashboard
+```
+
+**Arquivos Criados**:
+- `monitoring/wfo_exporter.py` (280 linhas)
+- `monitoring/docker-compose.monitoring.yml`
+- `monitoring/Dockerfile.exporter`
+- `monitoring/prometheus.yml`
+- `monitoring/grafana/dashboards/wfo_dashboard.json`
+- `monitoring/grafana/datasources/prometheus.yml`
+- `monitoring/grafana/provisioning/dashboards.yml`
+- `monitoring/README.md` (guia completo)
+
+**Features**:
+- ✅ Exporter standalone (sem dependências)
+- ✅ Health check endpoint (/health)
+- ✅ Prometheus scrape config automático
+- ✅ Grafana provisioning automático (datasource + dashboard)
+- ✅ Docker stack completo (3 containers)
+- ✅ Volumes persistentes
+- ✅ Auto-refresh 10s
+- ✅ Robustness score heurístico
+
+**Dashboard Panels**:
+1. **Last Return %**: Gauge com thresholds
+2. **Sharpe Ratio**: Gauge com thresholds
+3. **Robustness Score**: Gauge (0-100)
+4. **Return Over Time**: Time series
+5. **Robustness Over Time**: Time series
+6. **Max Drawdown**: Stat panel
+7. **Win Rate**: Stat panel
+8. **Total Trades**: Stat panel
+9. **Total WFO Runs**: Counter
+
+**Próximos Passos**:
+- [ ] Configurar Alertmanager para notificações
+- [ ] Adicionar dashboard multi-asset WFO
+- [ ] Integrar métricas MetaBacktester (/metrics)
+- [ ] Setup Grafana Cloud para acesso remoto
+
+---
+
+#### PASSO 27: RESUMO EXECUTIVO - 100% COMPLETO 🎉
+
+**Data Conclusão**: 16 de Dezembro de 2025
+**Commits**: 0cd7bb9 (27.1), b9cc825 (27.2), ab2f81a (27.3), b2fd897 (27.4)
+
+| Componente | Linhas | Status | Impacto |
+|------------|--------|--------|---------|
+| **27.1** Auto-Recalibration | 674 | ✅ | Automação de ajustes |
+| **27.2** Multi-Asset WFO | 284 | ✅ | Análise comparativa BTC/ETH/SOL |
+| **27.3** Adaptive Parameters ML | 548 | ✅ | Otimização inteligente |
+| **27.4** Grafana Dashboard | 280+JSON | ✅ | Monitoramento real-time |
+| **TOTAL** | **1,786 linhas** | **100%** | **Advanced WFO Features** |
+
+**Valor Entregue**:
+- ⚡ **Automação**: Recalibração automática quando robustez < 70
+- 🌍 **Multi-Par**: Validação simultânea em 3 pares
+- 🤖 **ML Intelligence**: 7 regras adaptativas + Random Forest
+- 📊 **Observability**: Dashboard real-time + 8 métricas
+
+**Performance**:
+- Nov/2025 Multi-Asset: BTC -3.59%, ETH -4.86%, SOL 0%
+- ML Suggestions: Risk -30%, TP +20%, Quality +7% (confidence 50%)
+- Robustness Score: 90/100 (Jan/2025)
 
 ---
 
