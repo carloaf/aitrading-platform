@@ -947,7 +947,7 @@ O PASSO 27 expande o WFO básico (PASSO 26) com 4 componentes avançados:
 | Feature | Descrição | Tempo Estimado | Prioridade | Status |
 |---------|-----------|----------------|------------|--------|
 | **27.1: Auto-Recalibration** | Aplicar ajustes automaticamente baseado em WFO results | 2 horas | 🔥 ALTA | ✅ CONCLUÍDO |
-| **27.2: Multi-Asset WFO** | WFO simultâneo BTC+ETH+SOL com comparação | 1.5 horas | 🔥 ALTA | ⏳ Pendente |
+| **27.2: Multi-Asset WFO** | WFO simultâneo BTC+ETH+SOL com comparação | 1.5 horas | 🔥 ALTA | ✅ CONCLUÍDO |
 | **27.3: Adaptive Parameters** | ML-based parameter adjustment usando histórico CSV | 3 horas | 🟡 MÉDIA | ⏳ Pendente |
 | **27.4: Grafana Dashboard** | Visualização real-time de métricas WFO | 2 horas | 🟢 BAIXA | ⏳ Pendente |
 
@@ -1175,9 +1175,80 @@ bash scripts/recalibrate.sh
 
 ---
 
-#### PASSO 27.2: Multi-Asset WFO
+#### PASSO 27.2: Multi-Asset WFO ✅ CONCLUÍDO
+
+**Data**: 16 de Dezembro de 2025
+**Status**: ✅ Implementado e testado
+**Commit**: b9cc825
 
 **Objetivo**: Executar WFO simultaneamente em BTC, ETH, SOL e comparar performance
+
+**Implementação Completa**:
+
+1. ✅ **wfo_multi_asset.sh** (284 linhas)
+   - Executa WFO em 3 pares simultaneamente via API
+   - Coleta métricas: return, Sharpe, DD, win rate, trades
+   - Gera tabela comparativa colorida
+   - Identifica best/worst performers
+   - Análise de correlação (systemic vs specific issues)
+   - Exporta para CSV (`logs/wfo/multi_asset/history.csv`)
+   - Exit code baseado em performance (0=approved, 1=attention)
+
+**Teste Nov/2025** (dados reais):
+```bash
+$ bash scripts/wfo_multi_asset.sh "nov_2025" "2025-11-01" "2025-11-30"
+
+📊 MULTI-ASSET WFO RESULTS
+═══════════════════════════════════════
+
+Par      | Return  | Sharpe | Max DD | Win Rate | Trades
+---------|---------|--------|--------|----------|--------
+BTCUSDT  |   -3.59% |  -4.39 |   0.00% |     25.0% |      4
+ETHUSDT  |   -4.86% |  -6.34 |   0.00% |      0.0% |      4
+SOLUSDT  |    0.00% |   0.00 |   0.00% |      0.0% |      0
+---------|---------|--------|--------|----------|--------
+MÉDIA    |   -2.81% |  -3.57 |   0.00% |      8.3% |      2
+
+🏆 BEST PERFORMER: SOLUSDT (0.0%)
+⚠️  WORST PERFORMER: ETHUSDT (-4.86%)
+
+Correlação: high_negative (todos pares negativos)
+```
+
+**Análise**:
+- ✅ **Fix multi-symbol funcionando**: Cada par retorna resultados diferentes
+- ⚠️ **Período negativo**: Nov/2025 foi ruim para todos os pares
+- ✅ **Correlação detectada**: Sistema identifica problema sistêmico vs específico
+- ✅ **CSV export**: Histórico persistido em `logs/wfo/multi_asset/history.csv`
+
+**Arquivos Criados**:
+- `scripts/wfo_multi_asset.sh` (284 linhas, executável)
+- `logs/wfo/multi_asset/history.csv` (formato: date,period,btc_*,eth_*,sol_*,avg_*,correlation)
+
+**Como Usar**:
+```bash
+# Período personalizado
+bash scripts/wfo_multi_asset.sh "jan_2025" "2025-01-01" "2025-01-31"
+
+# Usa período padrão (último mês)
+bash scripts/wfo_multi_asset.sh
+```
+
+**Features**:
+- ✅ Execução paralela (via curl assíncrono)
+- ✅ Parsing automático JSON (suporta jq ou regex fallback)
+- ✅ Locale-safe (LC_NUMERIC=C para printf)
+- ✅ Colored output (cyan/green/yellow/red)
+- ✅ Exit codes (0=success, 1=needs attention)
+
+**Próximos Passos**:
+- [ ] Integrar com `wfo_simple.sh` para execução automática multi-par
+- [ ] Adicionar gráficos de correlação temporal
+- [ ] Criar alert quando degradação é sistêmica vs específica
+
+---
+
+#### PASSO 27.2 ORIGINAL (referência): Multi-Asset WFO Script Template
 
 **Script**: `scripts/wfo_multi_asset.sh`
 ```bash
