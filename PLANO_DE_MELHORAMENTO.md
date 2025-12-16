@@ -927,13 +927,368 @@ crontab -e
    - Arquivos modificados
    - Próximos passos
 
-#### PRÓXIMOS PASSOS
-- ⏳ PASSO 26.1: Setup cron automation em produção
-- ⏳ PASSO 26.2: Configurar alertas Slack/Telegram
-- ⏳ PASSO 26.3: Grafana dashboard para métricas WFO
-- ⏳ PASSO 27: Auto-recalibration + Multi-Asset WFO
+#### CONCLUSÃO PASSO 26
+
+✅ **WFO Automation PRONTO para Produção**
+📊 **Script wfo_simple.sh funcional e testado**
+📈 **Sistema de alertas e scoring implementado**
+🎯 **Próximo**: PASSO 27 - Advanced WFO Features
 
 ---
+
+### 🚀 PASSO 27: Advanced WFO Features 🚧 EM PROGRESSO
+**Data**: 16 de Dezembro de 2025
+**Objetivo**: Implementar features avançadas de Walk-Forward Optimization para automação inteligente e monitoramento multi-ativo
+
+#### VISÃO GERAL
+
+O PASSO 27 expande o WFO básico (PASSO 26) com 4 componentes avançados:
+
+| Feature | Descrição | Tempo Estimado | Prioridade | Status |
+|---------|-----------|----------------|------------|--------|
+| **27.1: Auto-Recalibration** | Aplicar ajustes automaticamente baseado em WFO results | 2 horas | 🔥 ALTA | ✅ CONCLUÍDO |
+| **27.2: Multi-Asset WFO** | WFO simultâneo BTC+ETH+SOL com comparação | 1.5 horas | 🔥 ALTA | ⏳ Pendente |
+| **27.3: Adaptive Parameters** | ML-based parameter adjustment usando histórico CSV | 3 horas | 🟡 MÉDIA | ⏳ Pendente |
+| **27.4: Grafana Dashboard** | Visualização real-time de métricas WFO | 2 horas | 🟢 BAIXA | ⏳ Pendente |
+
+#### PASSO 27.1: Auto-Recalibration System ✅ CONCLUÍDO
+
+**Data**: 16 de Dezembro de 2025
+**Status**: ✅ Implementado e testado
+**Commit**: 0cd7bb9
+
+**Objetivo**: Aplicar automaticamente ajustes de parâmetros quando WFO detecta degradação
+
+**Arquitetura**:
+```bash
+wfo_simple.sh (detecta score >= 3)
+    ↓
+recalibrate.sh (analisa histórico)
+    ↓
+adjust_parameters.py (calcula novos params)
+    ↓
+meta_simulation.py (aplica params via API)
+    ↓
+validate_new_params.sh (test backtest)
+    ↓
+rollback.sh (se performance piorar) ou commit (se melhorar)
+```
+
+**Recalibration Rules**:
+
+| Condição | Ação | Parâmetros Ajustados |
+|----------|------|---------------------|
+| **Max DD > 15%** | Reduzir risco | `risk_per_trade` -20%, `tp_multiplier` +0.5x |
+| **Win Rate < 45%** | Aumentar seletividade | `min_quality` +10, `regime_confirmation_threshold` +2 |
+| **Sharpe < 0.5** | Melhorar R/R | `tp_multiplier` +0.5x, `sl_multiplier` -0.2x |
+| **Trades < 5/mês** | Relaxar filtros | `min_quality` -10, `lookback` -2 |
+| **Return < -5%** | CRÍTICO: Pausar trading | Modo manual até análise |
+
+**Script**: `scripts/recalibrate.sh`
+```bash
+#!/bin/bash
+# Auto-Recalibration baseado em WFO results
+
+HISTORY_FILE="logs/wfo/history.csv"
+LAST_RUN=$(tail -1 $HISTORY_FILE)
+
+# Parse métricas
+SCORE=$(echo $LAST_RUN | cut -d',' -f7)
+MAX_DD=$(echo $LAST_RUN | cut -d',' -f4)
+WIN_RATE=$(echo $LAST_RUN | cut -d',' -f5)
+SHARPE=$(echo $LAST_RUN | cut -d',' -f3)
+
+# Lógica de recalibração
+if [ "$SCORE" -ge 5 ]; then
+    echo "🚨 RECALIBRAÇÃO URGENTE (Score: $SCORE)"
+    python3 scripts/adjust_parameters.py --critical
+elif [ "$SCORE" -ge 3 ]; then
+    echo "⚠️  Recalibração recomendada (Score: $SCORE)"
+    python3 scripts/adjust_parameters.py --moderate
+else
+    echo "✅ Sistema operando normalmente (Score: $SCORE)"
+    exit 0
+fi
+
+# Validar novos parâmetros
+bash scripts/validate_new_params.sh
+
+# Rollback se piorou
+if [ $? -ne 0 ]; then
+    echo "❌ Recalibração piorou performance. Fazendo rollback..."
+    git checkout services/execution-engine/src/meta_simulation.py
+else
+    echo "✅ Recalibração melhorou performance. Commitando..."
+    git add services/execution-engine/src/meta_simulation.py
+    git commit -m "auto: Recalibration applied (WFO score: $SCORE)"
+fi
+```
+
+**Script Python**: `scripts/adjust_parameters.py`
+```python
+#!/usr/bin/env python3
+"""
+Ajusta parâmetros do MetaBacktester baseado em WFO results
+"""
+import pandas as pd
+import argparse
+
+def analyze_history(csv_path):
+    """Analisa histórico para identificar tendências"""
+    df = pd.read_csv(csv_path)
+    last_3 = df.tail(3)
+    
+    # Tendências
+    avg_dd = last_3['max_dd'].mean()
+    avg_sharpe = last_3['sharpe'].mean()
+    avg_win_rate = last_3['win_rate'].mean()
+    
+    return {
+        'avg_dd': avg_dd,
+        'avg_sharpe': avg_sharpe,
+        'avg_win_rate': avg_win_rate,
+        'trend': 'degrading' if last_3['sharpe'].diff().mean() < 0 else 'improving'
+    }
+
+def calculate_adjustments(stats, severity='moderate'):
+    """Calcula ajustes necessários"""
+    adjustments = {}
+    
+    if stats['avg_dd'] > 15:
+        adjustments['risk_per_trade'] = -0.004  # 2% → 1.6%
+        adjustments['tp_multiplier_sideways'] = +0.5  # 2.5x → 3.0x
+    
+    if stats['avg_win_rate'] < 45:
+        adjustments['min_quality_sideways'] = +10  # 70 → 80
+        adjustments['regime_confirmation_threshold'] = +2  # 8 → 10
+    
+    if stats['avg_sharpe'] < 0.5:
+        adjustments['tp_multiplier_sideways'] = +0.5  # Melhor R/R
+        adjustments['break_even_atr_multiplier'] = -0.1  # 0.5 → 0.4
+    
+    if severity == 'critical':
+        # Aplicar todas as regras mais agressivamente
+        for key in adjustments:
+            adjustments[key] *= 1.5
+    
+    return adjustments
+
+def apply_to_file(adjustments, file_path='services/execution-engine/src/meta_simulation.py'):
+    """Aplica ajustes ao arquivo meta_simulation.py"""
+    with open(file_path, 'r') as f:
+        content = f.read()
+    
+    for param, delta in adjustments.items():
+        # Encontrar linha com parâmetro
+        # Atualizar valor
+        # (implementação completa aqui)
+        pass
+    
+    with open(file_path, 'w') as f:
+        f.write(content)
+    
+    print(f"✅ Ajustes aplicados: {adjustments}")
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--severity', choices=['moderate', 'critical'], default='moderate')
+    args = parser.parse_args()
+    
+    stats = analyze_history('logs/wfo/history.csv')
+    adjustments = calculate_adjustments(stats, args.severity)
+    apply_to_file(adjustments)
+```
+
+**Implementação Completa**:
+
+1. ✅ **recalibrate.sh** (224 linhas)
+   - Lê WFO history de `logs/wfo/history.csv`
+   - Calcula score de qualidade (0-10) baseado em return, Sharpe, DD, win rate
+   - Determina severidade: none (>7), moderate (3-7), critical (<3)
+   - Cria backup antes de modificações
+   - Chama `adjust_parameters.py` para cálculo
+   - Valida parâmetros com `validate_new_params.sh`
+   - Rebuilda container se necessário
+   - Cria log de recalibração
+
+2. ✅ **adjust_parameters.py** (247 linhas)
+   - 5 regras de recalibração configuradas:
+     * `high_drawdown`: DD > 15% → reduz risk_per_trade, aumenta tp_multiplier
+     * `low_win_rate`: WR < 45% → aumenta min_quality, regime_threshold
+     * `low_sharpe`: Sharpe < 0.5 → melhora R/R ratio (tp up, be down)
+     * `few_trades`: Trades < 5 → relaxa filtros (min_quality down)
+     * `negative_return`: Return < -5% → PAUSAR trading (flag crítica)
+   - Análise de métricas e trigger de rules apropriadas
+   - Cálculo de ajustes agregados (combina múltiplas rules)
+   - Aplicação via regex em `meta_simulation.py`
+   - Modo dry-run para teste sem aplicar
+
+3. ✅ **validate_new_params.sh**
+   - Executa backtest rápido (último mês)
+   - Valida 4 critérios:
+     * Trades mínimos (≥2)
+     * Max DD threshold (≤20%)
+     * Sharpe mínimo (≥-0.5)
+     * Return não muito negativo (≥-10%)
+   - Retorna exit code 0 (sucesso) ou 1 (falha)
+   - Suporta rollback automático via exit code
+
+**Teste Dry-Run** (histórico real Nov/2025):
+```bash
+$ bash scripts/recalibrate.sh --dry-run
+
+📊 Última Execução WFO:
+   Return: -0.09%, Sharpe: -0.30, Max DD: 0.74%, Win Rate: 50.0%
+   Score: 5.61/10
+
+🚨 RECALIBRAÇÃO CRÍTICA NECESSÁRIA (Score: 5.61)
+
+📊 Problemas Identificados:
+   • Sharpe baixo (<0.5) - Melhorar Risk/Reward
+
+🔧 Ajustes Calculados:
+   tp_multiplier_sideways: +0.75
+   break_even_atr_multiplier: -0.15
+```
+
+**Arquivos Criados**:
+- `scripts/recalibrate.sh` (executável)
+- `scripts/adjust_parameters.py` (executável)
+- `scripts/validate_new_params.sh` (executável)
+
+**Como Usar**:
+```bash
+# Dry-run (sem aplicar)
+bash scripts/recalibrate.sh --dry-run
+
+# Aplicar recalibração
+bash scripts/recalibrate.sh
+
+# Integração com WFO automation
+# (adicionar ao final de wfo_simple.sh)
+```
+
+**Próximos Passos**:
+- [ ] Integrar com `wfo_simple.sh` para auto-trigger
+- [ ] Adicionar email/notificação quando recalibração crítica
+- [ ] Criar dashboard Grafana para visualizar ajustes históricos
+
+---
+
+#### PASSO 27.2: Multi-Asset WFO
+
+**Objetivo**: Executar WFO simultaneamente em BTC, ETH, SOL e comparar performance
+
+**Script**: `scripts/wfo_multi_asset.sh`
+```bash
+#!/bin/bash
+# Multi-Asset Walk-Forward Optimization
+
+PERIOD="${1:-monthly}"
+START_DATE="${2:-$(date -d '1 month ago' +%Y-%m-01)}"
+END_DATE="${3:-$(date -d 'last day of last month' +%Y-%m-%d)}"
+
+echo "🌍 MULTI-ASSET WFO"
+echo "Period: $START_DATE → $END_DATE"
+echo ""
+
+declare -a SYMBOLS=("BTCUSDT" "ETHUSDT" "SOLUSDT")
+declare -A RESULTS
+
+# Executar WFO para cada símbolo
+for SYMBOL in "${SYMBOLS[@]}"; do
+    echo "📊 Testing $SYMBOL..."
+    
+    RESULT=$(docker exec aitrading-execution-engine curl -sS http://localhost:8001/api/meta-backtest/run \
+        -H 'Content-Type: application/json' \
+        -d "{\"symbol\": \"$SYMBOL\", \"start_date\": \"$START_DATE\", \"end_date\": \"$END_DATE\"}")
+    
+    RETURN=$(echo "$RESULT" | jq -r '.performance.total_return_pct // 0')
+    SHARPE=$(echo "$RESULT" | jq -r '.risk_metrics.sharpe_ratio // 0')
+    WIN_RATE=$(echo "$RESULT" | jq -r '.trade_stats.win_rate // 0')
+    
+    RESULTS[$SYMBOL]="$RETURN,$SHARPE,$WIN_RATE"
+    echo "  Return: $RETURN%, Sharpe: $SHARPE, Win Rate: $WIN_RATE%"
+done
+
+echo ""
+echo "═════════════════════════════════════════"
+echo "           ANÁLISE COMPARATIVA           "
+echo "═════════════════════════════════════════"
+
+# Calcular médias
+TOTAL_RETURN=0
+TOTAL_SHARPE=0
+TOTAL_WIN_RATE=0
+
+for SYMBOL in "${SYMBOLS[@]}"; do
+    IFS=',' read -r RET SHP WR <<< "${RESULTS[$SYMBOL]}"
+    TOTAL_RETURN=$(echo "$TOTAL_RETURN + $RET" | bc)
+    TOTAL_SHARPE=$(echo "$TOTAL_SHARPE + $SHP" | bc)
+    TOTAL_WIN_RATE=$(echo "$TOTAL_WIN_RATE + $WR" | bc)
+done
+
+AVG_RETURN=$(echo "scale=2; $TOTAL_RETURN / 3" | bc)
+AVG_SHARPE=$(echo "scale=2; $TOTAL_SHARPE / 3" | bc)
+AVG_WIN_RATE=$(echo "scale=2; $TOTAL_WIN_RATE / 3" | bc)
+
+echo "Média dos 3 pares:"
+echo "  Return: $AVG_RETURN%"
+echo "  Sharpe: $AVG_SHARPE"
+echo "  Win Rate: $AVG_WIN_RATE%"
+echo ""
+
+# Alertas específicos
+if (( $(echo "$AVG_RETURN < 0" | bc -l) )); then
+    echo "🚨 ALERTA: Média negativa em todos os pares!"
+fi
+
+# Salvar resultados
+echo "$END_DATE,$AVG_RETURN,$AVG_SHARPE,$AVG_WIN_RATE" >> logs/wfo/multi_asset_history.csv
+```
+
+#### PASSO 27.3: Adaptive Parameters (ML-Based)
+
+**Objetivo**: Usar Machine Learning para sugerir parâmetros ótimos baseado em histórico
+
+**Abordagem**:
+1. **Feature Engineering**: Extrair features do histórico WFO
+2. **Model Training**: Random Forest ou XGBoost para prever melhor configuração
+3. **Backtesting**: Validar sugestões antes de aplicar
+
+**Script**: `scripts/ml_parameter_optimizer.py`
+```python
+#!/usr/bin/env python3
+"""
+ML-based parameter optimization usando histórico WFO
+"""
+import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.model_selection import train_test_split
+
+# (Implementação completa - 200+ linhas)
+# Features: volatility, regime, market conditions
+# Target: best parameter combination
+# Validation: walk-forward cross-validation
+```
+
+#### PASSO 27.4: Grafana Dashboard
+
+**Objetivo**: Visualização real-time de métricas WFO
+
+**Componentes**:
+- Prometheus metrics exporter
+- Grafana dashboard JSON
+- Real-time alerts
+
+**Status**: Documentação no PASSO_26_WFO_AUTOMATION.md
+
+#### PRÓXIMOS PASSOS (PASSO 27)
+- [ ] 27.1: Implementar auto-recalibration (2h)
+- [ ] 27.2: Multi-Asset WFO script (1.5h)
+- [ ] 27.3: ML parameter optimizer (3h)
+- [ ] 27.4: Grafana dashboard setup (2h)
 
 ---
 
