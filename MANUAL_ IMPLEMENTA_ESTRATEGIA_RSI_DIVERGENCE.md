@@ -2,18 +2,66 @@ MANUAL COMPLETO: IMPLEMENTAÇÃO DA ESTRATÉGIA RSI DIVERGENCE
 🎯 VISÃO GERAL
 Este manual fornece instruções passo-a-passo para implementar a estratégia de Divergência RSI no seu Sistema de Trading Universal. A estratégia detecta 4 padrões específicos que indicam reversão ou continuidade de tendência.
 
-## ✅ STATUS DA IMPLEMENTAÇÃO (15/Dez/2025)
+## ✅ STATUS DA IMPLEMENTAÇÃO (16/Dez/2025)
+
+### 🎯 ESTADO ATUAL DO SISTEMA
+- **Repositório GitHub**: `github.com/carloaf/aitrading-platform`
+- **Branch**: `main` (produção) | `dev` (desenvolvimento)
+- **Container**: `execution-engine` (FastAPI + MetaBacktester)
+- **API**: http://localhost:3008/api/meta-backtest/run
+- **Performance 4 anos**: +36.46% return, 52.4% win rate, 15.94% max DD
 
 ### ARQUIVOS IMPLEMENTADOS:
 ```
-services/backtesting-engine/src/strategies/rsi_divergence.py     ✅
+services/backtesting-engine/src/strategies/rsi_divergence.py     ✅ Standalone backtest
 services/backtesting-engine/src/strategies/strategy_manager.py   ✅ (atualizado)
-services/backtesting-engine/config/rsi_divergence_config.yaml    ✅
-services/execution-engine/src/strategies/rsi_divergence.py       ✅
+services/backtesting-engine/config/rsi_divergence_config.yaml    ✅ Config YAML
+services/execution-engine/src/strategies/rsi_divergence.py       ✅ CAUSAL (no lookahead)
 services/execution-engine/src/strategies/__init__.py             ✅ (atualizado)
 services/execution-engine/src/main.py                            ✅ (endpoint + timeframe)
+services/execution-engine/src/meta_simulation.py                 ✅ Integration MetaBacktester
 services/execution-engine/src/download_historical_data.py        ✅ (multi-timeframe)
+scripts/test_kelly_2023.sh                                       ✅ Kelly validation script
+scripts/wfo_simple.sh                                            ✅ WFO automation
+docs/PASSO_26_WFO_AUTOMATION.md                                  ✅ WFO manual completo
+docs/RESUMO_OPCAO_C.md                                           ✅ Executive summary
 ```
+
+### 🔧 INTEGRAÇÃO NO METABACKTESTER
+
+```python
+# services/execution-engine/src/meta_simulation.py
+
+REGIME_STRATEGY_MAP = {
+    MarketRegime.BULL: {
+        'long': ['trend_following', 'momentum', 'rsi_divergence_bullish'],
+        'short': ['rsi_divergence_bearish'],  # Detecta topos
+    },
+    MarketRegime.BEAR: {
+        'long': ['rsi_divergence_bullish'],  # Detecta fundos
+        'short': ['breakdown_momentum', 'bear_market_short', 'rsi_divergence_bearish'],
+    },
+    MarketRegime.SIDEWAYS: {
+        'long': ['mean_reversion', 'liquidity_grab', 'rsi_divergence_bullish'],
+        'short': ['rsi_divergence_bearish'],  # Topos em range
+    }
+}
+```
+
+### 📊 PERFORMANCE NO METABACKTESTER (4 anos, 2021-2024)
+
+| Estratégia | Regime | Entradas | % Total | Contribuição |
+|------------|--------|----------|---------|--------------|
+| bear_market_short | BEAR | 78 | 29.2% | Alta |
+| momentum | BULL | 73 | 27.3% | Alta |
+| trend_following | BULL | 61 | 22.8% | Alta |
+| **rsi_divergence_bullish** | SIDEWAYS | **22** | **8.2%** | Média |
+| **rsi_divergence_bearish** | SIDEWAYS | **17** | **6.4%** | Média |
+| **rsi_divergence_bullish** | BEAR | **10** | **3.7%** | Baixa |
+| liquidity_grab | SIDEWAYS | 4 | 1.5% | Baixa |
+| breakdown_momentum | BEAR | 2 | 0.7% | Baixa |
+
+**Total RSI Divergence**: 49 entradas (18.3% do total), contribuição significativa em SIDEWAYS/BEAR
 
 ### 🏆 COMPARAÇÃO MULTI-PAR (1h, 2021-2024)
 
@@ -152,6 +200,81 @@ curl -X POST "http://localhost:3008/api/backtest/rsi-divergence" \
 | min_signal_strength | 0.2 | 0.3 | 0.4 |
 | stop_loss_atr_mult | 1.5 | 2.0 | 2.5 |
 | take_profit_atr_mult | 3.0 | 4.0 | 5.0 |
+
+---
+
+## 📝 CHANGELOG E EVOLUÇÃO
+
+### [v2.0] - 16/Dez/2025 - MetaBacktester Integration
+**Adicionado**:
+- Integração completa no REGIME_STRATEGY_MAP
+- Setup quality adaptativo para mean-reversion em SIDEWAYS
+- 49 entradas em 4 anos (18.3% do total)
+- Contribuição para +36.46% return total
+
+**Corrigido**:
+- RSI Divergence agora é CAUSAL (sem lookahead bias)
+- Funções rsi_divergence_bullish/bearish compatíveis com loop candle-a-candle
+- Setup quality só avalia quando há sinal BUY/SHORT
+
+**Performance**:
+- SIDEWAYS: 22 longs + 17 shorts = 39 entradas (79% do RSI total)
+- BEAR fundos: 10 entradas (21% do RSI total)
+- Win Rate geral do sistema: 52.4% (vs 49.4% antes da integração)
+
+### [v1.5] - 15/Dez/2025 - WFO Validation 2025
+**Validado**:
+- Walk-Forward Optimization Q1-Q4/2025
+- Robustez média: 81/100 (sem overfitting)
+- Sistema mantém performance em out-of-sample data
+
+**Descoberto**:
+- Performance 2025 (3.9% YTD) < Anos anteriores (17% média)
+- Q3/2025 foi negativo (-1.71%), único trimestre com perda
+- Sistema requer ajustes para mercados de baixa volatilidade
+
+### [v1.0] - 13/Dez/2025 - Initial Implementation
+**Implementado**:
+- RSI Divergence strategy standalone
+- 4 padrões: bullish_divergence, bearish_divergence, hidden_bullish, hidden_bearish
+- Multi-timeframe support (15m, 1h, 4h, 1d)
+- Multi-par testing (BTC, ETH, SOL)
+
+**Performance Standalone** (1h timeframe):
+- BTC: +26.27% (71.43% WR)
+- ETH: +38.54% (64.29% WR)
+- SOL: +219.14% (63.64% WR) 🥇
+
+**Lições**:
+- Timeframe 1h é ideal (15m tem poucos sinais, 4h quase zero)
+- SOL tem mais padrões (22) e melhor return que BTC/ETH
+- Win Rate consistente ~65% em todos os pares
+
+---
+
+## 🚀 PRÓXIMOS PASSOS
+
+### 1. **Otimização de Parâmetros RSI** (1 hora)
+- Grid search em lookback_periods (6, 8, 10, 12)
+- Otimizar min_signal_strength (0.1, 0.15, 0.2, 0.25)
+- min_adx_trend (10, 12, 15, 18)
+- **Objetivo**: Encontrar sweet spot para 2025 market conditions
+
+### 2. **Multi-Par RSI Validation 2025** (30 min)
+- Testar RSI standalone em ETH/SOL para 2025
+- Comparar performance vs BTC
+- **Objetivo**: Validar se degradação 2025 é específica de BTC ou geral
+
+### 3. **RSI + Sentiment Layer** (2 horas)
+- Adicionar sentiment score como filtro
+- Rejeitar divergences contra sentiment negativo forte
+- Backtesting comparativo
+- **Objetivo**: Reduzir false signals em market crash periods
+
+### 4. **Hidden Patterns Enhancement** (1 hora)
+- Hidden bullish/bearish têm apenas 1 trade em 4 anos
+- Relaxar filtros para aumentar detecção
+- **Objetivo**: Capturar continuation patterns em trends fortes
 
 ---
 
