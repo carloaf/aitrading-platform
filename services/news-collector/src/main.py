@@ -32,7 +32,7 @@ import requests
 import httpx
 import feedparser
 from bs4 import BeautifulSoup
-from sqlalchemy import create_engine, text, Column, Integer, String, DateTime, Text, Boolean
+from sqlalchemy import create_engine, text, Column, Integer, String, DateTime, Text, Boolean, or_
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from loguru import logger
@@ -459,15 +459,45 @@ class NewsService:
         self.collection_thread.start()
         logger.info(f"⏰ Coleta agendada a cada {config.COLLECTION_INTERVAL} segundos")
     
-    async def get_recent_news(self, limit: int = 50, hours: int = 24) -> List[Dict]:
-        """Obter notícias recentes"""
+    def _symbol_keywords(self, symbol: str) -> List[str]:
+        """Mapeia um símbolo (ex.: BTCUSDT) para keywords usadas no filtro de notícias."""
+        if not symbol:
+            return []
+
+        s = symbol.upper().strip()
+        base = s
+        for quote in ("USDT", "USD", "BUSD", "USDC", "BRL"):
+            if base.endswith(quote):
+                base = base[: -len(quote)]
+                break
+
+        mapping = {
+            "BTC": ["bitcoin", "btc"],
+            "ETH": ["ethereum", "eth"],
+            "SOL": ["solana", "sol"],
+        }
+
+        return mapping.get(base, [base.lower()])
+
+    async def get_recent_news(self, limit: int = 50, hours: int = 24, symbol: Optional[str] = None) -> List[Dict]:
+        """Obter notícias recentes (opcionalmente filtradas por símbolo/keyword)."""
         session = self.db_manager.Session()
         try:
             since = datetime.utcnow() - timedelta(hours=hours)
-            
-            articles = session.query(NewsArticle).filter(
-                NewsArticle.published_at >= since
-            ).order_by(NewsArticle.published_at.desc()).limit(limit).all()
+
+            query = session.query(NewsArticle).filter(NewsArticle.published_at >= since)
+
+            if symbol:
+                keywords = self._symbol_keywords(symbol)
+                if keywords:
+                    keyword_filters = []
+                    for kw in keywords:
+                        like = f"%{kw}%"
+                        keyword_filters.append(NewsArticle.title.ilike(like))
+                        keyword_filters.append(NewsArticle.content.ilike(like))
+                    query = query.filter(or_(*keyword_filters))
+
+            articles = query.order_by(NewsArticle.published_at.desc()).limit(limit).all()
             
             return [
                 {
@@ -486,25 +516,28 @@ class NewsService:
         finally:
             session.close()
     
-    async def get_sentiment_stats(self, hours: int = 24) -> Dict:
-        """Obter estatísticas de sentimento"""
+    async def get_sentiment_stats(self, hours: int = 24, symbol: Optional[str] = None) -> Dict:
+        """Obter estatísticas de sentimento (opcionalmente filtradas por símbolo/keyword)."""
         session = self.db_manager.Session()
         try:
             since = datetime.utcnow() - timedelta(hours=hours)
-            
-            total = session.query(NewsArticle).filter(
-                NewsArticle.published_at >= since
-            ).count()
-            
-            positive = session.query(NewsArticle).filter(
-                NewsArticle.published_at >= since,
-                NewsArticle.sentiment_score == 'positive'
-            ).count()
-            
-            negative = session.query(NewsArticle).filter(
-                NewsArticle.published_at >= since,
-                NewsArticle.sentiment_score == 'negative'
-            ).count()
+
+            base_query = session.query(NewsArticle).filter(NewsArticle.published_at >= since)
+
+            if symbol:
+                keywords = self._symbol_keywords(symbol)
+                if keywords:
+                    keyword_filters = []
+                    for kw in keywords:
+                        like = f"%{kw}%"
+                        keyword_filters.append(NewsArticle.title.ilike(like))
+                        keyword_filters.append(NewsArticle.content.ilike(like))
+                    base_query = base_query.filter(or_(*keyword_filters))
+
+            total = base_query.count()
+
+            positive = base_query.filter(NewsArticle.sentiment_score == 'positive').count()
+            negative = base_query.filter(NewsArticle.sentiment_score == 'negative').count()
             
             neutral = total - positive - negative
             
@@ -571,14 +604,14 @@ async def health_check():
     return await service.health_check()
 
 @app.get("/news/recent")
-async def get_recent_news(limit: int = 50, hours: int = 24):
+async def get_recent_news(limit: int = 50, hours: int = 24, symbol: Optional[str] = None):
     """Obter notícias recentes"""
-    return await service.get_recent_news(limit, hours)
+    return await service.get_recent_news(limit, hours, symbol)
 
 @app.get("/news/sentiment")
-async def get_sentiment_stats(hours: int = 24):
+async def get_sentiment_stats(hours: int = 24, symbol: Optional[str] = None):
     """Obter estatísticas de sentimento"""
-    return await service.get_sentiment_stats(hours)
+    return await service.get_sentiment_stats(hours, symbol)
 
 @app.post("/news/collect")
 async def trigger_collection(background_tasks: BackgroundTasks):

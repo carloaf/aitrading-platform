@@ -50,7 +50,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 | **WFO Automation** | ✅ Deploy | 81/100 robustez | Script wfo_simple.sh ready |
 | **Multi-Par Validation** | ✅ Operacional | BTC/ETH/SOL validated | Script validate_multipar.sh |
 | **Paper Trading** | ⏳ Planejado | - | PASSO 30 |
-| **Sentiment Layer** | ⏳ Planejado | - | PASSO 28 |
+| **Sentiment Layer** | 🟡 MVP Integrado | Opt-in | PASSO 28 (sentiment filter) |
 
 ### ✅ PASSOS CONCLUÍDOS
 
@@ -2972,10 +2972,11 @@ Se estratégia funciona apenas em 1 par = OVERFITTING → REJEITAR
 - **Objetivo**: +18% return improvement generalizado
 
 #### 3. **Sentiment Analysis Layer** (PASSO 28)
-- Integrar news-collector + sentiment-analyzer
-- Sentiment score como filtro em strategies
-- Backtesting com sentiment layer
-- **Objetivo**: Filtrar trades contra sentiment negativo
+- ✅ Integração `news-collector` → `sentiment-analyzer` (agregação por símbolo)
+- ✅ Endpoint: `GET /sentiment/symbol?symbol=BTCUSDT&hours=24&limit=50&use_precomputed=true`
+- ✅ Filtro opt-in no MetaBacktester via `POST /api/meta-backtest/run` (`use_sentiment_filter`, `sentiment_min_score`)
+- ✅ Validação smoke test multi-par: BTC/ETH/SOL
+- **Objetivo**: Filtrar trades contra sentiment negativo (ex.: bloquear LONG com score < threshold)
 
 #### 4. **Multi-Timeframe Confirmation** (PASSO 29)
 - 1h + 4h + 1d confirmation
@@ -3276,8 +3277,9 @@ Relatório institucional
    - Monitorar impacto em live trading
 
 3. **Sentiment Analysis Integration**
-   - Integrar news sentiment como filtro adicional
-   - Testar se melhora timing de entradas
+    - ✅ MVP pronto: `sentiment-analyzer` agrega notícias por símbolo (`/sentiment/symbol`)
+    - ✅ MetaBacktest suporta filtro opt-in (`use_sentiment_filter`, `sentiment_min_score`)
+    - Próximo: calibrar thresholds por par/regime e medir impacto em Sharpe/DD
 
 4. **Multi-Timeframe Confirmation**
    - Confirmar sinais 1h com 4h/1d

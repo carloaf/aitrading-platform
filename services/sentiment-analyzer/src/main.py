@@ -37,6 +37,7 @@ BATCH_SIZE = int(os.getenv("BATCH_SIZE", "10"))
 UPDATE_INTERVAL = int(os.getenv("UPDATE_INTERVAL", "300"))  # 5 minutos
 CACHE_TTL = int(os.getenv("CACHE_TTL", "3600"))  # 1 hora
 MODEL_NAME = os.getenv("SENTIMENT_MODEL", "cardiffnlp/twitter-roberta-base-sentiment-latest")
+NEWS_COLLECTOR_URL = os.getenv("NEWS_COLLECTOR_URL", "http://news-collector:8000")
 
 # Database Models
 Base = declarative_base()
@@ -98,6 +99,16 @@ class SentimentStats(BaseModel):
     negative_ratio: float
     neutral_ratio: float
     last_updated: datetime
+
+
+class SymbolSentimentResponse(BaseModel):
+    symbol: str
+    hours: int
+    articles_count: int
+    sentiment_score: float = Field(..., ge=-1, le=1)
+    confidence: float = Field(..., ge=0, le=1)
+    distribution: Dict[str, int]
+    source: str
 
 class DatabaseManager:
     def __init__(self):
@@ -477,6 +488,97 @@ class SentimentService:
         except Exception as e:
             logger.error(f"Erro ao processar artigos: {e}")
 
+    async def get_symbol_sentiment(self, symbol: str, hours: int = 24, limit: int = 50, use_precomputed: bool = True) -> Dict[str, Any]:
+        """Agrega sentimento para um símbolo baseado em notícias recentes do news-collector.
+
+        Observação: por padrão usa o sentimento pré-computado do `news-collector` (label + confidence),
+        evitando rodar o modelo RoBERTa em tempo real.
+        """
+        symbol_norm = (symbol or "").upper().strip()
+        if not symbol_norm:
+            return {
+                "symbol": symbol_norm,
+                "hours": hours,
+                "articles_count": 0,
+                "sentiment_score": 0.0,
+                "confidence": 0.0,
+                "distribution": {"positive": 0, "negative": 0, "neutral": 0},
+                "source": "news-collector"
+            }
+
+        hours = max(1, min(int(hours), 168))
+        limit = max(1, min(int(limit), 200))
+
+        cache_key = f"sentiment:symbol:{symbol_norm}:h{hours}:l{limit}:pre{int(bool(use_precomputed))}"
+        cached = await self.redis_client.get(cache_key)
+        if cached:
+            return json.loads(cached)
+
+        async with httpx.AsyncClient(timeout=20.0) as client:
+            resp = await client.get(
+                f"{NEWS_COLLECTOR_URL}/news/recent",
+                params={"symbol": symbol_norm, "hours": hours, "limit": limit},
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=502, detail=f"news-collector error: {resp.status_code}")
+            articles = resp.json() or []
+
+        distribution = {"positive": 0, "negative": 0, "neutral": 0}
+        scores: List[float] = []
+        weights: List[float] = []
+
+        if use_precomputed:
+            for a in articles:
+                label = (a.get("sentiment") or "neutral").lower()
+                try:
+                    conf = float(a.get("confidence") or 0.0)
+                except Exception:
+                    conf = 0.0
+
+                if label == "positive":
+                    score = max(0.0, min(conf, 1.0))
+                    distribution["positive"] += 1
+                elif label == "negative":
+                    score = -max(0.0, min(conf, 1.0))
+                    distribution["negative"] += 1
+                else:
+                    score = 0.0
+                    distribution["neutral"] += 1
+
+                scores.append(score)
+                weights.append(max(0.05, abs(score)))
+
+            if scores:
+                sentiment_score = float(np.average(scores, weights=weights))
+                confidence = float(min(np.mean([abs(s) for s in scores]), 1.0))
+            else:
+                sentiment_score = 0.0
+                confidence = 0.0
+
+            result = {
+                "symbol": symbol_norm,
+                "hours": hours,
+                "articles_count": len(articles),
+                "sentiment_score": round(float(np.clip(sentiment_score, -1, 1)), 4),
+                "confidence": round(float(np.clip(confidence, 0, 1)), 4),
+                "distribution": distribution,
+                "source": "news-collector"
+            }
+        else:
+            # Modo completo (modelos) pode ser implementado depois; por ora mantemos simples.
+            result = {
+                "symbol": symbol_norm,
+                "hours": hours,
+                "articles_count": len(articles),
+                "sentiment_score": 0.0,
+                "confidence": 0.0,
+                "distribution": distribution,
+                "source": "disabled"
+            }
+
+        await self.redis_client.setex(cache_key, 300, json.dumps(result, default=str))
+        return result
+
 # Serviço global
 sentiment_service = SentimentService()
 
@@ -661,6 +763,24 @@ async def get_models_status():
         "torch_available": torch.cuda.is_available(),
         "batch_size": BATCH_SIZE
     }
+
+
+@app.get("/sentiment/symbol", response_model=SymbolSentimentResponse)
+async def get_symbol_sentiment(symbol: str, hours: int = 24, limit: int = 50, use_precomputed: bool = True):
+    """Sentimento agregado por símbolo (baseado em notícias recentes)."""
+    try:
+        result = await sentiment_service.get_symbol_sentiment(
+            symbol=symbol,
+            hours=hours,
+            limit=limit,
+            use_precomputed=use_precomputed,
+        )
+        return SymbolSentimentResponse(**result)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao obter sentiment por símbolo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

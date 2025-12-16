@@ -168,7 +168,11 @@ class MetaBacktester:
                  # PASSO 25: Kelly Position Sizing
                  use_kelly_sizing: bool = False,
                  kelly_fraction: float = 0.25,
-                 kelly_min_trades: int = 30):
+                 kelly_min_trades: int = 30,
+                 # PASSO 28: Sentiment filter (opt-in)
+                 use_sentiment_filter: bool = False,
+                 sentiment_score: float = 0.0,
+                 sentiment_min_score: float = -0.2):
         """
         Inicializa o Meta-Backtester
         
@@ -205,6 +209,11 @@ class MetaBacktester:
         self.use_kelly_sizing = use_kelly_sizing
         self.kelly_fraction = kelly_fraction
         self.kelly_min_trades = kelly_min_trades
+
+        # PASSO 28: Sentiment filter (opt-in)
+        self.use_sentiment_filter = bool(use_sentiment_filter)
+        self.sentiment_score = float(sentiment_score)
+        self.sentiment_min_score = float(sentiment_min_score)
         
         # Componentes
         self.regime_detector = MarketRegimeDetector()
@@ -268,6 +277,7 @@ class MetaBacktester:
             'strategy_last_signal': defaultdict(int),
             'entry_accepted': defaultdict(int),
             'entry_rejected_quality': defaultdict(int),
+            'entry_rejected_sentiment': defaultdict(int),
             'entry_rejected_chop_protection': defaultdict(int),
             'entry_rejected_exception': defaultdict(int),
             'entry_rejected_missing_signal_col': defaultdict(int),
@@ -793,6 +803,16 @@ class MetaBacktester:
 
             if not is_entry_signal:
                 return False
+
+            # PASSO 28: Sentiment filter (opt-in)
+            # Objetivo: bloquear LONG quando sentiment agregado está negativo (ex.: notícias ruins)
+            if self.use_sentiment_filter and direction == 'LONG':
+                if self.sentiment_score < self.sentiment_min_score:
+                    self.debug_stats['entry_rejected_sentiment'][f"{strategy}:LONG:{self.current_regime.value}"] += 1
+                    logger.debug(
+                        f"📰 Sentiment filter: bloqueando LONG (score {self.sentiment_score:.3f} < {self.sentiment_min_score:.3f})"
+                    )
+                    return False
             
             # PASSO 17: FILTRO DE QUALIDADE DE SETUP
             # PASSO 23.6: Passar strategy e regime para lógica adaptativa

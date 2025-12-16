@@ -360,6 +360,13 @@ class MetaBacktestRequest(BaseModel):
     kelly_fraction: float = 0.25  # 25% do full Kelly (conservador)
     kelly_min_trades: int = 30  # Mínimo de trades para habilitar Kelly
 
+    # PASSO 28: Sentiment filter (opt-in)
+    use_sentiment_filter: bool = False
+    sentiment_hours: int = 24
+    sentiment_limit: int = 50
+    sentiment_min_score: float = -0.2
+    sentiment_use_precomputed: bool = True
+
 
 class RiskCalculationRequest(BaseModel):
     """Requisição para cálculo de risco"""
@@ -508,6 +515,31 @@ async def run_meta_backtest(request: MetaBacktestRequest):
         
         logger.info(f"📊 Dados carregados: {len(df)} candles de {request.start_date} a {request.end_date}")
         
+        # PASSO 28: Buscar sentimento agregado (opt-in)
+        sentiment_payload = None
+        sentiment_score = 0.0
+        if request.use_sentiment_filter:
+            sentiment_url = os.getenv('SENTIMENT_SERVICE_URL', 'http://sentiment-analyzer:8000')
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=10.0) as client:
+                    r = await client.get(
+                        f"{sentiment_url}/sentiment/symbol",
+                        params={
+                            "symbol": request.symbol,
+                            "hours": request.sentiment_hours,
+                            "limit": request.sentiment_limit,
+                            "use_precomputed": request.sentiment_use_precomputed,
+                        },
+                    )
+                    if r.status_code == 200:
+                        sentiment_payload = r.json()
+                        sentiment_score = float(sentiment_payload.get('sentiment_score', 0.0) or 0.0)
+                    else:
+                        logger.warning(f"⚠️ Sentiment service respondeu {r.status_code}: {r.text[:200]}")
+            except Exception as e:
+                logger.warning(f"⚠️ Falha ao buscar sentiment (seguindo com 0.0): {e}")
+
         # Executar Meta-Backtest
         backtester = MetaBacktester(
             initial_capital=request.initial_capital,
@@ -526,6 +558,10 @@ async def run_meta_backtest(request: MetaBacktestRequest):
             use_kelly_sizing=request.use_kelly_sizing,
             kelly_fraction=request.kelly_fraction,
             kelly_min_trades=request.kelly_min_trades,
+            # PASSO 28: Sentiment filter
+            use_sentiment_filter=request.use_sentiment_filter,
+            sentiment_score=sentiment_score,
+            sentiment_min_score=request.sentiment_min_score,
         )
         
         result = backtester.run_simulation(df)
@@ -593,6 +629,13 @@ async def run_meta_backtest(request: MetaBacktestRequest):
                 "win_rate": safe_round(result.win_rate, 1),
                 "avg_win": safe_round(result.avg_win),
                 "avg_loss": safe_round(result.avg_loss)
+            },
+
+            "sentiment": {
+                "enabled": bool(request.use_sentiment_filter),
+                "min_score": request.sentiment_min_score,
+                "score": round(float(sentiment_score), 4),
+                "details": sentiment_payload,
             },
             
             "adaptability": {
