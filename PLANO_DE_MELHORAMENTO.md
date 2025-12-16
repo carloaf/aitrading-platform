@@ -1,13 +1,58 @@
 Plano de Trading, Investimento Universal e integração com Blue Print - Criptomoedas
 PLANO DE TRADING UNIVERSAL - CRIPTOMOEDAS
-Versão: 2.4 | Institutional Grade | Antifragilidade Total
-**Última Atualização**: 15 de Dezembro de 2025
+Versão: 2.5 | Institutional Grade | Antifragilidade Total
+**Última Atualização**: 16 de Dezembro de 2025
+
+---
+
+## 📑 ÍNDICE
+
+### FASE 1: FUNDAMENTOS (PASSOS 1-22)
+- PASSO 1-22: Base do sistema MetaBacktester
+
+### FASE 2: RSI DIVERGENCE (PASSOS 23-23.6) ✅
+- [PASSO 23](#passo-23-rsi-divergence---integração-metabacktester): Integração inicial
+- [PASSO 23.5](#passo-235-integração-rsi-divergence-no-metabacktester): RSI Causal + Debug
+- [PASSO 23.6](#passo-236-setup-quality-adaptativo-para-mean-reversion): Setup Quality Adaptativo
+
+### FASE 3: WALK-FORWARD OPTIMIZATION (PASSOS 24-24.4) ✅
+- [PASSO 24](#passo-24-walk-forward-optimization-2025): WFO 2025 Validation
+- [PASSO 24.2](#passo-242-fix-multi-symbol-data-backend): Fix Multi-Symbol Data
+- [PASSO 24.3](#passo-243-ajustes-de-gestão-de-risco-em-q32025): Ajustes Gestão Risco Q3
+- [PASSO 24.4](#passo-244-chop-protection-para-momentum-em-bull-opt-in): Chop-Protection (Opt-in)
+- [PASSO 24.5](#passo-245-validação-multi-par-2025-ethsol): Validação Multi-Par ETH/SOL
+
+### FASE 4: KELLY POSITION SIZING (PASSO 25) ✅
+- [PASSO 25](#passo-25-kelly-position-sizing---implementação-completa): Kelly Criterion Implementation
+
+### FASE 5: AUTOMAÇÃO WFO (PASSO 26) ✅
+- [PASSO 26](#passo-26-wfo-automation-production-ready): WFO Automation Scripts
+
+### FASE 6: ADVANCED FEATURES (PASSO 27+) 🚀
+- PASSO 27: Advanced WFO Features (Em Progresso)
+- PASSO 28: Sentiment Analysis Integration
+- PASSO 29: Multi-Timeframe Analysis
+- PASSO 30: Paper Trading Live
 
 ---
 
 ## 📊 STATUS DE IMPLEMENTAÇÃO
 
-### ✅ CONCLUÍDO (15/Dez/2025)
+### 🎯 RESUMO EXECUTIVO
+
+**Sistema de Trading Institucional - Fase de Produção**
+
+| Componente | Status | Performance | Observação |
+|------------|--------|-------------|------------|
+| **MetaBacktester** | ✅ Produção | +36.46% (4 anos) | 52.4% win rate, 267 trades |
+| **RSI Divergence** | ✅ Integrado | 49 entradas (18.3%) | SIDEWAYS/BEAR specialist |
+| **Kelly Sizing** | ✅ Ativo | +18% vs Fixed Risk | 2023: +20.50% return |
+| **WFO Automation** | ✅ Deploy | 81/100 robustez | Script wfo_simple.sh ready |
+| **Multi-Par Validation** | ✅ Operacional | BTC/ETH/SOL validated | Script validate_multipar.sh |
+| **Paper Trading** | ⏳ Planejado | - | PASSO 30 |
+| **Sentiment Layer** | ⏳ Planejado | - | PASSO 28 |
+
+### ✅ PASSOS CONCLUÍDOS
 
 **PASSO 23: RSI Divergence - Integração MetaBacktester** ✅ CONCLUÍDO
 - [✅] Adicionar RSI Divergence ao REGIME_STRATEGY_MAP

@@ -6,26 +6,37 @@ Este manual fornece instruções passo-a-passo para implementar a estratégia de
 
 ### 🎯 ESTADO ATUAL DO SISTEMA
 - **Repositório GitHub**: `github.com/carloaf/aitrading-platform`
-- **Branch**: `main` (produção) | `dev` (desenvolvimento)
+- **Branch**: `main` (produção) | `dev` (desenvolvimento) 
 - **Container**: `execution-engine` (FastAPI + MetaBacktester)
 - **API**: http://localhost:3008/api/meta-backtest/run
-- **Performance 4 anos**: +36.46% return, 52.4% win rate, 15.94% max DD
+- **Performance 4 anos (2021-2024)**: +36.46% return, 52.4% win rate, 15.94% max DD
+- **Performance 2025 (YTD)**: +6.55% return, 63.5% win rate, Sharpe 1.31
+- **Sistema**: PRODUÇÃO READY ✅
 
-### ARQUIVOS IMPLEMENTADOS:
+### 📁 ARQUIVOS IMPLEMENTADOS:
 ```
 services/backtesting-engine/src/strategies/rsi_divergence.py     ✅ Standalone backtest
 services/backtesting-engine/src/strategies/strategy_manager.py   ✅ (atualizado)
 services/backtesting-engine/config/rsi_divergence_config.yaml    ✅ Config YAML
 services/execution-engine/src/strategies/rsi_divergence.py       ✅ CAUSAL (no lookahead)
 services/execution-engine/src/strategies/__init__.py             ✅ (atualizado)
-services/execution-engine/src/main.py                            ✅ (endpoint + timeframe)
+services/execution-engine/src/main.py                            ✅ (endpoint + multi-symbol fix)
 services/execution-engine/src/meta_simulation.py                 ✅ Integration MetaBacktester
 services/execution-engine/src/download_historical_data.py        ✅ (multi-timeframe)
+services/execution-engine/src/risk_manager.py                    ✅ Kelly Position Sizing
 scripts/test_kelly_2023.sh                                       ✅ Kelly validation script
 scripts/wfo_simple.sh                                            ✅ WFO automation
+scripts/validate_multipar.sh                                     ✅ Multi-pair validation
 docs/PASSO_26_WFO_AUTOMATION.md                                  ✅ WFO manual completo
 docs/RESUMO_OPCAO_C.md                                           ✅ Executive summary
+PLANO_DE_MELHORAMENTO.md                                         ✅ Roadmap completo
 ```
+
+### 🔄 ÚLTIMAS ATUALIZAÇÕES (16/Dez/2025):
+- ✅ **Fix Multi-Symbol Data**: Backend agora gera dados sintéticos únicos por símbolo (commit d285935)
+- ✅ **Script validate_multipar.sh**: Validação multi-par BTC/ETH/SOL operacional
+- ✅ **PASSO 24.2 Concluído**: Bug de dados idênticos corrigido
+- 🚀 **Próximo**: PASSO 27 - Advanced WFO Features
 
 ### 🔧 INTEGRAÇÃO NO METABACKTESTER
 
