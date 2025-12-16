@@ -454,9 +454,11 @@ async def run_meta_backtest(request: MetaBacktestRequest):
         
         # Se não há dados no banco, gerar dados sintéticos para demonstração
         if df is None or len(df) < 100:
-            logger.info("📊 Gerando dados sintéticos para demonstração do Meta-Backtest")
+            logger.info(f"📊 Gerando dados sintéticos para {request.symbol} (demonstração)")
             
-            np.random.seed(42)
+            # FIX: Usar symbol como seed para gerar dados diferentes por par
+            symbol_hash = hash(request.symbol) % 10000
+            np.random.seed(42 + symbol_hash)
             
             start = pd.to_datetime(request.start_date)
             end = pd.to_datetime(request.end_date)
@@ -464,9 +466,12 @@ async def run_meta_backtest(request: MetaBacktestRequest):
             
             n = len(dates)
             
-            # Simular diferentes fases de mercado
-            base_price = 40000
+            # Simular diferentes fases de mercado com base no símbolo
+            base_price = 40000 if 'BTC' in request.symbol else (2500 if 'ETH' in request.symbol else 100)
             prices = [base_price]
+            
+            # Volatility multiplier por símbolo (SOL > ETH > BTC)
+            vol_mult = 1.5 if 'SOL' in request.symbol else (1.2 if 'ETH' in request.symbol else 1.0)
             
             for i in range(1, n):
                 # Adicionar tendências sazonais
@@ -475,16 +480,16 @@ async def run_meta_backtest(request: MetaBacktestRequest):
                 # Bull market Jan-Abr, Crash Nov-Jan, Recovery depois
                 if day_of_year < 120:  # Bull
                     drift = 0.0003
-                    vol = 0.015
+                    vol = 0.015 * vol_mult
                 elif day_of_year < 210:  # Chop
                     drift = 0.0
-                    vol = 0.025
+                    vol = 0.025 * vol_mult
                 elif day_of_year < 330:  # Bear/Crash
                     drift = -0.0002
-                    vol = 0.03
+                    vol = 0.03 * vol_mult
                 else:  # Recovery
                     drift = 0.0002
-                    vol = 0.02
+                    vol = 0.02 * vol_mult
                 
                 ret = np.random.normal(drift, vol)
                 prices.append(prices[-1] * (1 + ret))
