@@ -1,0 +1,50 @@
+{
+  "name": "crypto-analysis-platform",
+  "version": "1.0.0",
+  "description": "Plataforma de análise de criptoativos com IA local",
+  "main": "index.js",
+  "scripts": {
+    "start": "make start",
+    "stop": "make stop",
+    "setup": "make setup",
+    "dev": "make start && make logs",
+    "test": "make test",
+    "build": "make build",
+    "clean": "make clean",
+    "deploy": "make deploy-staging"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/crypto-analysis-platform/prof-n8n-int"
+  },
+  "keywords": [
+    "crypto",
+    "trading",
+    "ai",
+    "machine-learning",
+    "sentiment-analysis",
+    "technical-indicators",
+    "real-time",
+    "microservices",
+    "docker",
+    "timescaledb"
+  ],
+  "author": "Crypto Analysis Platform Team",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.5.0",
+    "market-data-collector": "^1.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "workspaces": [
+    "services/*",
+    "frontend"
+  ]
+}

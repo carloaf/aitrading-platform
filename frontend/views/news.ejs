@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - AI Trading Platform</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <style>
+        .navbar-brand {
+            font-weight: bold;
+            color: #007bff !important;
+        }
+        .main-content {
+            padding: 2rem;
+            background-color: #f8f9fa;
+            min-height: calc(100vh - 56px);
+        }
+        .news-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            transition: transform 0.2s ease-in-out;
+        }
+        .news-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+        .sentiment-badge {
+            font-size: 0.8rem;
+            padding: 0.3rem 0.6rem;
+        }
+        .timestamp {
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+        .news-title {
+            color: #2c3e50;
+            text-decoration: none;
+            font-weight: 600;
+        }
+        .news-title:hover {
+            color: #007bff;
+        }
+        .metric-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-graph-up-arrow"></i> AI Trading Platform
+            </a>
+            
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/signals">
+                            <i class="bi bi-activity"></i> Sinais
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/news">
+                            <i class="bi bi-newspaper"></i> Notícias
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid main-content">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">
+                <i class="bi bi-newspaper text-primary"></i>
+                Notícias e Análise de Sentimento
+            </h1>
+            <div class="btn-toolbar mb-2 mb-md-0">
+                <button type="button" class="btn btn-sm btn-primary" onclick="refreshNews()">
+                    <i class="bi bi-arrow-clockwise"></i> Atualizar
+                </button>
+            </div>
+        </div>
+
+        <!-- Statistics Cards -->
+        <% if (locals.stats) { %>
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="metric-label">Total de Notícias</div>
+                            <div class="metric-value"><%= stats.total_news || 0 %></div>
+                        </div>
+                        <div class="text-primary" style="font-size: 2.5rem;">
+                            <i class="bi bi-newspaper"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="metric-label">Sentimento Positivo</div>
+                            <div class="metric-value text-success"><%= stats.positive_news || 0 %></div>
+                        </div>
+                        <div class="text-success" style="font-size: 2.5rem;">
+                            <i class="bi bi-emoji-smile"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="metric-label">Sentimento Negativo</div>
+                            <div class="metric-value text-danger"><%= stats.negative_news || 0 %></div>
+                        </div>
+                        <div class="text-danger" style="font-size: 2.5rem;">
+                            <i class="bi bi-emoji-frown"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-3">
+                <div class="metric-card">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="metric-label">Score Médio</div>
+                            <div class="metric-value text-warning">
+                                <%= stats.avg_sentiment ? stats.avg_sentiment.toFixed(2) : '0.00' %>
+                            </div>
+                        </div>
+                        <div class="text-warning" style="font-size: 2.5rem;">
+                            <i class="bi bi-speedometer2"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <% } %>
+
+        <!-- News List -->
+        <div class="row">
+            <div class="col-12">
+                <% if (locals.articles && articles.length > 0) { %>
+                    <% articles.forEach(function(item) { %>
+                    <div class="news-card">
+                        <div class="row">
+                            <div class="col-md-10">
+                                <div class="d-flex align-items-start mb-2">
+                                    <h5 class="mb-1">
+                                        <% if (item.url) { %>
+                                            <a href="<%= item.url %>" target="_blank" class="news-title">
+                                                <%= item.title %>
+                                            </a>
+                                        <% } else { %>
+                                            <span class="news-title"><%= item.title %></span>
+                                        <% } %>
+                                    </h5>
+                                </div>
+                                
+                                <% if (item.description) { %>
+                                <p class="mb-2 text-muted"><%= item.description %></p>
+                                <% } %>
+                                
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <div class="d-flex align-items-center">
+                                        <% if (item.source) { %>
+                                        <span class="badge bg-light text-dark me-2">
+                                            <i class="bi bi-building"></i> 
+                                            <%= typeof item.source === 'object' ? item.source.name : item.source %>
+                                        </span>
+                                        <% } %>
+                                        
+                                        <% if (item.sentiment) { %>
+                                        <span class="badge sentiment-badge bg-<%= item.sentiment === 'positive' ? 'success' : item.sentiment === 'negative' ? 'danger' : 'secondary' %> me-2">
+                                            <i class="bi bi-<%= item.sentiment === 'positive' ? 'emoji-smile' : item.sentiment === 'negative' ? 'emoji-frown' : 'emoji-neutral' %>"></i>
+                                            <%= item.sentiment.toUpperCase() %>
+                                            <% if (item.confidence) { %>
+                                                (<%= (item.confidence * 100).toFixed(0) %>%)
+                                            <% } %>
+                                        </span>
+                                        <% } %>
+                                    </div>
+                                    
+                                    <span class="timestamp">
+                                        <i class="bi bi-clock"></i>
+                                        <%= new Date(item.publishedAt || item.published_at || item.created_at).toLocaleDateString('pt-BR') %>
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="col-md-2 text-end">
+                                <% if (item.sentiment) { %>
+                                <div class="text-center">
+                                    <div class="h4 text-<%= item.sentiment === 'positive' ? 'success' : item.sentiment === 'negative' ? 'danger' : 'secondary' %>">
+                                        <i class="bi bi-<%= item.sentiment === 'positive' ? 'emoji-smile' : item.sentiment === 'negative' ? 'emoji-frown' : 'emoji-neutral' %>" style="font-size: 2rem;"></i>
+                                    </div>
+                                    <% if (item.confidence) { %>
+                                    <small class="text-muted">Conf: <%= (item.confidence * 100).toFixed(0) %>%</small>
+                                    <% } %>
+                                </div>
+                                <% } %>
+                            </div>
+                        </div>
+                    </div>
+                    <% }); %>
+                <% } else { %>
+                <div class="text-center py-5">
+                    <div class="text-muted">
+                        <i class="bi bi-newspaper" style="font-size: 4rem;"></i>
+                        <h4 class="mt-3">Nenhuma notícia encontrada</h4>
+                        <p>Não há notícias disponíveis no momento. Clique em "Atualizar" para buscar novas notícias.</p>
+                        <button class="btn btn-primary" onclick="refreshNews()">
+                            <i class="bi bi-arrow-clockwise"></i> Buscar Notícias
+                        </button>
+                    </div>
+                </div>
+                <% } %>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                    <p class="mb-0">Buscando notícias...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        function showLoading() {
+            new bootstrap.Modal(document.getElementById('loadingModal')).show();
+        }
+        
+        function hideLoading() {
+            bootstrap.Modal.getInstance(document.getElementById('loadingModal'))?.hide();
+        }
+        
+        function showToast(message, type = 'info') {
+            const toastContainer = document.querySelector('.toast-container') || createToastContainer();
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${type} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            toastContainer.appendChild(toast);
+            new bootstrap.Toast(toast).show();
+            
+            toast.addEventListener('hidden.bs.toast', () => {
+                toast.remove();
+            });
+        }
+        
+        function createToastContainer() {
+            const container = document.createElement('div');
+            container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+            document.body.appendChild(container);
+            return container;
+        }
+        
+        async function refreshNews() {
+            showLoading();
+            
+            try {
+                const response = await fetch('/api/refresh-news', {
+                    method: 'POST'
+                });
+                
+                hideLoading();
+                
+                if (response.ok) {
+                    showToast('Notícias atualizadas com sucesso!', 'success');
+                    setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    showToast('Erro ao atualizar notícias', 'danger');
+                }
+            } catch (error) {
+                hideLoading();
+                showToast('Erro ao atualizar notícias: ' + error.message, 'danger');
+            }
+        }
+    </script>
+</body>
+</html>

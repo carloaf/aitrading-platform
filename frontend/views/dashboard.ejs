@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trading Platform - Dashboard</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --primary-color: #1a1a1a;
+            --secondary-color: #2d2d2d;
+            --accent-color: #00d4aa;
+            --text-color: #ffffff;
+            --text-secondary: #b0b0b0;
+            --success-color: #00c896;
+            --danger-color: #ff4757;
+            --warning-color: #ffa726;
+        }
+
+        body {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .navbar {
+            background-color: var(--secondary-color);
+            border-bottom: 1px solid #404040;
+            padding: 0.5rem 1rem;
+        }
+
+        .navbar-brand {
+            color: var(--accent-color) !important;
+            font-weight: bold;
+            font-size: 1.4rem;
+        }
+
+        .nav-link {
+            color: var(--text-secondary) !important;
+            transition: color 0.3s ease;
+        }
+
+        .nav-link:hover {
+            color: var(--accent-color) !important;
+        }
+
+        .main-container {
+            padding: 1rem;
+            height: calc(100vh - 70px);
+            overflow: hidden;
+        }
+
+        .chart-container {
+            background-color: var(--secondary-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid #404040;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #404040;
+        }
+
+        .chart-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .symbol-selector {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            border: 1px solid #404040;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+        }
+
+        .symbol-selector:focus {
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 0.2rem rgba(0, 212, 170, 0.25);
+        }
+
+        .chart-canvas {
+            height: 400px;
+            width: 100%;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat-card {
+            background-color: var(--secondary-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            border: 1px solid #404040;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .positive { color: var(--success-color); }
+        .negative { color: var(--danger-color); }
+        .neutral { color: var(--warning-color); }
+
+        .sidebar {
+            background-color: var(--secondary-color);
+            border-right: 1px solid #404040;
+            height: 100%;
+            overflow-y: auto;
+        }
+
+        .watchlist {
+            padding: 1rem;
+        }
+
+        .watchlist-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background-color: var(--primary-color);
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+
+        .watchlist-item:hover {
+            background-color: #3a3a3a;
+        }
+
+        .symbol-name {
+            font-weight: 600;
+        }
+
+        .symbol-price {
+            text-align: right;
+        }
+
+        .price-change {
+            font-size: 0.85rem;
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 200px;
+            color: var(--text-secondary);
+        }
+
+        .connection-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 0.5rem;
+        }
+
+        .connected { background-color: var(--success-color); }
+        .disconnected { background-color: var(--danger-color); }
+        .connecting { background-color: var(--warning-color); }
+
+        @media (max-width: 768px) {
+            .main-container {
+                padding: 0.5rem;
+            }
+            
+            .chart-canvas {
+                height: 300px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-line me-2"></i>
+                AI Trading Platform
+            </a>
+            
+            <div class="d-flex align-items-center">
+                <span class="connection-status connected" id="connectionStatus"></span>
+                <span class="me-3" id="connectionText">Conectado</span>
+                
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/backtesting">
+                            <i class="fas fa-history me-1"></i>Backtesting
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/technical-analysis">
+                            <i class="fas fa-chart-bar me-1"></i>Análise Técnica
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/signals">
+                            <i class="fas fa-bell me-1"></i>Sinais
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/news">
+                            <i class="fas fa-newspaper me-1"></i>Notícias
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid main-container">
+        <div class="row h-100">
+            <!-- Main Charts Area -->
+            <div class="col-lg-9 col-md-8">
+                <!-- Market Stats -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-value positive" id="marketCap">$2.1T</div>
+                        <div class="stat-label">Market Cap</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value neutral" id="volume24h">$87.2B</div>
+                        <div class="stat-label">Volume 24h</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value positive" id="dominance">45.2%</div>
+                        <div class="stat-label">BTC Dominance</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-value negative" id="fearGreed">32</div>
+                        <div class="stat-label">Fear & Greed</div>
+                    </div>
+                </div>
+
+                <!-- Main Price Chart -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">
+                            <span id="currentSymbol">BTCUSDT</span>
+                            <span class="ms-3">
+                                <span id="currentPrice" class="positive">$45,230.50</span>
+                                <span id="priceChange" class="positive ms-2">+2.45%</span>
+                            </span>
+                        </h3>
+                        <div>
+                            <select class="symbol-selector me-3" id="symbolSelect">
+                                <option value="BTCUSDT">Bitcoin (BTC/USDT)</option>
+                                <option value="ETHUSDT">Ethereum (ETH/USDT)</option>
+                                <option value="ADAUSDT">Cardano (ADA/USDT)</option>
+                                <option value="DOTUSDT">Polkadot (DOT/USDT)</option>
+                                <option value="LINKUSDT">Chainlink (LINK/USDT)</option>
+                            </select>
+                            <select class="symbol-selector" id="intervalSelect">
+                                <option value="1m">1m</option>
+                                <option value="5m">5m</option>
+                                <option value="15m">15m</option>
+                                <option value="1h" selected>1h</option>
+                                <option value="4h">4h</option>
+                                <option value="1d">1d</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="mainChart" class="chart-canvas"></div>
+                </div>
+
+                <!-- Technical Indicators Chart -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">Indicadores Técnicos</h3>
+                        <div>
+                            <button class="btn btn-sm btn-outline-light me-2" id="rsiBtn">RSI</button>
+                            <button class="btn btn-sm btn-outline-light me-2" id="macdBtn">MACD</button>
+                            <button class="btn btn-sm btn-outline-light" id="volumeBtn">Volume</button>
+                        </div>
+                    </div>
+                    <div id="indicatorChart" class="chart-canvas" style="height: 250px;"></div>
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="col-lg-3 col-md-4">
+                <div class="sidebar">
+                    <!-- Watchlist -->
+                    <div class="watchlist">
+                        <h5 class="mb-3">
+                            <i class="fas fa-eye me-2"></i>Watchlist
+                        </h5>
+                        
+                        <div id="watchlistContainer">
+                            <!-- Watchlist items will be populated here -->
+                        </div>
+                    </div>
+
+                    <!-- Recent Trades -->
+                    <div class="watchlist">
+                        <h5 class="mb-3">
+                            <i class="fas fa-exchange-alt me-2"></i>Trades Recentes
+                        </h5>
+                        
+                        <div id="recentTrades">
+                            <!-- Recent trades will be populated here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Dashboard Script -->
+    <script>
+        class TradingDashboard {
+            constructor() {
+                this.currentSymbol = 'BTCUSDT';
+                this.currentInterval = '1h';
+                this.charts = {};
+                this.websocket = null;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 5;
+                
+                this.initializeCharts();
+                this.setupEventListeners();
+                this.connectWebSocket();
+                this.loadInitialData();
+            }
+
+            initializeCharts() {
+                // Main price chart
+                this.charts.main = LightweightCharts.createChart(document.getElementById('mainChart'), {
+                    width: document.getElementById('mainChart').clientWidth,
+                    height: 400,
+                    layout: {
+                        background: { color: '#1a1a1a' },
+                        textColor: '#ffffff',
+                    },
+                    grid: {
+                        vertLines: { color: '#404040' },
+                        horzLines: { color: '#404040' },
+                    },
+                    crosshair: {
+                        mode: LightweightCharts.CrosshairMode.Normal,
+                    },
+                    rightPriceScale: {
+                        borderColor: '#404040',
+                    },
+                    timeScale: {
+                        borderColor: '#404040',
+                        timeVisible: true,
+                        secondsVisible: false,
+                    },
+                });
+
+                // Add candlestick series
+                this.charts.candlestick = this.charts.main.addCandlestickSeries({
+                    upColor: '#00c896',
+                    downColor: '#ff4757',
+                    borderDownColor: '#ff4757',
+                    borderUpColor: '#00c896',
+                    wickDownColor: '#ff4757',
+                    wickUpColor: '#00c896',
+                });
+
+                // Add volume series
+                this.charts.volume = this.charts.main.addHistogramSeries({
+                    color: '#26a69a',
+                    priceFormat: {
+                        type: 'volume',
+                    },
+                    priceScaleId: '',
+                    scaleMargins: {
+                        top: 0.8,
+                        bottom: 0,
+                    },
+                });
+
+                // Technical indicators chart
+                this.charts.indicator = LightweightCharts.createChart(document.getElementById('indicatorChart'), {
+                    width: document.getElementById('indicatorChart').clientWidth,
+                    height: 250,
+                    layout: {
+                        background: { color: '#1a1a1a' },
+                        textColor: '#ffffff',
+                    },
+                    grid: {
+                        vertLines: { color: '#404040' },
+                        horzLines: { color: '#404040' },
+                    },
+                    rightPriceScale: {
+                        borderColor: '#404040',
+                    },
+                    timeScale: {
+                        borderColor: '#404040',
+                        visible: false,
+                    },
+                });
+
+                // Add RSI series
+                this.charts.rsi = this.charts.indicator.addLineSeries({
+                    color: '#ffa726',
+                    lineWidth: 2,
+                });
+
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    this.charts.main.applyOptions({ 
+                        width: document.getElementById('mainChart').clientWidth 
+                    });
+                    this.charts.indicator.applyOptions({ 
+                        width: document.getElementById('indicatorChart').clientWidth 
+                    });
+                });
+            }
+
+            setupEventListeners() {
+                // Symbol selection
+                document.getElementById('symbolSelect').addEventListener('change', (e) => {
+                    this.currentSymbol = e.target.value;
+                    this.loadChartData();
+                    this.updateWebSocketSubscription();
+                });
+
+                // Interval selection
+                document.getElementById('intervalSelect').addEventListener('change', (e) => {
+                    this.currentInterval = e.target.value;
+                    this.loadChartData();
+                });
+
+                // Indicator buttons
+                document.getElementById('rsiBtn').addEventListener('click', () => {
+                    this.toggleIndicator('rsi');
+                });
+            }
+
+            async loadInitialData() {
+                await this.loadChartData();
+                await this.loadWatchlist();
+                await this.loadMarketStats();
+            }
+
+            async loadChartData() {
+                try {
+                    // Load historical data for the chart
+                    const response = await fetch(`/api/market-data/historical?symbol=${this.currentSymbol}&interval=${this.currentInterval}&limit=100`);
+                    
+                    if (!response.ok) {
+                        throw new Error('Failed to load chart data');
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.success && data.data.length > 0) {
+                        this.updateChartData(data.data);
+                    } else {
+                        // Use mock data if real data is not available
+                        this.generateMockData();
+                    }
+                    
+                } catch (error) {
+                    console.error('Error loading chart data:', error);
+                    this.generateMockData();
+                }
+            }
+
+            generateMockData() {
+                const basePrice = 45000;
+                const candleData = [];
+                const volumeData = [];
+                const rsiData = [];
+                
+                for (let i = 0; i < 100; i++) {
+                    const time = Math.floor(Date.now() / 1000) - (100 - i) * 3600;
+                    
+                    const open = basePrice + (Math.random() - 0.5) * 1000;
+                    const close = open + (Math.random() - 0.5) * 500;
+                    const high = Math.max(open, close) + Math.random() * 200;
+                    const low = Math.min(open, close) - Math.random() * 200;
+                    const volume = Math.random() * 1000000;
+                    
+                    candleData.push({ time, open, high, low, close });
+                    volumeData.push({ time, value: volume, color: close > open ? '#00c896' : '#ff4757' });
+                    rsiData.push({ time, value: 30 + Math.random() * 40 });
+                }
+                
+                this.charts.candlestick.setData(candleData);
+                this.charts.volume.setData(volumeData);
+                this.charts.rsi.setData(rsiData);
+                
+                // Update current price
+                const lastCandle = candleData[candleData.length - 1];
+                this.updateCurrentPrice(lastCandle.close, lastCandle.close - candleData[candleData.length - 2].close);
+            }
+
+            updateChartData(data) {
+                const candleData = data.map(item => ({
+                    time: item.timestamp,
+                    open: parseFloat(item.open),
+                    high: parseFloat(item.high),
+                    low: parseFloat(item.low),
+                    close: parseFloat(item.close)
+                }));
+
+                const volumeData = data.map(item => ({
+                    time: item.timestamp,
+                    value: parseFloat(item.volume),
+                    color: parseFloat(item.close) > parseFloat(item.open) ? '#00c896' : '#ff4757'
+                }));
+
+                this.charts.candlestick.setData(candleData);
+                this.charts.volume.setData(volumeData);
+
+                // Update current price
+                const lastCandle = candleData[candleData.length - 1];
+                const prevCandle = candleData[candleData.length - 2];
+                const change = lastCandle.close - prevCandle.close;
+                this.updateCurrentPrice(lastCandle.close, change);
+            }
+
+            updateCurrentPrice(price, change) {
+                const priceElement = document.getElementById('currentPrice');
+                const changeElement = document.getElementById('priceChange');
+                
+                priceElement.textContent = `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                
+                const changePercent = (change / (price - change)) * 100;
+                changeElement.textContent = `${change >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
+                
+                // Update colors
+                const colorClass = change >= 0 ? 'positive' : 'negative';
+                priceElement.className = colorClass;
+                changeElement.className = colorClass + ' ms-2';
+            }
+
+            async loadWatchlist() {
+                const watchlistSymbols = ['BTCUSDT', 'ETHUSDT', 'ADAUSDT', 'DOTUSDT', 'LINKUSDT'];
+                const container = document.getElementById('watchlistContainer');
+                
+                container.innerHTML = '';
+                
+                for (const symbol of watchlistSymbols) {
+                    const item = this.createWatchlistItem(symbol);
+                    container.appendChild(item);
+                }
+            }
+
+            createWatchlistItem(symbol) {
+                const div = document.createElement('div');
+                div.className = 'watchlist-item';
+                div.onclick = () => {
+                    document.getElementById('symbolSelect').value = symbol;
+                    this.currentSymbol = symbol;
+                    this.loadChartData();
+                };
+
+                // Generate mock data for watchlist
+                const price = 45000 + (Math.random() - 0.5) * 10000;
+                const change = (Math.random() - 0.5) * 1000;
+                const changePercent = (change / price) * 100;
+
+                div.innerHTML = `
+                    <div>
+                        <div class="symbol-name">${symbol.replace('USDT', '')}</div>
+                        <div class="text-muted small">${symbol}</div>
+                    </div>
+                    <div class="symbol-price">
+                        <div class="${change >= 0 ? 'positive' : 'negative'}">$${price.toFixed(2)}</div>
+                        <div class="price-change ${change >= 0 ? 'positive' : 'negative'}">${change >= 0 ? '+' : ''}${changePercent.toFixed(2)}%</div>
+                    </div>
+                `;
+
+                return div;
+            }
+
+            async loadMarketStats() {
+                // Update market statistics with mock data
+                // In a real implementation, this would fetch from an API
+            }
+
+            connectWebSocket() {
+                try {
+                    // Connect to market data WebSocket
+                    // In a real implementation, this would connect to your market data service
+                    this.updateConnectionStatus('connecting');
+                    
+                    // Simulate connection success
+                    setTimeout(() => {
+                        this.updateConnectionStatus('connected');
+                        this.startPriceUpdates();
+                    }, 1000);
+                    
+                } catch (error) {
+                    console.error('WebSocket connection error:', error);
+                    this.updateConnectionStatus('disconnected');
+                    this.scheduleReconnect();
+                }
+            }
+
+            updateConnectionStatus(status) {
+                const statusElement = document.getElementById('connectionStatus');
+                const textElement = document.getElementById('connectionText');
+                
+                statusElement.className = `connection-status ${status}`;
+                
+                switch (status) {
+                    case 'connected':
+                        textElement.textContent = 'Conectado';
+                        this.reconnectAttempts = 0;
+                        break;
+                    case 'connecting':
+                        textElement.textContent = 'Conectando...';
+                        break;
+                    case 'disconnected':
+                        textElement.textContent = 'Desconectado';
+                        break;
+                }
+            }
+
+            startPriceUpdates() {
+                // Simulate real-time price updates
+                setInterval(() => {
+                    this.simulatePriceUpdate();
+                }, 5000);
+            }
+
+            simulatePriceUpdate() {
+                // Generate a new price update
+                const currentTime = Math.floor(Date.now() / 1000);
+                const lastCandle = this.charts.candlestick.dataByIndex(-1);
+                
+                if (lastCandle) {
+                    const newPrice = lastCandle.close * (1 + (Math.random() - 0.5) * 0.01);
+                    const change = newPrice - lastCandle.close;
+                    
+                    this.updateCurrentPrice(newPrice, change);
+                    
+                    // Update watchlist prices
+                    this.loadWatchlist();
+                }
+            }
+
+            toggleIndicator(indicator) {
+                // Toggle indicator visibility
+                console.log(`Toggling ${indicator} indicator`);
+            }
+
+            scheduleReconnect() {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    setTimeout(() => {
+                        this.reconnectAttempts++;
+                        this.connectWebSocket();
+                    }, Math.pow(2, this.reconnectAttempts) * 1000);
+                }
+            }
+        }
+
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new TradingDashboard();
+        });
+    </script>
+</body>
+</html>

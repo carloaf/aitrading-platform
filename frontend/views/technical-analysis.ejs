@@ -1,0 +1,1246 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trading Platform - Análise Técnica</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- TradingView Lightweight Charts - Using v3.3.0 (known working version) -->
+    <script src="https://unpkg.com/lightweight-charts@3.3.0/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --primary-color: #1a1a1a;
+            --secondary-color: #2d2d2d;
+            --accent-color: #00d4aa;
+            --text-color: #ffffff;
+            --text-secondary: #b0b0b0;
+            --success-color: #00c896;
+            --danger-color: #ff4757;
+            --warning-color: #ffa726;
+            --info-color: #3742fa;
+        }
+
+        body {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .navbar {
+            background-color: var(--secondary-color);
+            border-bottom: 1px solid #404040;
+            padding: 0.5rem 1rem;
+        }
+
+        .navbar-brand {
+            color: var(--accent-color) !important;
+            font-weight: bold;
+            font-size: 1.4rem;
+        }
+
+        .nav-link {
+            color: var(--text-secondary) !important;
+            transition: color 0.3s ease;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--accent-color) !important;
+        }
+
+        .container-fluid {
+            padding: 1rem;
+        }
+
+        .card {
+            background-color: var(--secondary-color);
+            border: 1px solid #404040;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .card-header {
+            background-color: var(--secondary-color);
+            border-bottom: 1px solid #404040;
+            color: var(--text-color);
+            font-weight: 600;
+        }
+
+        .card-body {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+        }
+
+        .chart-container {
+            background-color: var(--secondary-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid #404040;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid #404040;
+        }
+
+        .chart-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-color);
+        }
+
+        .chart-canvas {
+            height: 500px;
+            width: 100%;
+        }
+
+        .indicator-canvas {
+            height: 150px;
+            width: 100%;
+            margin-top: 0.5rem;
+        }
+
+        .form-control, .form-select {
+            background-color: var(--primary-color);
+            border: 1px solid #404040;
+            color: var(--text-color);
+        }
+
+        .form-control:focus, .form-select:focus {
+            background-color: var(--primary-color);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 0.2rem rgba(0, 212, 170, 0.25);
+            color: var(--text-color);
+        }
+
+        .btn-primary {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #000;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            background-color: #00b894;
+            border-color: #00b894;
+        }
+
+        .btn-outline-light {
+            color: var(--text-color);
+            border-color: #404040;
+        }
+
+        .btn-outline-light:hover {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #000;
+        }
+
+        .btn-outline-light.active {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #000;
+        }
+
+        .indicator-panel {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .indicator-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background-color: var(--primary-color);
+            border-radius: 6px;
+            border: 1px solid #404040;
+        }
+
+        .indicator-name {
+            font-weight: 600;
+        }
+
+        .indicator-value {
+            font-family: 'Courier New', monospace;
+        }
+
+        .signal-buy { color: var(--success-color); }
+        .signal-sell { color: var(--danger-color); }
+        .signal-neutral { color: var(--text-secondary); }
+
+        .pattern-item {
+            background-color: var(--primary-color);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            border-left: 4px solid var(--info-color);
+        }
+
+        .pattern-name {
+            font-weight: 600;
+            color: var(--info-color);
+        }
+
+        .pattern-confidence {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #404040;
+            margin-bottom: 1rem;
+        }
+
+        .tab {
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            border: none;
+            background: none;
+            color: var(--text-secondary);
+            transition: all 0.3s ease;
+        }
+
+        .tab.active {
+            color: var(--accent-color);
+            border-bottom: 2px solid var(--accent-color);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @media (max-width: 768px) {
+            .container-fluid {
+                padding: 0.5rem;
+            }
+            
+            .chart-canvas {
+                height: 300px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-line me-2"></i>
+                AI Trading Platform
+            </a>
+            
+            <div class="d-flex align-items-center">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/backtesting">
+                            <i class="fas fa-history me-1"></i>Backtesting
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/technical-analysis">
+                            <i class="fas fa-chart-bar me-1"></i>Análise Técnica
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/signals">
+                            <i class="fas fa-bell me-1"></i>Sinais
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/news">
+                            <i class="fas fa-newspaper me-1"></i>Notícias
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Chart Area -->
+            <div class="col-lg-8">
+                <!-- Symbol Selection -->
+                <div class="chart-container">
+                    <div class="chart-header">
+                        <h3 class="chart-title">
+                            <span id="currentSymbol">BTCUSDT</span>
+                            <span class="ms-3">
+                                <span id="currentPrice" class="signal-buy">$45,230.50</span>
+                                <span id="priceChange" class="signal-buy ms-2">+2.45%</span>
+                            </span>
+                        </h3>
+                        <div>
+                            <select class="form-select me-2 d-inline-block" style="width: auto;" id="symbolSelect">
+                                <option value="BTCUSDT">Bitcoin (BTC/USDT)</option>
+                                <option value="ETHUSDT">Ethereum (ETH/USDT)</option>
+                                <option value="ADAUSDT">Cardano (ADA/USDT)</option>
+                                <option value="DOTUSDT">Polkadot (DOT/USDT)</option>
+                                <option value="LINKUSDT">Chainlink (LINK/USDT)</option>
+                            </select>
+                            <select class="form-select d-inline-block" style="width: auto;" id="intervalSelect">
+                                <option value="1m">1m</option>
+                                <option value="5m">5m</option>
+                                <option value="15m">15m</option>
+                                <option value="1h" selected>1h</option>
+                                <option value="4h">4h</option>
+                                <option value="1d">1d</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Main Chart -->
+                    <div id="mainChart" class="chart-canvas"></div>
+                    
+                    <!-- Indicator Charts -->
+                    <div id="rsiChart" class="indicator-canvas" style="display: none;"></div>
+                    <div id="macdChart" class="indicator-canvas" style="display: none;"></div>
+                    <div id="stochChart" class="indicator-canvas" style="display: none;"></div>
+                </div>
+
+                <!-- Indicator Controls -->
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-sliders-h me-2"></i>Indicadores Técnicos
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Osciladores</h6>
+                                <div class="mb-2">
+                                    <button class="btn btn-outline-light btn-sm me-2" id="rsiBtn">RSI (14)</button>
+                                    <button class="btn btn-outline-light btn-sm me-2" id="macdBtn">MACD</button>
+                                    <button class="btn btn-outline-light btn-sm me-2" id="stochBtn">Stochastic</button>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Sobreposições</h6>
+                                <div class="mb-2">
+                                    <button class="btn btn-outline-light btn-sm me-2" id="bollingerBtn">Bollinger Bands</button>
+                                    <button class="btn btn-outline-light btn-sm me-2" id="fibonacciBtn">Fibonacci</button>
+                                    <button class="btn btn-outline-light btn-sm me-2" id="ichimokuBtn">Ichimoku</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Analysis Panel -->
+            <div class="col-lg-4">
+                <!-- Tabs -->
+                <div class="tabs">
+                    <button class="tab active" data-tab="indicators">Indicadores</button>
+                    <button class="tab" data-tab="patterns">Padrões</button>
+                    <button class="tab" data-tab="levels">Níveis</button>
+                </div>
+
+                <!-- Indicators Tab -->
+                <div id="indicators-tab" class="tab-content active">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="fas fa-chart-line me-2"></i>Valores Atuais
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="indicator-panel" id="indicatorValues">
+                                <!-- Indicator values will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="fas fa-signal me-2"></i>Sinais de Trading
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="tradingSignals">
+                                <!-- Trading signals will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Patterns Tab -->
+                <div id="patterns-tab" class="tab-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="fas fa-shapes me-2"></i>Padrões de Candlestick
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="candlestickPatterns">
+                                <!-- Candlestick patterns will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="fas fa-chart-area me-2"></i>Padrões de Preço
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="pricePatterns">
+                                <!-- Price patterns will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Levels Tab -->
+                <div id="levels-tab" class="tab-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="fas fa-layer-group me-2"></i>Suporte e Resistência
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="supportResistance">
+                                <!-- Support/Resistance levels will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header">
+                            <h6 class="mb-0">
+                                <i class="fas fa-chart-pie me-2"></i>Análise de Volume
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="volumeAnalysis">
+                                <!-- Volume analysis will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Technical Analysis Script -->
+    <script>
+        class TechnicalAnalysis {
+            constructor() {
+                this.currentSymbol = 'BTCUSDT';
+                this.currentInterval = '1h';
+                this.charts = {};
+                this.indicators = {};
+                this.activeIndicators = new Set();
+                this.candlestickData = [];
+                
+                this.initializeCharts();
+                this.setupEventListeners();
+                this.loadInitialData();
+                this.startRealTimeUpdates();
+            }
+
+            initializeCharts() {
+                // Check if TradingView library is loaded
+                if (typeof LightweightCharts === 'undefined') {
+                    console.error('TradingView Lightweight Charts library not loaded');
+                    setTimeout(() => this.initializeCharts(), 1000);
+                    return;
+                }
+
+                // Main price chart
+                this.charts.main = LightweightCharts.createChart(document.getElementById('mainChart'), {
+                    width: document.getElementById('mainChart').clientWidth,
+                    height: 500,
+                    layout: {
+                        background: { color: '#1a1a1a' },
+                        textColor: '#ffffff',
+                    },
+                    grid: {
+                        vertLines: { color: '#404040' },
+                        horzLines: { color: '#404040' },
+                    },
+                    crosshair: {
+                        mode: LightweightCharts.CrosshairMode.Normal,
+                    },
+                    rightPriceScale: {
+                        borderColor: '#404040',
+                    },
+                    timeScale: {
+                        borderColor: '#404040',
+                        timeVisible: true,
+                        secondsVisible: false,
+                    },
+                });
+
+                // Debug: Log available methods
+                console.log('Available chart methods:', Object.getOwnPropertyNames(this.charts.main).filter(prop => 
+                    typeof this.charts.main[prop] === 'function' && prop.includes('add')
+                ));
+
+                // Add candlestick series - Using correct API method
+                try {
+                    // The correct method in TradingView Lightweight Charts is addCandlestickSeries
+                    // But if it doesn't exist, we'll use an alternative approach
+                    if (this.charts.main.addCandlestickSeries) {
+                        this.charts.candlestick = this.charts.main.addCandlestickSeries({
+                            upColor: '#00c896',
+                            downColor: '#ff4757',
+                            borderDownColor: '#ff4757',
+                            borderUpColor: '#00c896',
+                            wickDownColor: '#ff4757',
+                            wickUpColor: '#00c896',
+                        });
+                    } else {
+                        // Fallback: try different method names or use line series
+                        console.warn('addCandlestickSeries not available, trying alternatives...');
+                        
+                        // Try alternative method name
+                        if (this.charts.main.addSeries) {
+                            this.charts.candlestick = this.charts.main.addSeries('candlestick', {
+                                upColor: '#00c896',
+                                downColor: '#ff4757',
+                                borderDownColor: '#ff4757',
+                                borderUpColor: '#00c896',
+                                wickDownColor: '#ff4757',
+                                wickUpColor: '#00c896',
+                            });
+                        } else {
+                            // Final fallback to line series
+                            this.charts.candlestick = this.charts.main.addLineSeries({
+                                color: '#00d4aa',
+                                lineWidth: 2,
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error adding candlestick series:', error);
+                    // Emergency fallback to line series
+                    try {
+                        this.charts.candlestick = this.charts.main.addLineSeries({
+                            color: '#00d4aa',
+                            lineWidth: 2,
+                        });
+                        console.log('Successfully created fallback line series');
+                    } catch (fallbackError) {
+                        console.error('Even fallback failed:', fallbackError);
+                    }
+                }
+
+                // Add volume series
+                try {
+                    this.charts.volume = this.charts.main.addHistogramSeries({
+                        color: '#26a69a',
+                        priceFormat: {
+                            type: 'volume',
+                        },
+                        priceScaleId: '',
+                        scaleMargins: {
+                            top: 0.8,
+                            bottom: 0,
+                        },
+                    });
+                } catch (error) {
+                    console.error('Error adding volume series:', error);
+                }
+
+                // RSI Chart
+                try {
+                    this.charts.rsi = LightweightCharts.createChart(document.getElementById('rsiChart'), {
+                        width: document.getElementById('rsiChart').clientWidth,
+                        height: 150,
+                        layout: {
+                            background: { color: '#1a1a1a' },
+                            textColor: '#ffffff',
+                        },
+                        grid: {
+                            vertLines: { color: '#404040' },
+                            horzLines: { color: '#404040' },
+                        },
+                        rightPriceScale: {
+                            borderColor: '#404040',
+                        },
+                        timeScale: {
+                            borderColor: '#404040',
+                            visible: false,
+                        },
+                    });
+
+                    this.charts.rsiSeries = this.charts.rsi.addLineSeries({
+                        color: '#ffa726',
+                        lineWidth: 2,
+                    });
+                } catch (error) {
+                    console.error('Error creating RSI chart:', error);
+                }
+
+                // MACD Chart
+                try {
+                    this.charts.macd = LightweightCharts.createChart(document.getElementById('macdChart'), {
+                        width: document.getElementById('macdChart').clientWidth,
+                        height: 150,
+                        layout: {
+                            background: { color: '#1a1a1a' },
+                            textColor: '#ffffff',
+                        },
+                        grid: {
+                            vertLines: { color: '#404040' },
+                            horzLines: { color: '#404040' },
+                        },
+                        rightPriceScale: {
+                            borderColor: '#404040',
+                        },
+                        timeScale: {
+                            borderColor: '#404040',
+                            visible: false,
+                        },
+                    });
+
+                    this.charts.macdLine = this.charts.macd.addLineSeries({
+                        color: '#00d4aa',
+                        lineWidth: 2,
+                    });
+
+                    this.charts.macdSignal = this.charts.macd.addLineSeries({
+                        color: '#ff4757',
+                        lineWidth: 2,
+                    });
+
+                    this.charts.macdHistogram = this.charts.macd.addHistogramSeries({
+                        color: '#3742fa',
+                    });
+                } catch (error) {
+                    console.error('Error creating MACD chart:', error);
+                }
+
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    Object.values(this.charts).forEach(chart => {
+                        if (chart && chart.applyOptions) {
+                            chart.applyOptions({ 
+                                width: chart.chartElement().clientWidth 
+                            });
+                        }
+                    });
+                });
+            }
+
+            setupEventListeners() {
+                // Symbol and interval selection
+                document.getElementById('symbolSelect').addEventListener('change', (e) => {
+                    this.currentSymbol = e.target.value;
+                    this.loadChartData();
+                });
+
+                document.getElementById('intervalSelect').addEventListener('change', (e) => {
+                    this.currentInterval = e.target.value;
+                    this.loadChartData();
+                });
+
+                // Indicator buttons
+                const indicatorButtons = {
+                    'rsiBtn': 'rsi',
+                    'macdBtn': 'macd',
+                    'stochBtn': 'stochastic',
+                    'bollingerBtn': 'bollinger',
+                    'fibonacciBtn': 'fibonacci',
+                    'ichimokuBtn': 'ichimoku'
+                };
+
+                Object.entries(indicatorButtons).forEach(([btnId, indicator]) => {
+                    document.getElementById(btnId).addEventListener('click', () => {
+                        this.toggleIndicator(indicator, btnId);
+                    });
+                });
+
+                // Tab switching
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.addEventListener('click', () => {
+                        this.switchTab(tab.dataset.tab);
+                    });
+                });
+            }
+
+            switchTab(tabName) {
+                // Update tab buttons
+                document.querySelectorAll('.tab').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                document.querySelector(`[data-tab="${tabName}"]`).classList.add('active');
+
+                // Update tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                document.getElementById(`${tabName}-tab`).classList.add('active');
+            }
+
+            toggleIndicator(indicator, btnId) {
+                const button = document.getElementById(btnId);
+                
+                if (this.activeIndicators.has(indicator)) {
+                    this.activeIndicators.delete(indicator);
+                    button.classList.remove('active');
+                    this.hideIndicator(indicator);
+                } else {
+                    this.activeIndicators.add(indicator);
+                    button.classList.add('active');
+                    this.showIndicator(indicator);
+                }
+            }
+
+            showIndicator(indicator) {
+                switch (indicator) {
+                    case 'rsi':
+                        document.getElementById('rsiChart').style.display = 'block';
+                        this.calculateRSI();
+                        break;
+                    case 'macd':
+                        document.getElementById('macdChart').style.display = 'block';
+                        this.calculateMACD();
+                        break;
+                    case 'bollinger':
+                        this.addBollingerBands();
+                        break;
+                    case 'fibonacci':
+                        this.addFibonacciRetracements();
+                        break;
+                }
+            }
+
+            hideIndicator(indicator) {
+                switch (indicator) {
+                    case 'rsi':
+                        document.getElementById('rsiChart').style.display = 'none';
+                        break;
+                    case 'macd':
+                        document.getElementById('macdChart').style.display = 'none';
+                        break;
+                    case 'bollinger':
+                        this.removeBollingerBands();
+                        break;
+                    case 'fibonacci':
+                        this.removeFibonacciRetracements();
+                        break;
+                }
+            }
+
+            async loadInitialData() {
+                await this.loadChartData();
+                this.updateIndicatorValues();
+                this.detectCandlestickPatterns();
+                this.analyzeSupportResistance();
+                this.updateTradingSignals();
+            }
+
+            async loadChartData() {
+                try {
+                    // Generate mock historical data
+                    const mockData = this.generateMockHistoricalData();
+                    this.candlestickData = mockData.candlesticks;
+                    
+                    if (this.charts.candlestick && mockData.candlesticks) {
+                        this.charts.candlestick.setData(mockData.candlesticks);
+                    }
+                    
+                    if (this.charts.volume && mockData.volume) {
+                        this.charts.volume.setData(mockData.volume);
+                    }
+                    
+                    // Update current price
+                    const lastCandle = mockData.candlesticks[mockData.candlesticks.length - 1];
+                    this.updateCurrentPrice(lastCandle.close, lastCandle.close - mockData.candlesticks[mockData.candlesticks.length - 2].close);
+                    
+                    // Recalculate indicators
+                    this.activeIndicators.forEach(indicator => {
+                        this.showIndicator(indicator);
+                    });
+                    
+                } catch (error) {
+                    console.error('Error loading chart data:', error);
+                    this.showErrorMessage('Erro ao carregar dados do gráfico: ' + error.message);
+                }
+            }
+
+            generateMockHistoricalData() {
+                const basePrice = this.currentSymbol.includes('BTC') ? 45000 : 
+                                this.currentSymbol.includes('ETH') ? 3000 : 1.5;
+                const candlesticks = [];
+                const volume = [];
+                const now = Math.floor(Date.now() / 1000);
+                
+                for (let i = 200; i > 0; i--) {
+                    const time = now - (i * 3600);
+                    const open = basePrice * (1 + (Math.random() - 0.5) * 0.02);
+                    const close = open * (1 + (Math.random() - 0.5) * 0.03);
+                    const high = Math.max(open, close) * (1 + Math.random() * 0.01);
+                    const low = Math.min(open, close) * (1 - Math.random() * 0.01);
+                    const vol = Math.random() * 1000000;
+                    
+                    candlesticks.push({ time, open, high, low, close });
+                    volume.push({ 
+                        time, 
+                        value: vol, 
+                        color: close > open ? '#00c896' : '#ff4757' 
+                    });
+                }
+                
+                return { candlesticks, volume };
+            }
+
+            updateCurrentPrice(price, change) {
+                const priceElement = document.getElementById('currentPrice');
+                const changeElement = document.getElementById('priceChange');
+                
+                priceElement.textContent = `$${price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                
+                const changePercent = (change / (price - change)) * 100;
+                changeElement.textContent = `${change >= 0 ? '+' : ''}${changePercent.toFixed(2)}%`;
+                
+                // Update colors
+                const colorClass = change >= 0 ? 'signal-buy' : 'signal-sell';
+                priceElement.className = colorClass;
+                changeElement.className = colorClass + ' ms-2';
+            }
+
+            calculateRSI(period = 14) {
+                if (this.candlestickData.length < period + 1) return;
+                
+                const rsiData = [];
+                const gains = [];
+                const losses = [];
+                
+                // Calculate price changes
+                for (let i = 1; i < this.candlestickData.length; i++) {
+                    const change = this.candlestickData[i].close - this.candlestickData[i - 1].close;
+                    gains.push(change > 0 ? change : 0);
+                    losses.push(change < 0 ? Math.abs(change) : 0);
+                }
+                
+                // Calculate RSI
+                for (let i = period - 1; i < gains.length; i++) {
+                    const avgGain = gains.slice(i - period + 1, i + 1).reduce((a, b) => a + b) / period;
+                    const avgLoss = losses.slice(i - period + 1, i + 1).reduce((a, b) => a + b) / period;
+                    
+                    const rs = avgGain / (avgLoss || 0.0001);
+                    const rsi = 100 - (100 / (1 + rs));
+                    
+                    rsiData.push({
+                        time: this.candlestickData[i + 1].time,
+                        value: rsi
+                    });
+                }
+                
+                this.charts.rsiSeries.setData(rsiData);
+                this.indicators.rsi = rsiData[rsiData.length - 1]?.value || 0;
+            }
+
+            calculateMACD() {
+                if (this.candlestickData.length < 26) return;
+                
+                const prices = this.candlestickData.map(d => d.close);
+                const ema12 = this.calculateEMA(prices, 12);
+                const ema26 = this.calculateEMA(prices, 26);
+                
+                const macdLine = [];
+                const signalLine = [];
+                const histogram = [];
+                
+                // Calculate MACD line
+                for (let i = 25; i < prices.length; i++) {
+                    const macd = ema12[i] - ema26[i];
+                    macdLine.push(macd);
+                }
+                
+                // Calculate Signal line (EMA of MACD)
+                const signalEMA = this.calculateEMA(macdLine, 9);
+                
+                // Prepare data for chart
+                for (let i = 0; i < macdLine.length; i++) {
+                    const time = this.candlestickData[i + 25].time;
+                    
+                    if (i < signalEMA.length) {
+                        const macdValue = macdLine[i];
+                        const signalValue = signalEMA[i];
+                        const histValue = macdValue - signalValue;
+                        
+                        this.charts.macdLine.setData([...this.charts.macdLine.data() || [], { time, value: macdValue }]);
+                        this.charts.macdSignal.setData([...this.charts.macdSignal.data() || [], { time, value: signalValue }]);
+                        this.charts.macdHistogram.setData([...this.charts.macdHistogram.data() || [], { 
+                            time, 
+                            value: histValue,
+                            color: histValue >= 0 ? '#00c896' : '#ff4757'
+                        }]);
+                    }
+                }
+                
+                this.indicators.macd = {
+                    macd: macdLine[macdLine.length - 1] || 0,
+                    signal: signalEMA[signalEMA.length - 1] || 0,
+                    histogram: (macdLine[macdLine.length - 1] || 0) - (signalEMA[signalEMA.length - 1] || 0)
+                };
+            }
+
+            calculateEMA(prices, period) {
+                const ema = [];
+                const multiplier = 2 / (period + 1);
+                
+                ema[0] = prices[0];
+                
+                for (let i = 1; i < prices.length; i++) {
+                    ema[i] = (prices[i] * multiplier) + (ema[i - 1] * (1 - multiplier));
+                }
+                
+                return ema;
+            }
+
+            addBollingerBands() {
+                if (this.candlestickData.length < 20) return;
+                
+                const period = 20;
+                const stdDev = 2;
+                const upperBand = [];
+                const lowerBand = [];
+                const middleBand = [];
+                
+                for (let i = period - 1; i < this.candlestickData.length; i++) {
+                    const slice = this.candlestickData.slice(i - period + 1, i + 1);
+                    const sma = slice.reduce((sum, candle) => sum + candle.close, 0) / period;
+                    
+                    const variance = slice.reduce((sum, candle) => {
+                        return sum + Math.pow(candle.close - sma, 2);
+                    }, 0) / period;
+                    
+                    const standardDeviation = Math.sqrt(variance);
+                    
+                    const time = this.candlestickData[i].time;
+                    upperBand.push({ time, value: sma + (stdDev * standardDeviation) });
+                    lowerBand.push({ time, value: sma - (stdDev * standardDeviation) });
+                    middleBand.push({ time, value: sma });
+                }
+                
+                // Add Bollinger Bands to chart
+                this.charts.upperBB = this.charts.main.addLineSeries({
+                    color: '#ff4757',
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                });
+                
+                this.charts.lowerBB = this.charts.main.addLineSeries({
+                    color: '#00c896',
+                    lineWidth: 1,
+                    lineStyle: LightweightCharts.LineStyle.Dashed,
+                });
+                
+                this.charts.middleBB = this.charts.main.addLineSeries({
+                    color: '#ffa726',
+                    lineWidth: 1,
+                });
+                
+                this.charts.upperBB.setData(upperBand);
+                this.charts.lowerBB.setData(lowerBand);
+                this.charts.middleBB.setData(middleBand);
+                
+                this.indicators.bollinger = {
+                    upper: upperBand[upperBand.length - 1]?.value || 0,
+                    middle: middleBand[middleBand.length - 1]?.value || 0,
+                    lower: lowerBand[lowerBand.length - 1]?.value || 0
+                };
+            }
+
+            removeBollingerBands() {
+                if (this.charts.upperBB) {
+                    this.charts.main.removeSeries(this.charts.upperBB);
+                    this.charts.main.removeSeries(this.charts.lowerBB);
+                    this.charts.main.removeSeries(this.charts.middleBB);
+                    delete this.charts.upperBB;
+                    delete this.charts.lowerBB;
+                    delete this.charts.middleBB;
+                }
+            }
+
+            addFibonacciRetracements() {
+                if (this.candlestickData.length < 50) return;
+                
+                // Find recent high and low
+                const recentData = this.candlestickData.slice(-50);
+                const high = Math.max(...recentData.map(d => d.high));
+                const low = Math.min(...recentData.map(d => d.low));
+                const range = high - low;
+                
+                const fibLevels = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+                const fibColors = ['#ff4757', '#ffa726', '#00d4aa', '#3742fa', '#00d4aa', '#ffa726', '#ff4757'];
+                
+                this.charts.fibLines = [];
+                
+                fibLevels.forEach((level, index) => {
+                    const price = high - (range * level);
+                    const line = this.charts.main.addPriceLine({
+                        price: price,
+                        color: fibColors[index],
+                        lineWidth: 1,
+                        lineStyle: LightweightCharts.LineStyle.Dashed,
+                        axisLabelVisible: true,
+                        title: `Fib ${(level * 100).toFixed(1)}%`,
+                    });
+                    this.charts.fibLines.push(line);
+                });
+                
+                this.indicators.fibonacci = { high, low, range };
+            }
+
+            removeFibonacciRetracements() {
+                if (this.charts.fibLines) {
+                    this.charts.fibLines.forEach(line => {
+                        this.charts.main.removePriceLine(line);
+                    });
+                    delete this.charts.fibLines;
+                }
+            }
+
+            updateIndicatorValues() {
+                const container = document.getElementById('indicatorValues');
+                const indicators = [
+                    { name: 'RSI (14)', value: this.indicators.rsi?.toFixed(2) || '--', signal: this.getRSISignal() },
+                    { name: 'MACD', value: this.indicators.macd?.macd?.toFixed(4) || '--', signal: this.getMACDSignal() },
+                    { name: 'BB Upper', value: this.indicators.bollinger?.upper?.toFixed(2) || '--', signal: 'neutral' },
+                    { name: 'BB Lower', value: this.indicators.bollinger?.lower?.toFixed(2) || '--', signal: 'neutral' },
+                ];
+                
+                container.innerHTML = indicators.map(ind => `
+                    <div class="indicator-item">
+                        <div class="indicator-name">${ind.name}</div>
+                        <div class="indicator-value signal-${ind.signal}">${ind.value}</div>
+                    </div>
+                `).join('');
+            }
+
+            getRSISignal() {
+                const rsi = this.indicators.rsi;
+                if (rsi > 70) return 'sell';
+                if (rsi < 30) return 'buy';
+                return 'neutral';
+            }
+
+            getMACDSignal() {
+                const macd = this.indicators.macd;
+                if (!macd) return 'neutral';
+                if (macd.macd > macd.signal && macd.histogram > 0) return 'buy';
+                if (macd.macd < macd.signal && macd.histogram < 0) return 'sell';
+                return 'neutral';
+            }
+
+            detectCandlestickPatterns() {
+                const patterns = this.analyzeCandlestickPatterns();
+                const container = document.getElementById('candlestickPatterns');
+                
+                container.innerHTML = patterns.map(pattern => `
+                    <div class="pattern-item">
+                        <div class="pattern-name">${pattern.name}</div>
+                        <div class="pattern-confidence">Confiança: ${pattern.confidence}%</div>
+                        <small class="text-muted">${pattern.description}</small>
+                    </div>
+                `).join('');
+            }
+
+            analyzeCandlestickPatterns() {
+                if (this.candlestickData.length < 5) return [];
+                
+                const patterns = [];
+                const recent = this.candlestickData.slice(-5);
+                
+                // Doji pattern
+                const lastCandle = recent[recent.length - 1];
+                const bodySize = Math.abs(lastCandle.close - lastCandle.open);
+                const candleRange = lastCandle.high - lastCandle.low;
+                
+                if (bodySize / candleRange < 0.1) {
+                    patterns.push({
+                        name: 'Doji',
+                        confidence: 75,
+                        description: 'Indecisão do mercado, possível reversão'
+                    });
+                }
+                
+                // Hammer pattern
+                const lowerShadow = Math.min(lastCandle.open, lastCandle.close) - lastCandle.low;
+                const upperShadow = lastCandle.high - Math.max(lastCandle.open, lastCandle.close);
+                
+                if (lowerShadow > bodySize * 2 && upperShadow < bodySize * 0.1) {
+                    patterns.push({
+                        name: 'Hammer',
+                        confidence: 80,
+                        description: 'Padrão de reversão de alta'
+                    });
+                }
+                
+                // Engulfing pattern
+                if (recent.length >= 2) {
+                    const prev = recent[recent.length - 2];
+                    const curr = recent[recent.length - 1];
+                    
+                    if (prev.close < prev.open && curr.close > curr.open &&
+                        curr.open < prev.close && curr.close > prev.open) {
+                        patterns.push({
+                            name: 'Bullish Engulfing',
+                            confidence: 85,
+                            description: 'Padrão de reversão de alta'
+                        });
+                    }
+                }
+                
+                return patterns;
+            }
+
+            analyzeSupportResistance() {
+                const container = document.getElementById('supportResistance');
+                const levels = this.findSupportResistanceLevels();
+                
+                container.innerHTML = levels.map(level => `
+                    <div class="indicator-item">
+                        <div class="indicator-name">${level.type}</div>
+                        <div class="indicator-value">$${level.price.toFixed(2)}</div>
+                    </div>
+                `).join('');
+            }
+
+            findSupportResistanceLevels() {
+                if (this.candlestickData.length < 50) return [];
+                
+                const recentData = this.candlestickData.slice(-50);
+                const highs = recentData.map(d => d.high).sort((a, b) => b - a);
+                const lows = recentData.map(d => d.low).sort((a, b) => a - b);
+                
+                return [
+                    { type: 'Resistência 1', price: highs[0] },
+                    { type: 'Resistência 2', price: highs[Math.floor(highs.length * 0.1)] },
+                    { type: 'Suporte 1', price: lows[0] },
+                    { type: 'Suporte 2', price: lows[Math.floor(lows.length * 0.1)] }
+                ];
+            }
+
+            updateTradingSignals() {
+                const container = document.getElementById('tradingSignals');
+                const signals = this.generateTradingSignals();
+                
+                container.innerHTML = signals.map(signal => `
+                    <div class="indicator-item">
+                        <div class="indicator-name">${signal.indicator}</div>
+                        <div class="indicator-value signal-${signal.signal}">${signal.action}</div>
+                    </div>
+                `).join('');
+            }
+
+            generateTradingSignals() {
+                return [
+                    { indicator: 'RSI', signal: this.getRSISignal(), action: this.getRSISignal().toUpperCase() },
+                    { indicator: 'MACD', signal: this.getMACDSignal(), action: this.getMACDSignal().toUpperCase() },
+                    { indicator: 'Bollinger', signal: 'neutral', action: 'HOLD' },
+                    { indicator: 'Volume', signal: 'buy', action: 'BUY' }
+                ];
+            }
+
+            startRealTimeUpdates() {
+                setInterval(() => {
+                    // Simulate real-time updates
+                    this.updateIndicatorValues();
+                    this.updateTradingSignals();
+                }, 5000);
+            }
+
+            showErrorMessage(message) {
+                // Create error alert if doesn't exist
+                let errorAlert = document.getElementById('error-alert');
+                if (!errorAlert) {
+                    errorAlert = document.createElement('div');
+                    errorAlert.id = 'error-alert';
+                    errorAlert.className = 'alert alert-danger alert-dismissible fade show position-fixed';
+                    errorAlert.style.cssText = 'top: 80px; right: 20px; z-index: 9999; max-width: 400px;';
+                    errorAlert.innerHTML = `
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <span id="error-message"></span>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.body.appendChild(errorAlert);
+                }
+                
+                document.getElementById('error-message').textContent = message;
+                
+                // Auto dismiss after 5 seconds
+                setTimeout(() => {
+                    if (errorAlert) {
+                        errorAlert.remove();
+                    }
+                }, 5000);
+            }
+
+            showSuccessMessage(message) {
+                // Create success alert if doesn't exist
+                let successAlert = document.getElementById('success-alert');
+                if (!successAlert) {
+                    successAlert = document.createElement('div');
+                    successAlert.id = 'success-alert';
+                    successAlert.className = 'alert alert-success alert-dismissible fade show position-fixed';
+                    successAlert.style.cssText = 'top: 80px; right: 20px; z-index: 9999; max-width: 400px;';
+                    successAlert.innerHTML = `
+                        <i class="fas fa-check-circle me-2"></i>
+                        <span id="success-message"></span>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    `;
+                    document.body.appendChild(successAlert);
+                }
+                
+                document.getElementById('success-message').textContent = message;
+                
+                // Auto dismiss after 3 seconds
+                setTimeout(() => {
+                    if (successAlert) {
+                        successAlert.remove();
+                    }
+                }, 3000);
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new TechnicalAnalysis();
+        });
+    </script>
+</body>
+</html>

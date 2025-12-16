@@ -1,0 +1,18 @@
+📊 RELATÓRIO COMPARATIVO
+=======================
+
+Estratégia: volume_profile
+  Retorno: -999.0% | Sharpe: -999.0 | Win Rate: 0.0% | Robustness: 0
+
+Estratégia: momentum
+  Retorno: -999.0% | Sharpe: -999.0 | Win Rate: 0.0% | Robustness: 0
+
+Estratégia: macd_rsi_combo
+  Retorno: -999.0% | Sharpe: -999.0 | Win Rate: 0.0% | Robustness: 0
+
+Estratégia: multi_timeframe
+  Retorno: -999.0% | Sharpe: -999.0 | Win Rate: 0.0% | Robustness: 0
+
+Estratégia: volatility_breakout
+  Retorno: -999.0% | Sharpe: -999.0 | Win Rate: 0.0% | Robustness: 0
+

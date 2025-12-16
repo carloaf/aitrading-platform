@@ -1,0 +1,422 @@
+networks:
+  aitrading-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  timescaledb_data:
+
+services:
+  
+  postgres:
+    image: postgres:15
+    container_name: aitrading-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - aitrading-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: aitrading-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - aitrading-net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  timescaledb:
+    image: timescale/timescaledb:latest-pg15
+    container_name: aitrading-timescaledb
+    environment:
+      POSTGRES_DB: ${TIMESCALE_DB}
+      POSTGRES_USER: ${TIMESCALE_USER}
+      POSTGRES_PASSWORD: ${TIMESCALE_PASSWORD}
+    volumes:
+      - timescaledb_data:/var/lib/postgresql/data
+      - ./scripts/init-timescale.sql:/docker-entrypoint-initdb.d/init-timescale.sql
+    ports:
+      - "5433:5432"
+    networks:
+      - aitrading-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${TIMESCALE_USER} -d ${TIMESCALE_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ==========================================
+  # SERVIÇOS DE APLICAÇÃO
+  # ==========================================
+
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: aitrading-api-gateway
+    environment:
+      NODE_ENV: development
+      API_GATEWAY_PORT: 8080
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      JWT_SECRET: ${JWT_SECRET}
+      TIMESCALE_URL: postgresql://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3000:8080"
+    networks:
+      - aitrading-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+
+  market-data-collector:
+    build:
+      context: ./services/market-data-collector
+      dockerfile: Dockerfile
+    container_name: aitrading-market-data-collector
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TIMESCALE_HOST: timescaledb
+      TIMESCALE_PORT: 5432
+      TIMESCALE_DB: ${TIMESCALE_DB}
+      TIMESCALE_USER: ${TIMESCALE_USER}
+      TIMESCALE_PASSWORD: ${TIMESCALE_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ALPHA_VANTAGE_API_KEY: ${ALPHA_VANTAGE_API_KEY}
+      POLYGON_API_KEY: ${POLYGON_API_KEY}
+      BRAPI_TOKEN: ${BRAPI_TOKEN}
+      TIMESCALE_URL: postgresql://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3002:3001"
+    networks:
+      - aitrading-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "node", "healthcheck.js"]
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 120s
+
+  indicator-calculator:
+    build:
+      context: ./services/indicator-calculator
+      dockerfile: Dockerfile
+    container_name: aitrading-indicator-calculator
+    environment:
+      HTTP_PORT: 8000
+      GRPC_PORT: 50051
+      TIMESCALE_URL: postgresql://${TIMESCALE_USER}:${TIMESCALE_PASSWORD}@timescaledb:5432/${TIMESCALE_DB}
+      REDIS_URL: redis://redis:6379
+      CACHE_TTL: 300
+      MAX_WORKERS: 4
+    ports:
+      - "3003:8000"
+      - "50051:50051"
+    networks:
+      - aitrading-net
+    depends_on:
+      timescaledb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  news-collector:
+    build:
+      context: ./services/news-collector
+      dockerfile: Dockerfile
+    container_name: aitrading-news-collector
+    environment:
+      HTTP_PORT: 8000
+      POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      NEWS_API_KEY: ${NEWS_API_KEY}
+      GNEWS_API_KEY: ${GNEWS_API_KEY}
+      COLLECTION_INTERVAL: 300
+      MAX_ARTICLES_PER_SOURCE: 50
+      CACHE_TTL: 3600
+    ports:
+      - "3004:8000"
+    networks:
+      - aitrading-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  sentiment-analyzer:
+    build:
+      context: ./services/sentiment-analyzer
+      dockerfile: Dockerfile
+    container_name: aitrading-sentiment-analyzer
+    environment:
+      HTTP_PORT: 8000
+      POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      SENTIMENT_MODEL: cardiffnlp/twitter-roberta-base-sentiment-latest
+      BATCH_SIZE: 10
+      UPDATE_INTERVAL: 300
+      CACHE_TTL: 3600
+    ports:
+      - "3005:8000"
+    networks:
+      - aitrading-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "src/healthcheck.py"]
+      interval: 60s
+      timeout: 15s
+      retries: 5
+      start_period: 180s
+
+  signal-generator:
+    build:
+      context: ./services/signal-generator
+      dockerfile: Dockerfile
+    container_name: aitrading-signal-generator
+    environment:
+      HTTP_PORT: 8000
+      POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+      SENTIMENT_SERVICE_URL: http://sentiment-analyzer:8000
+      INDICATOR_SERVICE_URL: http://indicator-calculator:8000
+      NEWS_SERVICE_URL: http://news-collector:8000
+      SENTIMENT_WEIGHT: 0.4
+      TECHNICAL_WEIGHT: 0.6
+      BUY_THRESHOLD: 0.6
+      SELL_THRESHOLD: -0.6
+    ports:
+      - "3006:8000"
+    networks:
+      - aitrading-net
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      sentiment-analyzer:
+        condition: service_healthy
+      indicator-calculator:
+        condition: service_healthy
+      news-collector:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "healthcheck.py"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 120s
+
+  # ==========================================
+  # BACKTESTING ENGINE
+  # ==========================================
+
+  backtesting-engine:
+    build:
+      context: ./services/backtesting-engine
+      dockerfile: Dockerfile
+    container_name: aitrading-backtesting-engine
+    environment:
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3007:8000"
+    networks:
+      - aitrading-net
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ==========================================
+  # EXECUTION ENGINE (PAPER TRADING)
+  # ==========================================
+
+  execution-engine:
+    build:
+      context: ./services/execution-engine
+      dockerfile: Dockerfile
+    container_name: aitrading-execution-engine
+    environment:
+      PORT: 8001
+      REDIS_URL: redis://redis:6379
+      POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      BINANCE_API_KEY: ${BINANCE_API_KEY}
+      BINANCE_API_SECRET: ${BINANCE_API_SECRET}
+    ports:
+      - "3008:8001"
+    networks:
+      - aitrading-net
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      backtesting-engine:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 60s
+      timeout: 30s
+      retries: 5
+      start_period: 60s
+
+  # ==========================================
+  # NOTIFICATION SERVICE
+  # ==========================================
+
+  notification-service:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    container_name: aitrading-notification-service
+    environment:
+      PORT: 3009
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:-}
+    ports:
+      - "3009:3009"
+    networks:
+      - aitrading-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3009/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ==========================================
+  # FRONTEND
+  # ==========================================
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aitrading-frontend
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      API_GATEWAY_URL: http://api-gateway:8080
+      EXECUTION_ENGINE_URL: http://execution-engine:8001
+      BACKTESTING_ENGINE_URL: http://backtesting-engine:8000
+    ports:
+      - "8081:3000"
+    networks:
+      - aitrading-net
+    depends_on:
+      - api-gateway
+      - signal-generator
+      - news-collector
+      - execution-engine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ==========================================
+  # MONITORAMENTO
+  # ==========================================
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aitrading-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+    volumes:
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+    ports:
+      - "3001:3000"
+    networks:
+      - aitrading-net
+    depends_on:
+      - postgres
+      - timescaledb
+      

@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - AI Trading Platform</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <style>
+        .navbar-brand {
+            font-weight: bold;
+            color: #007bff !important;
+        }
+        .main-content {
+            padding: 2rem;
+            background-color: #f8f9fa;
+            min-height: calc(100vh - 56px);
+        }
+        .metric-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: #007bff;
+        }
+        .metric-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .signal-card {
+            transition: transform 0.2s ease-in-out;
+        }
+        .signal-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-graph-up-arrow"></i> AI Trading Platform
+            </a>
+            
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/signals">
+                            <i class="bi bi-activity"></i> Sinais
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/news">
+                            <i class="bi bi-newspaper"></i> Notícias
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid main-content">
+        
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+    <h1 class="h2">
+        <i class="bi bi-activity text-primary"></i>
+        Trading Signals
+    </h1>
+    <div class="btn-toolbar mb-2 mb-md-0">
+        <div class="btn-group me-2">
+            <select class="form-select form-select-sm" onchange="changeSymbol(this.value)">
+                <option value="BTCUSDT" <%= symbol === 'BTCUSDT' ? 'selected' : '' %>>Bitcoin (BTC)</option>
+                <option value="ETHUSDT" <%= symbol === 'ETHUSDT' ? 'selected' : '' %>>Ethereum (ETH)</option>
+                <option value="ADAUSDT" <%= symbol === 'ADAUSDT' ? 'selected' : '' %>>Cardano (ADA)</option>
+                <option value="SOLUSDT" <%= symbol === 'SOLUSDT' ? 'selected' : '' %>>Solana (SOL)</option>
+            </select>
+            <button type="button" class="btn btn-sm btn-primary" onclick="generateSignal()">
+                <i class="bi bi-lightning"></i> Gerar Sinal
+            </button>
+        </div>
+    </div>
+</div>
+
+<% if (locals.error) { %>
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <i class="bi bi-exclamation-triangle"></i> <%= error %>
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+<% } %>
+
+<!-- Latest Signal Card -->
+<% if (latestSignal) { %>
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card signal-card border-<%= getSignalTypeColor(latestSignal.signal_type) %>">
+            <div class="card-header bg-<%= getSignalTypeColor(latestSignal.signal_type) %> text-white">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-lightning-charge"></i>
+                    Último Sinal Gerado - <%= latestSignal.symbol %>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <h2 class="text-<%= getSignalTypeColor(latestSignal.signal_type) %>">
+                                <%= latestSignal.signal_type.toUpperCase() %>
+                            </h2>
+                            <p class="text-muted mb-0">Tipo de Sinal</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <h2 class="text-<%= getConfidenceColor(latestSignal.confidence) %>">
+                                <%= latestSignal.confidence.toFixed(1) %>%
+                            </h2>
+                            <p class="text-muted mb-0">Confiança</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <h6 class="text-muted">Gerado em:</h6>
+                            <p class="mb-0"><%= formatDate(latestSignal.created_at) %></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row">
+                    <div class="col-md-12">
+                        <h6 class="text-muted">Análise:</h6>
+                        <p class="mb-0"><%= latestSignal.description %></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<% } %>
+
+<!-- Statistics -->
+<% if (stats) { %>
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="metric-label">Total de Sinais</div>
+                    <div class="metric-value"><%= stats.total_signals %></div>
+                </div>
+                <div class="text-primary" style="font-size: 2.5rem;">
+                    <i class="bi bi-graph-up"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="metric-label">Sinais de Compra</div>
+                    <div class="metric-value text-success"><%= stats.buy_signals %></div>
+                </div>
+                <div class="text-success" style="font-size: 2.5rem;">
+                    <i class="bi bi-arrow-up-circle"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="metric-label">Sinais de Venda</div>
+                    <div class="metric-value text-danger"><%= stats.sell_signals %></div>
+                </div>
+                <div class="text-danger" style="font-size: 2.5rem;">
+                    <i class="bi bi-arrow-down-circle"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="metric-label">Confiança Média</div>
+                    <div class="metric-value text-<%= getConfidenceColor(stats.avg_confidence) %>">
+                        <%= stats.avg_confidence.toFixed(1) %>%
+                    </div>
+                </div>
+                <div class="text-warning" style="font-size: 2.5rem;">
+                    <i class="bi bi-speedometer2"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<% } %>
+
+<!-- Signal Generation Form -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-gear"></i> Gerar Novo Sinal
+                </h5>
+            </div>
+            <div class="card-body">
+                <form onsubmit="generateCustomSignal(event)">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="symbol" class="form-label">Símbolo</label>
+                            <select class="form-select" id="symbol" name="symbol" required>
+                                <option value="BTCUSDT">Bitcoin (BTCUSDT)</option>
+                                <option value="ETHUSDT">Ethereum (ETHUSDT)</option>
+                                <option value="ADAUSDT">Cardano (ADAUSDT)</option>
+                                <option value="SOLUSDT">Solana (SOLUSDT)</option>
+                                <option value="DOTUSDT">Polkadot (DOTUSDT)</option>
+                                <option value="LINKUSDT">Chainlink (LINKUSDT)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="timeframe" class="form-label">Timeframe</label>
+                            <select class="form-select" id="timeframe" name="timeframe" required>
+                                <option value="1h">1 Hora</option>
+                                <option value="4h">4 Horas</option>
+                                <option value="1d">1 Dia</option>
+                                <option value="1w">1 Semana</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-lightning"></i> Gerar Sinal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+    </div>
+
+    <!-- Loading Modal -->
+    <div class="modal fade" id="loadingModal" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-sm modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-body text-center">
+                    <div class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                    <p class="mb-0">Processando...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        function showLoading() {
+            new bootstrap.Modal(document.getElementById('loadingModal')).show();
+        }
+        
+        function hideLoading() {
+            bootstrap.Modal.getInstance(document.getElementById('loadingModal'))?.hide();
+        }
+        
+        function showToast(message, type = 'info') {
+            const toastContainer = document.querySelector('.toast-container') || createToastContainer();
+            const toast = document.createElement('div');
+            toast.className = `toast align-items-center text-white bg-${type} border-0`;
+            toast.setAttribute('role', 'alert');
+            toast.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>
+            `;
+            toastContainer.appendChild(toast);
+            new bootstrap.Toast(toast).show();
+            
+            toast.addEventListener('hidden.bs.toast', () => {
+                toast.remove();
+            });
+        }
+        
+        function createToastContainer() {
+            const container = document.createElement('div');
+            container.className = 'toast-container position-fixed bottom-0 end-0 p-3';
+            document.body.appendChild(container);
+            return container;
+        }
+
+        function changeSymbol(newSymbol) {
+            window.location.href = '/signals?symbol=' + newSymbol;
+        }
+        
+        async function generateSignal() {
+            showLoading();
+            try {
+                const response = await fetch('/api/generate-signal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        symbol: 'BTCUSDT',
+                        timeframe: '1h'
+                    })
+                });
+                
+                const data = await response.json();
+                hideLoading();
+                
+                if (response.ok) {
+                    showToast(`Sinal gerado: ${data.signal_type.toUpperCase()} (${data.confidence.toFixed(1)}%)`, 'success');
+                    setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    showToast('Erro ao gerar sinal', 'danger');
+                }
+            } catch (error) {
+                hideLoading();
+                showToast('Erro ao gerar sinal', 'danger');
+            }
+        }
+        
+        async function generateCustomSignal(event) {
+            event.preventDefault();
+            
+            const formData = new FormData(event.target);
+            const data = {
+                symbol: formData.get('symbol'),
+                timeframe: formData.get('timeframe')
+            };
+            
+            showLoading();
+            
+            try {
+                const response = await fetch('/api/generate-signal', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                hideLoading();
+                
+                if (response.ok) {
+                    showToast('Sinal gerado com sucesso!', 'success');
+                    setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    showToast('Erro ao gerar sinal: ' + (result.error || 'Erro desconhecido'), 'danger');
+                }
+            } catch (error) {
+                hideLoading();
+                showToast('Erro ao gerar sinal: ' + error.message, 'danger');
+            }
+        }
+    </script>
+</body>
+</html>
+
+<!-- Latest Signal Card -->
+<% if (latestSignal) { %>
+<div class="row mb-4">
+    <div class="col-md-12">
+        <div class="card signal-card border-<%= getSignalTypeColor(latestSignal.signal_type) %>">
+            <div class="card-header bg-<%= getSignalTypeColor(latestSignal.signal_type) %> text-white">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-lightning-charge"></i>
+                    Último Sinal Gerado - <%= latestSignal.symbol %>
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <h2 class="text-<%= getSignalTypeColor(latestSignal.signal_type) %>">
+                                <%= latestSignal.signal_type.toUpperCase() %>
+                            </h2>
+                            <p class="text-muted mb-0">Tipo de Sinal</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <h2 class="text-<%= getConfidenceColor(latestSignal.confidence) %>">
+                                <%= latestSignal.confidence.toFixed(1) %>%
+                            </h2>
+                            <p class="text-muted mb-0">Confiança</p>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center">
+                            <h6 class="text-muted">Gerado em:</h6>
+                            <p class="mb-0"><%= formatDate(latestSignal.created_at) %></p>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row">
+                    <div class="col-md-12">
+                        <h6 class="text-muted">Análise:</h6>
+                        <p class="mb-0"><%= latestSignal.description %></p>
+                    </div>
+                </div>
+                
+                <% if (latestSignal.price_at_signal) { %>
+                <hr>
+                <div class="row">
+                    <div class="col-md-4">
+                        <strong>Preço Atual:</strong> $<%= latestSignal.price_at_signal.toFixed(2) %>
+                    </div>
+                    <% if (latestSignal.target_price) { %>
+                    <div class="col-md-4">
+                        <strong>Preço Alvo:</strong> $<%= latestSignal.target_price.toFixed(2) %>
+                    </div>
+                    <% } %>
+                    <% if (latestSignal.stop_loss) { %>
+                    <div class="col-md-4">
+                        <strong>Stop Loss:</strong> $<%= latestSignal.stop_loss.toFixed(2) %>
+                    </div>
+                    <% } %>
+                </div>
+                <% } %>
+            </div>
+        </div>
+    </div>
+</div>
+<% } %>
+
+<!-- Statistics -->
+<% if (stats) { %>
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="metric-label">Total de Sinais</div>
+                    <div class="metric-value"><%= stats.total_signals %></div>
+                </div>
+                <div class="text-primary" style="font-size: 2.5rem;">
+                    <i class="bi bi-graph-up"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="metric-label">Sinais de Compra</div>
+                    <div class="metric-value text-success"><%= stats.buy_signals %></div>
+                </div>
+                <div class="text-success" style="font-size: 2.5rem;">
+                    <i class="bi bi-arrow-up-circle"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="metric-label">Sinais de Venda</div>
+                    <div class="metric-value text-danger"><%= stats.sell_signals %></div>
+                </div>
+                <div class="text-danger" style="font-size: 2.5rem;">
+                    <i class="bi bi-arrow-down-circle"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-3">
+        <div class="metric-card">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="metric-label">Confiança Média</div>
+                    <div class="metric-value text-<%= getConfidenceColor(stats.avg_confidence) %>">
+                        <%= stats.avg_confidence.toFixed(1) %>%
+                    </div>
+                </div>
+                <div class="text-warning" style="font-size: 2.5rem;">
+                    <i class="bi bi-speedometer2"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<% } %>
+
+<!-- Signal Generation Form -->
+<div class="row">
+    <div class="col-md-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0">
+                    <i class="bi bi-gear"></i> Gerar Novo Sinal
+                </h5>
+            </div>
+            <div class="card-body">
+                <form onsubmit="generateCustomSignal(event)">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <label for="symbol" class="form-label">Símbolo</label>
+                            <select class="form-select" id="symbol" name="symbol" required>
+                                <option value="BTCUSDT">Bitcoin (BTCUSDT)</option>
+                                <option value="ETHUSDT">Ethereum (ETHUSDT)</option>
+                                <option value="ADAUSDT">Cardano (ADAUSDT)</option>
+                                <option value="SOLUSDT">Solana (SOLUSDT)</option>
+                                <option value="DOTUSDT">Polkadot (DOTUSDT)</option>
+                                <option value="LINKUSDT">Chainlink (LINKUSDT)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="timeframe" class="form-label">Timeframe</label>
+                            <select class="form-select" id="timeframe" name="timeframe" required>
+                                <option value="1h">1 Hora</option>
+                                <option value="4h">4 Horas</option>
+                                <option value="1d">1 Dia</option>
+                                <option value="1w">1 Semana</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">&nbsp;</label>
+                            <div class="d-grid">
+                                <button type="submit" class="btn btn-primary">
+                                    <i class="bi bi-lightning"></i> Gerar Sinal
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function changeSymbol(newSymbol) {
+        window.location.href = '/signals?symbol=' + newSymbol;
+    }
+    
+    async function generateCustomSignal(event) {
+        event.preventDefault();
+        
+        const formData = new FormData(event.target);
+        const data = {
+            symbol: formData.get('symbol'),
+            timeframe: formData.get('timeframe')
+        };
+        
+        showLoading();
+        
+        try {
+            const response = await fetch('/api/generate-signal', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            hideLoading();
+            
+            if (response.ok) {
+                showToast('Sinal gerado com sucesso!', 'success');
+                setTimeout(() => window.location.reload(), 2000);
+            } else {
+                showToast('Erro ao gerar sinal: ' + (result.error || 'Erro desconhecido'), 'danger');
+            }
+        } catch (error) {
+            hideLoading();
+            showToast('Erro ao gerar sinal: ' + error.message, 'danger');
+        }
+    }
+</script>
+`;
+%>
+
+<%- include('layout', { body: body }) %>

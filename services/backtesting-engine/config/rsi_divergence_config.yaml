@@ -1,0 +1,157 @@
+# =============================================================================
+# CONFIGURAÇÃO DA ESTRATÉGIA RSI DIVERGENCE
+# =============================================================================
+# Versão: 1.0.0
+# Autor: CryptoDev Assistant
+# Descrição: Configuração completa para a estratégia de Divergência RSI
+# =============================================================================
+
+version: "1.0.0"
+strategy_name: "RSI Divergence Strategy"
+description: |
+  Estratégia de detecção de divergências entre preço e RSI.
+  Detecta 4 padrões: Divergência de Alta, Divergência de Baixa,
+  Divergência Oculta de Alta e Divergência Oculta de Baixa.
+
+# =============================================================================
+# PARÂMETROS DO RSI
+# =============================================================================
+rsi:
+  period: 14                    # Período do RSI (padrão: 14)
+  overbought: 70                # Zona de sobrecompra
+  oversold: 30                  # Zona de sobrevenda
+  
+# =============================================================================
+# PARÂMETROS DE DETECÇÃO DE DIVERGÊNCIA
+# =============================================================================
+divergence_detection:
+  lookback_periods: 20          # Janela para detectar picos/vales
+  min_peak_distance: 5          # Distância mínima entre picos/vales
+  divergence_threshold: 0.02    # Diferença mínima (2%) para considerar divergência
+  min_signal_strength: 0.5      # Força mínima do sinal (0-1)
+
+# =============================================================================
+# FILTROS DE TENDÊNCIA
+# =============================================================================
+trend_filters:
+  ma_trend_period: 50           # Período da MA de tendência
+  min_adx_trend: 20             # ADX mínimo para considerar tendência
+  
+# =============================================================================
+# CONFIRMAÇÃO DE VOLUME
+# =============================================================================
+volume_confirmation:
+  enabled: true                 # Usar confirmação de volume
+  multiplier: 1.2               # Volume deve ser 1.2x maior que a média
+  
+# =============================================================================
+# GESTÃO DE RISCO
+# =============================================================================
+risk_management:
+  atr_period: 14                # Período do ATR
+  stop_loss_atr_mult: 2.0       # Stop Loss = 2x ATR
+  take_profit_atr_mult: 4.0     # Take Profit = 4x ATR (R/R = 1:2)
+  
+  # Posicionamento
+  base_risk_per_trade: 0.02     # Risco base: 2% do capital por trade
+  max_position_size: 0.15       # Máximo: 15% do capital
+  min_position_size: 0.005      # Mínimo: 0.5% do capital
+
+# =============================================================================
+# SISTEMA DE CONFIRMAÇÃO (PESOS)
+# =============================================================================
+confirmation_weights:
+  price_magnitude: 0.25         # Peso da magnitude de preço
+  rsi_magnitude: 0.25           # Peso da magnitude do RSI
+  volume: 0.20                  # Peso da confirmação de volume
+  rsi_zone: 0.15                # Peso da zona do RSI
+  macd: 0.15                    # Peso da confirmação MACD
+
+# =============================================================================
+# QUALIDADE DO SINAL
+# =============================================================================
+quality_thresholds:
+  excellent: 80                 # Score >= 80: Qualidade excelente
+  good: 70                      # Score >= 70: Qualidade boa
+  fair: 60                      # Score >= 60: Qualidade aceitável
+  min_quality: 50               # Score mínimo para sinal válido
+
+# =============================================================================
+# CONFIGURAÇÕES POR REGIME DE MERCADO
+# =============================================================================
+regime_settings:
+  BULL_TREND:
+    allowed_patterns:
+      - bullish_divergence
+      - hidden_bullish
+    risk_multiplier: 1.0
+    max_allocation: 0.20
+    
+  BEAR_TREND:
+    allowed_patterns:
+      - bearish_divergence
+      - hidden_bearish
+    risk_multiplier: 0.8
+    max_allocation: 0.15
+    
+  SIDEWAYS:
+    allowed_patterns:
+      - bullish_divergence
+      - bearish_divergence
+    risk_multiplier: 0.6
+    max_allocation: 0.10
+    
+  VOLATILE_CRISIS:
+    allowed_patterns: []        # Nenhum padrão em crise
+    risk_multiplier: 0.3
+    max_allocation: 0.05
+
+# =============================================================================
+# CONFIGURAÇÕES DE BACKTESTING
+# =============================================================================
+backtesting:
+  slippage: 0.001               # 0.1% de slippage
+  fee: 0.001                    # 0.1% de taxa por trade
+  initial_capital: 100000       # Capital inicial
+  timeframes:
+    - "1h"
+    - "4h"
+    - "1d"
+  min_data_points: 500          # Mínimo de candles para backtest
+
+# =============================================================================
+# PADRÕES DE DIVERGÊNCIA - DESCRIÇÃO
+# =============================================================================
+patterns_description:
+  bullish_divergence:
+    name: "Divergência de Alta"
+    description: "Preço faz mínimas mais baixas, RSI faz mínimas mais altas"
+    signal: "BUY"
+    reliability: "Alta"
+    
+  bearish_divergence:
+    name: "Divergência de Baixa"
+    description: "Preço faz máximas mais altas, RSI faz máximas mais baixas"
+    signal: "SELL"
+    reliability: "Alta"
+    
+  hidden_bullish:
+    name: "Divergência Oculta de Alta"
+    description: "Preço faz mínimas mais altas, RSI faz mínimas mais baixas (continuação)"
+    signal: "BUY"
+    reliability: "Média"
+    
+  hidden_bearish:
+    name: "Divergência Oculta de Baixa"
+    description: "Preço faz máximas mais baixas, RSI faz máximas mais altas (continuação)"
+    signal: "SELL"
+    reliability: "Média"
+
+# =============================================================================
+# DISCLAIMER
+# =============================================================================
+disclaimer: |
+  Esta estratégia é para fins educacionais e de pesquisa.
+  Past performance não garante resultados futuros.
+  Teste extensivamente com paper trading antes de usar capital real.
+  Trading envolve riscos significativos de perda.

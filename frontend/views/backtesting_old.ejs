@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backtesting - AI Trading Platform</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <style>
+        .navbar-brand {
+            font-weight: bold;
+            color: #007bff !important;
+        }
+        .main-content {
+            padding: 2rem;
+            background-color: #f8f9fa;
+            min-height: calc(100vh - 56px);
+        }
+        .result-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .metric-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .positive { color: #28a745; }
+        .negative { color: #dc3545; }
+        .neutral { color: #6c757d; }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-graph-up-arrow"></i> AI Trading Platform
+            </a>
+            
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/signals">
+                            <i class="bi bi-activity"></i> Sinais
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/news">
+                            <i class="bi bi-newspaper"></i> Notícias
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/backtesting">
+                            <i class="bi bi-bar-chart"></i> Backtesting
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid main-content">
+        <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
+            <h1 class="h2">
+                <i class="bi bi-bar-chart text-primary"></i>
+                Motor de Backtesting
+            </h1>
+        </div>
+
+        <div class="row">
+            <!-- Formulário de Backtesting -->
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-gear"></i> Configurar Backtest
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="backtestForm">
+                            <div class="mb-3">
+                                <label for="symbol" class="form-label">Símbolo</label>
+                                <select class="form-select" id="symbol" required>
+                                    <option value="">Selecione um símbolo</option>
+                                    <optgroup label="Ações Americanas">
+                                        <option value="AAPL">Apple (AAPL)</option>
+                                        <option value="GOOGL">Google (GOOGL)</option>
+                                        <option value="MSFT">Microsoft (MSFT)</option>
+                                        <option value="TSLA">Tesla (TSLA)</option>
+                                        <option value="AMZN">Amazon (AMZN)</option>
+                                        <option value="NVDA">NVIDIA (NVDA)</option>
+                                        <option value="META">Meta (META)</option>
+                                    </optgroup>
+                                    <optgroup label="Índices">
+                                        <option value="^GSPC">S&P 500 (^GSPC)</option>
+                                        <option value="^DJI">Dow Jones (^DJI)</option>
+                                    </optgroup>
+                                    <optgroup label="Criptomoedas (Teste primeiro!)">
+                                        <option value="BTC-USD">Bitcoin (BTC-USD)</option>
+                                        <option value="ETH-USD">Ethereum (ETH-USD)</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="startDate" class="form-label">Data Início</label>
+                                        <input type="date" class="form-control" id="startDate" required>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label for="endDate" class="form-label">Data Fim</label>
+                                        <input type="date" class="form-control" id="endDate" required>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="strategy" class="form-label">Estratégia</label>
+                                <select class="form-select" id="strategy" required>
+                                    <option value="">Selecione uma estratégia</option>
+                                    <option value="sma_crossover">SMA Crossover</option>
+                                    <option value="rsi_strategy">RSI Oversold/Overbought</option>
+                                    <option value="macd_strategy">MACD Signal</option>
+                                </select>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="capital" class="form-label">Capital Inicial ($)</label>
+                                <input type="number" class="form-control" id="capital" value="10000" min="1000" required>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="commission" class="form-label">Comissão (%)</label>
+                                <input type="number" class="form-control" id="commission" value="0.1" min="0" max="5" step="0.1" required>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="bi bi-play-circle"></i> Executar Backtest
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Resultados -->
+            <div class="col-md-6">
+                <div id="resultsContainer" style="display: none;">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">
+                                <i class="bi bi-graph-up"></i> Resultados do Backtest
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div id="resultsContent">
+                                <!-- Resultados serão inseridos aqui -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="loadingContainer" style="display: none;">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <div class="spinner-border text-primary mb-3" role="status">
+                                <span class="visually-hidden">Carregando...</span>
+                            </div>
+                            <p>Executando backtest...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Histórico de Backtests -->
+        <div class="row mt-4">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title mb-0">
+                            <i class="bi bi-clock-history"></i> Histórico de Backtests
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <div id="historyContainer">
+                            <p class="text-muted text-center">Nenhum backtest executado ainda.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Configurar datas padrão
+        document.addEventListener('DOMContentLoaded', function() {
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setFullYear(endDate.getFullYear() - 1);
+            
+            document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+        });
+        
+        // Estratégias predefinidas
+        const strategies = {
+            sma_crossover: {
+                name: "SMA Crossover",
+                description: "Estratégia baseada em cruzamento de médias móveis",
+                parameters: {"sma_fast": 10, "sma_slow": 20},
+                entry_conditions: ["SMA_10 > SMA_20"],
+                exit_conditions: ["SMA_10 < SMA_20"]
+            },
+            rsi_strategy: {
+                name: "RSI Oversold/Overbought",
+                description: "Estratégia baseada no RSI",
+                parameters: {"rsi_oversold": 30, "rsi_overbought": 70},
+                entry_conditions: ["RSI < 30"],
+                exit_conditions: ["RSI > 70"]
+            },
+            macd_strategy: {
+                name: "MACD Signal",
+                description: "Estratégia baseada no MACD",
+                parameters: {},
+                entry_conditions: ["MACD > 0"],
+                exit_conditions: ["MACD < 0"]
+            }
+        };
+        
+        // Histórico de backtests
+        let backtestHistory = JSON.parse(localStorage.getItem('backtestHistory') || '[]');
+        
+        // Função para executar backtest
+        document.getElementById('backtestForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const symbol = document.getElementById('symbol').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const strategyKey = document.getElementById('strategy').value;
+            const capital = parseFloat(document.getElementById('capital').value);
+            const commission = parseFloat(document.getElementById('commission').value) / 100;
+            
+            if (!strategies[strategyKey]) {
+                alert('Estratégia inválida');
+                return;
+            }
+            
+            const strategy = strategies[strategyKey];
+            
+            const request = {
+                symbol: symbol,
+                strategy: strategy,
+                start_date: startDate,
+                end_date: endDate,
+                initial_capital: capital,
+                commission: commission
+            };
+            
+            // Mostrar loading
+            document.getElementById('loadingContainer').style.display = 'block';
+            document.getElementById('resultsContainer').style.display = 'none';
+            
+            try {
+                const response = await fetch('http://localhost:3007/backtest', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(request)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erro ao executar backtest');
+                }
+                
+                const result = await response.json();
+                
+                // Adicionar ao histórico
+                result.timestamp = new Date().toISOString();
+                backtestHistory.unshift(result);
+                if (backtestHistory.length > 10) {
+                    backtestHistory = backtestHistory.slice(0, 10);
+                }
+                localStorage.setItem('backtestHistory', JSON.stringify(backtestHistory));
+                
+                // Mostrar resultados
+                displayResults(result);
+                updateHistory();
+                
+            } catch (error) {
+                alert('Erro ao executar backtest: ' + error.message);
+            } finally {
+                document.getElementById('loadingContainer').style.display = 'none';
+            }
+        });
+        
+        function displayResults(result) {
+            const container = document.getElementById('resultsContent');
+            
+            const returnClass = result.total_return >= 0 ? 'positive' : 'negative';
+            const winRateClass = result.win_rate >= 0.5 ? 'positive' : result.win_rate >= 0.3 ? 'neutral' : 'negative';
+            
+            container.innerHTML = `
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div class="metric-value ${returnClass}">
+                                ${(result.total_return * 100).toFixed(2)}%
+                            </div>
+                            <small class="text-muted">Retorno Total</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div class="metric-value ${winRateClass}">
+                                ${(result.win_rate * 100).toFixed(1)}%
+                            </div>
+                            <small class="text-muted">Taxa de Acerto</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div class="metric-value neutral">
+                                ${result.total_trades}
+                            </div>
+                            <small class="text-muted">Total de Trades</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div class="metric-value ${result.sharpe_ratio >= 1 ? 'positive' : 'neutral'}">
+                                ${result.sharpe_ratio.toFixed(2)}
+                            </div>
+                            <small class="text-muted">Sharpe Ratio</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="row">
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div class="metric-value negative">
+                                ${(result.max_drawdown * 100).toFixed(2)}%
+                            </div>
+                            <small class="text-muted">Max Drawdown</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="text-center">
+                            <div class="metric-value ${result.profit_factor >= 1.5 ? 'positive' : 'neutral'}">
+                                ${result.profit_factor.toFixed(2)}
+                            </div>
+                            <small class="text-muted">Profit Factor</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="row">
+                    <div class="col-12">
+                        <h6>Detalhes:</h6>
+                        <ul class="list-unstyled">
+                            <li><strong>Estratégia:</strong> ${result.strategy_name}</li>
+                            <li><strong>Símbolo:</strong> ${result.symbol}</li>
+                            <li><strong>Período:</strong> ${result.period}</li>
+                            <li><strong>Trades Ganhos:</strong> ${result.winning_trades}</li>
+                            <li><strong>Trades Perdedores:</strong> ${result.losing_trades}</li>
+                        </ul>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('resultsContainer').style.display = 'block';
+        }
+        
+        function updateHistory() {
+            const container = document.getElementById('historyContainer');
+            
+            if (backtestHistory.length === 0) {
+                container.innerHTML = '<p class="text-muted text-center">Nenhum backtest executado ainda.</p>';
+                return;
+            }
+            
+            const historyHtml = backtestHistory.map(result => {
+                const returnClass = result.total_return >= 0 ? 'text-success' : 'text-danger';
+                const date = new Date(result.timestamp).toLocaleDateString('pt-BR');
+                
+                return `
+                    <div class="border-bottom pb-2 mb-2">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${result.symbol}</strong> - ${result.strategy_name}
+                                <br>
+                                <small class="text-muted">${date}</small>
+                            </div>
+                            <div class="text-end">
+                                <div class="${returnClass} fw-bold">
+                                    ${(result.total_return * 100).toFixed(2)}%
+                                </div>
+                                <small class="text-muted">
+                                    ${result.total_trades} trades
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            container.innerHTML = historyHtml;
+        }
+        
+        // Carregar histórico na inicialização
+        updateHistory();
+    </script>
+</body>
+</html>

@@ -1,0 +1,453 @@
+<!--
+  Market Regime Detector Widget - Componente Reutilizável
+  
+  Este componente exibe informações do regime de mercado em tempo real.
+  Pode ser usado em 3 modos: recommendation, monitor ou filter
+  
+  Parâmetros:
+  - mode: 'recommendation' | 'monitor' | 'filter'
+  - symbol: 'BTCUSDT'
+  - interval: '1h'
+-->
+
+<style>
+.regime-widget {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border-radius: 12px;
+    padding: 20px;
+    color: white;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+    margin-bottom: 20px;
+}
+
+.regime-widget.bull {
+    background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+}
+
+.regime-widget.bear {
+    background: linear-gradient(135deg, #ee0979 0%, #ff6a00 100%);
+}
+
+.regime-widget.sideways {
+    background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+}
+
+.regime-widget.volatile {
+    background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+}
+
+.regime-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.regime-title {
+    font-size: 18px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.regime-confidence {
+    font-size: 14px;
+    background: rgba(255,255,255,0.2);
+    padding: 4px 12px;
+    border-radius: 20px;
+}
+
+.regime-body {
+    margin: 15px 0;
+}
+
+.regime-metric {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.regime-metric:last-child {
+    border-bottom: none;
+}
+
+.regime-strategy {
+    background: rgba(255,255,255,0.15);
+    padding: 12px;
+    border-radius: 8px;
+    margin: 10px 0;
+}
+
+.regime-warnings {
+    background: rgba(255,193,7,0.2);
+    border-left: 4px solid #ffc107;
+    padding: 10px;
+    border-radius: 4px;
+    margin: 10px 0;
+}
+
+.regime-warning-item {
+    display: flex;
+    align-items: start;
+    gap: 8px;
+    margin: 5px 0;
+    font-size: 13px;
+}
+
+.regime-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.regime-btn {
+    flex: 1;
+    padding: 10px;
+    border: 2px solid rgba(255,255,255,0.3);
+    background: rgba(255,255,255,0.1);
+    color: white;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: all 0.3s;
+}
+
+.regime-btn:hover {
+    background: rgba(255,255,255,0.2);
+    transform: translateY(-2px);
+}
+
+.regime-btn-primary {
+    background: rgba(255,255,255,0.9);
+    color: #333;
+}
+
+.regime-loading {
+    text-align: center;
+    padding: 40px;
+}
+
+.regime-error {
+    background: #ff5252;
+    padding: 15px;
+    border-radius: 8px;
+}
+
+/* Animação de loading */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.regime-loading-pulse {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+</style>
+
+<div id="marketRegimeWidget" class="regime-widget" data-mode="<%= mode %>" data-symbol="<%= symbol %>" data-interval="<%= interval %>">
+    <div class="regime-loading regime-loading-pulse">
+        <i class="fas fa-chart-line fa-3x"></i>
+        <p>Analisando mercado...</p>
+    </div>
+</div>
+
+<script>
+(function() {
+    const widget = document.getElementById('marketRegimeWidget');
+    const mode = widget.dataset.mode;
+    const symbol = widget.dataset.symbol;
+    const interval = widget.dataset.interval;
+    
+    // Ícones por regime
+    const regimeIcons = {
+        'bull': '🐂',
+        'bear': '🐻',
+        'sideways': '↔️',
+        'volatile': '⚡',
+        'unknown': '❓'
+    };
+    
+    // Cores por regime
+    const regimeColors = {
+        'bull': 'bull',
+        'bear': 'bear',
+        'sideways': 'sideways',
+        'volatile': 'volatile'
+    };
+    
+    // Carregar análise do mercado
+    async function loadRegimeAnalysis() {
+        try {
+            const response = await fetch('http://localhost:3008/api/strategy/auto-select', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    symbol: symbol,
+                    interval: interval,
+                    lookback_days: 90
+                })
+            });
+            
+            if (!response.ok) throw new Error('Erro ao carregar análise');
+            
+            const data = await response.json();
+            renderWidget(data);
+            
+        } catch (error) {
+            renderError(error);
+        }
+    }
+    
+    // Renderizar widget baseado no modo
+    function renderWidget(data) {
+        const regime = data.market_analysis.regime;
+        widget.className = `regime-widget ${regimeColors[regime] || ''}`;
+        
+        if (mode === 'recommendation') {
+            renderRecommendationMode(data);
+        } else if (mode === 'monitor') {
+            renderMonitorMode(data);
+        } else if (mode === 'filter') {
+            renderFilterMode(data);
+        }
+    }
+    
+    // MODO 1: Recomendação (Paper Trading)
+    function renderRecommendationMode(data) {
+        const regime = data.market_analysis.regime;
+        const confidence = data.market_analysis.confidence;
+        const strategy = data.strategy_recommendation.primary;
+        const alternatives = data.strategy_recommendation.alternatives;
+        const advice = data.trading_advice;
+        const warnings = advice.warnings || [];
+        
+        widget.innerHTML = `
+            <div class="regime-header">
+                <div class="regime-title">
+                    ${regimeIcons[regime]} Recomendação Inteligente de Estratégia
+                </div>
+                <div class="regime-confidence">${confidence.toFixed(1)}% confiança</div>
+            </div>
+            
+            <div class="regime-body">
+                <div class="regime-metric">
+                    <span>Regime Atual:</span>
+                    <strong>${regime.toUpperCase()}</strong>
+                </div>
+                
+                <div class="regime-strategy">
+                    <div style="font-size: 14px; opacity: 0.9; margin-bottom: 5px;">
+                        🎯 Estratégia Recomendada
+                    </div>
+                    <div style="font-size: 20px; font-weight: bold;">
+                        ${strategy}
+                    </div>
+                    <div style="font-size: 12px; opacity: 0.8; margin-top: 5px;">
+                        Alternativas: ${alternatives.join(', ')}
+                    </div>
+                </div>
+                
+                <div class="regime-metric">
+                    <span>Deve tradear?</span>
+                    <strong>${advice.should_trade ? '✅ SIM' : '🚫 NÃO'}</strong>
+                </div>
+                
+                <div class="regime-metric">
+                    <span>Nível de risco:</span>
+                    <strong>${advice.risk_level.toUpperCase()}</strong>
+                </div>
+                
+                <div class="regime-metric">
+                    <span>Ajuste de posição:</span>
+                    <strong>${advice.position_size_multiplier}x</strong>
+                </div>
+                
+                ${warnings.length > 0 ? `
+                    <div class="regime-warnings">
+                        <strong>⚠️ Avisos Importantes:</strong>
+                        ${warnings.map(w => `
+                            <div class="regime-warning-item">
+                                <span>•</span>
+                                <span>${w}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                ` : ''}
+            </div>
+            
+            <div class="regime-actions">
+                <button class="regime-btn regime-btn-primary" onclick="useRecommendedStrategy('${strategy}')">
+                    Usar ${strategy}
+                </button>
+                <button class="regime-btn" onclick="showFullAnalysis()">
+                    Ver Análise Completa
+                </button>
+            </div>
+        `;
+    }
+    
+    // MODO 2: Monitor (Dashboard)
+    function renderMonitorMode(data) {
+        const regime = data.market_analysis.regime;
+        const confidence = data.market_analysis.confidence;
+        const trend = data.market_analysis.trend_strength;
+        const volatility = data.market_analysis.volatility;
+        const signals = data.market_analysis.signals;
+        
+        widget.innerHTML = `
+            <div class="regime-header">
+                <div class="regime-title">
+                    ${regimeIcons[regime]} Regime de Mercado
+                </div>
+                <div class="regime-confidence">${confidence.toFixed(1)}%</div>
+            </div>
+            
+            <div class="regime-body">
+                <div style="text-align: center; font-size: 32px; font-weight: bold; margin: 20px 0;">
+                    ${regime.toUpperCase()}
+                </div>
+                
+                <div class="regime-metric">
+                    <span>Força da Tendência:</span>
+                    <strong>${trend.toFixed(1)}</strong>
+                </div>
+                
+                <div class="regime-metric">
+                    <span>Volatilidade:</span>
+                    <strong>${volatility.toFixed(2)}%</strong>
+                </div>
+                
+                <div style="margin-top: 15px; font-size: 12px; opacity: 0.8;">
+                    <strong>Sinais Técnicos:</strong><br>
+                    MA: ${signals.ma_trend || 'N/A'}<br>
+                    ADX: ${signals.adx || 'N/A'}<br>
+                    RSI: ${signals.rsi || 'N/A'}<br>
+                    Volume: ${signals.volume || 'N/A'}
+                </div>
+                
+                <div style="margin-top: 15px; font-size: 11px; opacity: 0.7;">
+                    Última atualização: agora
+                </div>
+            </div>
+            
+            <div class="regime-actions">
+                <button class="regime-btn" onclick="refreshRegime()">
+                    🔄 Atualizar
+                </button>
+                <button class="regime-btn" onclick="showRegimeHistory()">
+                    📊 Histórico
+                </button>
+            </div>
+        `;
+    }
+    
+    // MODO 3: Filtro (Monte Carlo)
+    function renderFilterMode(data) {
+        const regime = data.market_analysis.regime;
+        const confidence = data.market_analysis.confidence;
+        const recommended = data.strategy_recommendation.recommended_strategies || [];
+        
+        widget.innerHTML = `
+            <div class="regime-header">
+                <div class="regime-title">
+                    ${regimeIcons[regime]} Análise de Regime para Monte Carlo
+                </div>
+                <div class="regime-confidence">${confidence.toFixed(1)}%</div>
+            </div>
+            
+            <div class="regime-body">
+                <div class="regime-metric">
+                    <span>Regime Detectado:</span>
+                    <strong>${regime.toUpperCase()}</strong>
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <strong>💡 Recomendação:</strong>
+                    <p style="font-size: 14px; margin: 10px 0;">
+                        Para resultados mais realistas em mercado <strong>${regime.toUpperCase()}</strong>,
+                        simule apenas estratégias apropriadas para este regime.
+                    </p>
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <strong>✅ Estratégias Recomendadas:</strong>
+                    <div style="margin: 10px 0;">
+                        ${recommended.map((s, i) => `
+                            <div style="padding: 5px 0;">
+                                ${i === 0 ? '⭐' : '•'} ${s}
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+            
+            <div class="regime-actions">
+                <button class="regime-btn regime-btn-primary" onclick="filterByRegime('${regime}')">
+                    Simular Apenas ${regime.toUpperCase()}
+                </button>
+                <button class="regime-btn" onclick="showAllStrategies()">
+                    Ver Todas
+                </button>
+            </div>
+        `;
+    }
+    
+    // Renderizar erro
+    function renderError(error) {
+        widget.className = 'regime-widget';
+        widget.innerHTML = `
+            <div class="regime-error">
+                <strong>❌ Erro ao carregar análise</strong>
+                <p style="margin: 10px 0; font-size: 14px;">${error.message}</p>
+                <button class="regime-btn" onclick="location.reload()">
+                    Tentar Novamente
+                </button>
+            </div>
+        `;
+    }
+    
+    // Funções globais (disponíveis para os botões)
+    window.useRecommendedStrategy = function(strategy) {
+        // Preencher campo de estratégia no formulário de paper trading
+        const strategySelect = document.getElementById('strategy_name');
+        if (strategySelect) {
+            strategySelect.value = strategy;
+            strategySelect.dispatchEvent(new Event('change'));
+        }
+        alert(`Estratégia "${strategy}" selecionada!`);
+    };
+    
+    window.showFullAnalysis = function() {
+        // Abrir modal com análise completa
+        alert('Funcionalidade de análise completa em desenvolvimento');
+    };
+    
+    window.refreshRegime = function() {
+        widget.innerHTML = '<div class="regime-loading regime-loading-pulse"><i class="fas fa-chart-line fa-3x"></i><p>Atualizando...</p></div>';
+        loadRegimeAnalysis();
+    };
+    
+    window.showRegimeHistory = function() {
+        alert('Histórico de regime em desenvolvimento');
+    };
+    
+    window.filterByRegime = function(regime) {
+        // Filtrar estratégias no Monte Carlo
+        alert(`Filtrando estratégias para regime: ${regime}`);
+    };
+    
+    window.showAllStrategies = function() {
+        alert('Mostrando todas as estratégias');
+    };
+    
+    // Carregar ao inicializar
+    loadRegimeAnalysis();
+    
+    // Auto-refresh a cada 5 minutos (opcional)
+    if (mode === 'monitor') {
+        setInterval(loadRegimeAnalysis, 5 * 60 * 1000);
+    }
+})();
+</script>

@@ -1,0 +1,1464 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Dashboard - AI Trading Platform</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- TradingView Lightweight Charts -->
+    <script src="https://unpkg.com/lightweight-charts@4.1.0/dist/lightweight-charts.standalone.production.js"></script>
+    
+    <style>
+        :root {
+            --bg-primary: #0d1117;
+            --bg-secondary: #161b22;
+            --bg-tertiary: #21262d;
+            --border-color: #30363d;
+            --text-primary: #f0f6fc;
+            --text-secondary: #8b949e;
+            --accent-green: #3fb950;
+            --accent-red: #f85149;
+            --accent-blue: #58a6ff;
+            --accent-yellow: #d29922;
+            --accent-purple: #a371f7;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            min-height: 100vh;
+        }
+        
+        /* Navbar */
+        .top-navbar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 0.75rem 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            height: 56px;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 600;
+            font-size: 1.1rem;
+        }
+        
+        .logo i {
+            color: var(--accent-blue);
+            font-size: 1.5rem;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 0.5rem;
+        }
+        
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+        }
+        
+        .nav-link:hover, .nav-link.active {
+            color: var(--text-primary);
+            background: var(--bg-tertiary);
+        }
+        
+        .nav-link.active {
+            color: var(--accent-blue);
+        }
+        
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--accent-green);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        /* Main Layout */
+        .main-container {
+            display: grid;
+            grid-template-columns: 280px 1fr 320px;
+            gap: 1px;
+            background: var(--border-color);
+            margin-top: 56px;
+            height: calc(100vh - 56px);
+        }
+        
+        /* Left Panel - Sessions */
+        .left-panel {
+            background: var(--bg-secondary);
+            overflow-y: auto;
+            padding: 1rem;
+        }
+        
+        .panel-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .session-item {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .session-item:hover {
+            border-color: var(--accent-blue);
+        }
+        
+        .session-item.active {
+            border-color: var(--accent-blue);
+            background: rgba(88, 166, 255, 0.1);
+        }
+        
+        .session-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .session-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        
+        .session-status {
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            text-transform: uppercase;
+        }
+        
+        .session-status.running {
+            background: rgba(63, 185, 80, 0.2);
+            color: var(--accent-green);
+        }
+        
+        .session-status.stopped {
+            background: rgba(248, 81, 73, 0.2);
+            color: var(--accent-red);
+        }
+        
+        .session-info {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+        
+        .session-pnl {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+        
+        .session-pnl.profit { color: var(--accent-green); }
+        .session-pnl.loss { color: var(--accent-red); }
+        
+        /* Center Panel - Charts */
+        .center-panel {
+            background: var(--bg-primary);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .chart-header {
+            background: var(--bg-secondary);
+            padding: 0.75rem 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .symbol-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .symbol-name {
+            font-size: 1.25rem;
+            font-weight: 700;
+        }
+        
+        .symbol-price {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+        
+        .price-change {
+            font-size: 0.9rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+        }
+        
+        .price-change.up {
+            background: rgba(63, 185, 80, 0.2);
+            color: var(--accent-green);
+        }
+        
+        .price-change.down {
+            background: rgba(248, 81, 73, 0.2);
+            color: var(--accent-red);
+        }
+        
+        .timeframe-selector {
+            display: flex;
+            gap: 0.25rem;
+        }
+        
+        .tf-btn {
+            background: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-secondary);
+            padding: 0.4rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .tf-btn:hover, .tf-btn.active {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border-color: var(--accent-blue);
+        }
+        
+        .chart-container {
+            flex: 1;
+            position: relative;
+            min-height: 400px;
+        }
+        
+        #tradingChart {
+            width: 100%;
+            height: 100%;
+        }
+        
+        /* Bottom Stats */
+        .chart-stats {
+            background: var(--bg-secondary);
+            padding: 0.75rem 1rem;
+            display: grid;
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1rem;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .stat-value {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-top: 0.25rem;
+        }
+        
+        /* Right Panel - Details & Notifications */
+        .right-panel {
+            background: var(--bg-secondary);
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .panel-section {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .section-title {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        /* Account Summary */
+        .account-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+        
+        .account-item {
+            background: var(--bg-tertiary);
+            padding: 0.75rem;
+            border-radius: 6px;
+        }
+        
+        .account-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+        
+        .account-value {
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        
+        .account-value.profit { color: var(--accent-green); }
+        .account-value.loss { color: var(--accent-red); }
+        
+        /* Trades List */
+        .trade-item {
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .trade-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .trade-side {
+            font-size: 0.7rem;
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+        
+        .trade-side.buy {
+            background: rgba(63, 185, 80, 0.2);
+            color: var(--accent-green);
+        }
+        
+        .trade-side.sell {
+            background: rgba(248, 81, 73, 0.2);
+            color: var(--accent-red);
+        }
+        
+        .trade-time {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        
+        .trade-details {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.85rem;
+        }
+        
+        .trade-pnl {
+            font-weight: 600;
+        }
+        
+        /* Notifications */
+        .notification-item {
+            display: flex;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            margin-bottom: 0.5rem;
+            border-left: 3px solid var(--accent-blue);
+        }
+        
+        .notification-item.success {
+            border-left-color: var(--accent-green);
+        }
+        
+        .notification-item.warning {
+            border-left-color: var(--accent-yellow);
+        }
+        
+        .notification-item.error {
+            border-left-color: var(--accent-red);
+        }
+        
+        .notification-icon {
+            font-size: 1.25rem;
+        }
+        
+        .notification-content {
+            flex: 1;
+        }
+        
+        .notification-title {
+            font-size: 0.85rem;
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+        
+        .notification-text {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+        
+        .notification-time {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+        }
+        
+        /* Action Buttons */
+        .action-buttons {
+            display: flex;
+            gap: 0.5rem;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-top: 1px solid var(--border-color);
+            margin-top: auto;
+        }
+        
+        .btn-action {
+            flex: 1;
+            padding: 0.75rem;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-start {
+            background: var(--accent-green);
+            color: white;
+        }
+        
+        .btn-start:hover {
+            background: #2ea043;
+        }
+        
+        .btn-stop {
+            background: var(--accent-red);
+            color: white;
+        }
+        
+        .btn-stop:hover {
+            background: #da3633;
+        }
+        
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+        
+        .btn-secondary:hover {
+            background: var(--border-color);
+        }
+        
+        /* Notification Settings Modal */
+        .modal-dark .modal-content {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        
+        .modal-dark .modal-header {
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .modal-dark .modal-footer {
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .modal-dark .btn-close {
+            filter: invert(1);
+        }
+        
+        .form-control-dark {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            color: var(--text-primary);
+        }
+        
+        .form-control-dark:focus {
+            background: var(--bg-tertiary);
+            border-color: var(--accent-blue);
+            color: var(--text-primary);
+            box-shadow: 0 0 0 0.2rem rgba(88, 166, 255, 0.25);
+        }
+        
+        .form-check-input:checked {
+            background-color: var(--accent-blue);
+            border-color: var(--accent-blue);
+        }
+        
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .main-container {
+                grid-template-columns: 240px 1fr 280px;
+            }
+        }
+        
+        @media (max-width: 992px) {
+            .main-container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto 1fr auto;
+            }
+            
+            .left-panel, .right-panel {
+                max-height: 300px;
+            }
+        }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 4px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <!-- Top Navbar -->
+    <nav class="top-navbar">
+        <div class="logo">
+            <i class="bi bi-graph-up-arrow"></i>
+            <span>AI Trading Platform</span>
+        </div>
+        
+        <div class="nav-links">
+            <a href="/" class="nav-link"><i class="bi bi-house"></i> Home</a>
+            <a href="/signals" class="nav-link"><i class="bi bi-activity"></i> Sinais</a>
+            <a href="/backtesting" class="nav-link"><i class="bi bi-bar-chart"></i> Backtest</a>
+            <a href="/paper-trading" class="nav-link"><i class="bi bi-play-circle"></i> Paper Trading</a>
+            <a href="/trading-dashboard" class="nav-link active"><i class="bi bi-speedometer2"></i> Dashboard</a>
+        </div>
+        
+        <div class="status-indicator">
+            <span class="status-dot"></span>
+            <span id="connectionStatus">Conectado</span>
+            <span class="ms-3" id="lastUpdate">--:--:--</span>
+        </div>
+    </nav>
+
+    <!-- Main Container -->
+    <div class="main-container">
+        <!-- Left Panel - Sessions -->
+        <div class="left-panel">
+            <div class="panel-title">
+                <span>Sessões Ativas</span>
+                <button class="btn btn-sm btn-outline-primary" onclick="showNewSessionModal()">
+                    <i class="bi bi-plus"></i>
+                </button>
+            </div>
+            
+            <div id="sessionsList">
+                <div class="session-item active">
+                    <div class="session-header">
+                        <span class="session-name">Carregando...</span>
+                        <span class="session-status running">--</span>
+                    </div>
+                    <div class="session-info">-- • --</div>
+                    <div class="session-pnl">$0.00</div>
+                </div>
+            </div>
+            
+            <div class="panel-title mt-4">Estratégias Disponíveis</div>
+            <div id="strategiesList">
+                <div class="session-item" onclick="selectStrategy('momentum')">
+                    <div class="session-header">
+                        <span class="session-name">Momentum</span>
+                        <span class="badge bg-success">+28.5%</span>
+                    </div>
+                    <div class="session-info">ROC + Volume</div>
+                </div>
+                <div class="session-item" onclick="selectStrategy('trend_following')">
+                    <div class="session-header">
+                        <span class="session-name">Trend Following</span>
+                        <span class="badge bg-success">+45.2%</span>
+                    </div>
+                    <div class="session-info">EMA + ADX + RSI</div>
+                </div>
+                <div class="session-item" onclick="selectStrategy('mean_reversion')">
+                    <div class="session-header">
+                        <span class="session-name">Mean Reversion</span>
+                        <span class="badge bg-success">+18.7%</span>
+                    </div>
+                    <div class="session-info">Bollinger + Stochastic</div>
+                </div>
+                <div class="session-item" onclick="selectStrategy('macd_rsi')">
+                    <div class="session-header">
+                        <span class="session-name">MACD + RSI</span>
+                        <span class="badge bg-success">+32.1%</span>
+                    </div>
+                    <div class="session-info">MACD Crossover + RSI Filter</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center Panel - Chart -->
+        <div class="center-panel">
+            <div class="chart-header">
+                <div class="symbol-info">
+                    <span class="symbol-name" id="symbolName">BTCUSDT</span>
+                    <span class="symbol-price" id="currentPrice">$0.00</span>
+                    <span class="price-change up" id="priceChange">+0.00%</span>
+                </div>
+                
+                <div class="timeframe-selector">
+                    <button class="tf-btn" data-tf="1m">1m</button>
+                    <button class="tf-btn active" data-tf="5m">5m</button>
+                    <button class="tf-btn" data-tf="15m">15m</button>
+                    <button class="tf-btn" data-tf="1h">1H</button>
+                    <button class="tf-btn" data-tf="4h">4H</button>
+                    <button class="tf-btn" data-tf="1d">1D</button>
+                </div>
+            </div>
+            
+            <div class="chart-container">
+                <div id="tradingChart"></div>
+            </div>
+            
+            <div class="chart-stats">
+                <div class="stat-item">
+                    <div class="stat-label">24h High</div>
+                    <div class="stat-value" id="high24h">$0.00</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">24h Low</div>
+                    <div class="stat-value" id="low24h">$0.00</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">24h Volume</div>
+                    <div class="stat-value" id="volume24h">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Trades Hoje</div>
+                    <div class="stat-value" id="tradesToday">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Win Rate</div>
+                    <div class="stat-value" id="winRate">0%</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label">Sinais Ativos</div>
+                    <div class="stat-value" id="activeSignals">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Panel - Details -->
+        <div class="right-panel">
+            <!-- Account Summary -->
+            <div class="panel-section">
+                <div class="section-title">
+                    <span>Resumo da Conta</span>
+                    <i class="bi bi-wallet2"></i>
+                </div>
+                <div class="account-grid">
+                    <div class="account-item">
+                        <div class="account-label">Saldo</div>
+                        <div class="account-value" id="balance">$1,000.00</div>
+                    </div>
+                    <div class="account-item">
+                        <div class="account-label">Equity</div>
+                        <div class="account-value" id="equity">$1,000.00</div>
+                    </div>
+                    <div class="account-item">
+                        <div class="account-label">PnL Realizado</div>
+                        <div class="account-value profit" id="realizedPnl">$0.00</div>
+                    </div>
+                    <div class="account-item">
+                        <div class="account-label">PnL Não Realizado</div>
+                        <div class="account-value" id="unrealizedPnl">$0.00</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recent Trades -->
+            <div class="panel-section" style="flex: 1; overflow-y: auto;">
+                <div class="section-title">
+                    <span>Trades Recentes</span>
+                    <span class="badge bg-secondary" id="tradesCount">0</span>
+                </div>
+                <div id="tradesList">
+                    <div class="text-center text-secondary py-4">
+                        <i class="bi bi-hourglass-split" style="font-size: 2rem;"></i>
+                        <p class="mt-2 mb-0">Aguardando trades...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Notifications -->
+            <div class="panel-section">
+                <div class="section-title">
+                    <span>Notificações</span>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="showNotificationSettings()">
+                        <i class="bi bi-gear"></i>
+                    </button>
+                </div>
+                <div id="notificationsList">
+                    <div class="notification-item success">
+                        <i class="bi bi-check-circle notification-icon text-success"></i>
+                        <div class="notification-content">
+                            <div class="notification-title">Sistema Iniciado</div>
+                            <div class="notification-text">Dashboard conectado com sucesso</div>
+                        </div>
+                        <div class="notification-time">Agora</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <button class="btn-action btn-start" id="btnStart" onclick="startSession()">
+                    <i class="bi bi-play-fill"></i> Iniciar
+                </button>
+                <button class="btn-action btn-stop" id="btnStop" onclick="stopSession()" style="display: none;">
+                    <i class="bi bi-stop-fill"></i> Parar
+                </button>
+                <button class="btn-action btn-secondary" onclick="showNotificationSettings()">
+                    <i class="bi bi-bell"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Session Modal -->
+    <div class="modal fade modal-dark" id="newSessionModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-plus-circle"></i> Nova Sessão</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">ID da Sessão</label>
+                        <input type="text" class="form-control form-control-dark" id="newSessionId" placeholder="ex: my_strategy_001">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Estratégia</label>
+                        <select class="form-select form-control-dark" id="newSessionStrategy">
+                            <option value="momentum">Momentum</option>
+                            <option value="trend_following">Trend Following</option>
+                            <option value="mean_reversion">Mean Reversion</option>
+                            <option value="macd_rsi_combo">MACD + RSI</option>
+                            <option value="bollinger_bands">Bollinger Bands</option>
+                            <option value="volatility_breakout">Volatility Breakout</option>
+                        </select>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Símbolo</label>
+                            <select class="form-select form-control-dark" id="newSessionSymbol">
+                                <option value="BTCUSDT">BTCUSDT</option>
+                                <option value="ETHUSDT">ETHUSDT</option>
+                                <option value="BNBUSDT">BNBUSDT</option>
+                                <option value="SOLUSDT">SOLUSDT</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Timeframe</label>
+                            <select class="form-select form-control-dark" id="newSessionTimeframe">
+                                <option value="1m">1 minuto</option>
+                                <option value="5m">5 minutos</option>
+                                <option value="15m">15 minutos</option>
+                                <option value="1h">1 hora</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Capital Inicial</label>
+                        <input type="number" class="form-control form-control-dark" id="newSessionCapital" value="1000">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="createSession()">
+                        <i class="bi bi-play-fill"></i> Criar e Iniciar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Settings Modal -->
+    <div class="modal fade modal-dark" id="notificationModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-bell"></i> Configurar Notificações</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-4">
+                        <h6><i class="bi bi-telegram text-info"></i> Telegram</h6>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="telegramEnabled">
+                            <label class="form-check-label" for="telegramEnabled">Ativar notificações Telegram</label>
+                        </div>
+                        <input type="text" class="form-control form-control-dark mb-2" id="telegramBotToken" placeholder="Bot Token">
+                        <input type="text" class="form-control form-control-dark" id="telegramChatId" placeholder="Chat ID">
+                    </div>
+                    
+                    <div class="mb-4">
+                        <h6><i class="bi bi-discord text-primary"></i> Discord</h6>
+                        <div class="form-check form-switch mb-2">
+                            <input class="form-check-input" type="checkbox" id="discordEnabled">
+                            <label class="form-check-label" for="discordEnabled">Ativar notificações Discord</label>
+                        </div>
+                        <input type="text" class="form-control form-control-dark" id="discordWebhook" placeholder="Webhook URL">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <h6>Tipos de Notificação</h6>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notifyTrades" checked>
+                            <label class="form-check-label" for="notifyTrades">Trades executados</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notifySignals" checked>
+                            <label class="form-check-label" for="notifySignals">Sinais gerados</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notifyPnL">
+                            <label class="form-check-label" for="notifyPnL">Alertas de PnL (±5%)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="notifyErrors" checked>
+                            <label class="form-check-label" for="notifyErrors">Erros e alertas</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-info" onclick="testNotification()">
+                        <i class="bi bi-send"></i> Testar
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="saveNotificationSettings()">
+                        <i class="bi bi-check"></i> Salvar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        // Configuration
+        const API_URL = '<%= executionEngineUrl %>';
+        const BINANCE_WS = 'wss://stream.binance.com:9443/ws';
+        
+        // State
+        let chart = null;
+        let candleSeries = null;
+        let volumeSeries = null;
+        let selectedSession = null;
+        let currentSymbol = 'BTCUSDT';
+        let currentTimeframe = '5m';
+        let priceSocket = null;
+        let refreshInterval = null;
+        
+        // Notification settings
+        let notificationSettings = {
+            telegram: { enabled: false, botToken: '', chatId: '' },
+            discord: { enabled: false, webhook: '' },
+            types: { trades: true, signals: true, pnl: false, errors: true }
+        };
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadNotificationSettings();
+            initChart();
+            loadSessions();
+            connectPriceStream();
+            startAutoRefresh();
+            
+            // Timeframe selector
+            document.querySelectorAll('.tf-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.tf-btn').forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    currentTimeframe = btn.dataset.tf;
+                    loadChartData();
+                });
+            });
+        });
+        
+        // Initialize TradingView Lightweight Chart
+        function initChart() {
+            const container = document.getElementById('tradingChart');
+            
+            chart = LightweightCharts.createChart(container, {
+                width: container.clientWidth,
+                height: container.clientHeight,
+                layout: {
+                    background: { type: 'solid', color: '#0d1117' },
+                    textColor: '#8b949e',
+                },
+                grid: {
+                    vertLines: { color: '#21262d' },
+                    horzLines: { color: '#21262d' },
+                },
+                crosshair: {
+                    mode: LightweightCharts.CrosshairMode.Normal,
+                },
+                rightPriceScale: {
+                    borderColor: '#30363d',
+                    scaleMargins: { top: 0.1, bottom: 0.2 },
+                },
+                timeScale: {
+                    borderColor: '#30363d',
+                    timeVisible: true,
+                    secondsVisible: false,
+                },
+            });
+            
+            // Candlestick series
+            candleSeries = chart.addCandlestickSeries({
+                upColor: '#3fb950',
+                downColor: '#f85149',
+                borderDownColor: '#f85149',
+                borderUpColor: '#3fb950',
+                wickDownColor: '#f85149',
+                wickUpColor: '#3fb950',
+            });
+            
+            // Volume series
+            volumeSeries = chart.addHistogramSeries({
+                color: '#26a69a',
+                priceFormat: { type: 'volume' },
+                priceScaleId: '',
+                scaleMargins: { top: 0.8, bottom: 0 },
+            });
+            
+            // Resize handler
+            window.addEventListener('resize', () => {
+                chart.applyOptions({
+                    width: container.clientWidth,
+                    height: container.clientHeight
+                });
+            });
+            
+            loadChartData();
+        }
+        
+        // Load historical chart data from Binance
+        async function loadChartData() {
+            try {
+                const response = await fetch(
+                    `https://api.binance.com/api/v3/klines?symbol=${currentSymbol}&interval=${currentTimeframe}&limit=500`
+                );
+                const data = await response.json();
+                
+                const candles = data.map(d => ({
+                    time: d[0] / 1000,
+                    open: parseFloat(d[1]),
+                    high: parseFloat(d[2]),
+                    low: parseFloat(d[3]),
+                    close: parseFloat(d[4]),
+                }));
+                
+                const volumes = data.map(d => ({
+                    time: d[0] / 1000,
+                    value: parseFloat(d[5]),
+                    color: parseFloat(d[4]) >= parseFloat(d[1]) ? 'rgba(63, 185, 80, 0.5)' : 'rgba(248, 81, 73, 0.5)',
+                }));
+                
+                candleSeries.setData(candles);
+                volumeSeries.setData(volumes);
+                
+                // Update price info
+                if (candles.length > 0) {
+                    const lastCandle = candles[candles.length - 1];
+                    const firstCandle = candles[0];
+                    const change = ((lastCandle.close - firstCandle.open) / firstCandle.open * 100);
+                    
+                    document.getElementById('currentPrice').textContent = '$' + lastCandle.close.toLocaleString();
+                    
+                    const priceChangeEl = document.getElementById('priceChange');
+                    priceChangeEl.textContent = (change >= 0 ? '+' : '') + change.toFixed(2) + '%';
+                    priceChangeEl.className = 'price-change ' + (change >= 0 ? 'up' : 'down');
+                    
+                    // 24h stats
+                    const high24h = Math.max(...candles.slice(-288).map(c => c.high));
+                    const low24h = Math.min(...candles.slice(-288).map(c => c.low));
+                    document.getElementById('high24h').textContent = '$' + high24h.toLocaleString();
+                    document.getElementById('low24h').textContent = '$' + low24h.toLocaleString();
+                }
+                
+            } catch (error) {
+                console.error('Error loading chart data:', error);
+            }
+        }
+        
+        // Connect to Binance WebSocket for real-time price
+        function connectPriceStream() {
+            if (priceSocket) {
+                priceSocket.close();
+            }
+            
+            const streamName = currentSymbol.toLowerCase() + '@kline_' + currentTimeframe;
+            priceSocket = new WebSocket(BINANCE_WS + '/' + streamName);
+            
+            priceSocket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (data.k) {
+                    const candle = {
+                        time: data.k.t / 1000,
+                        open: parseFloat(data.k.o),
+                        high: parseFloat(data.k.h),
+                        low: parseFloat(data.k.l),
+                        close: parseFloat(data.k.c),
+                    };
+                    
+                    candleSeries.update(candle);
+                    
+                    // Update current price
+                    document.getElementById('currentPrice').textContent = '$' + candle.close.toLocaleString();
+                    
+                    // Update volume
+                    volumeSeries.update({
+                        time: candle.time,
+                        value: parseFloat(data.k.v),
+                        color: candle.close >= candle.open ? 'rgba(63, 185, 80, 0.5)' : 'rgba(248, 81, 73, 0.5)',
+                    });
+                }
+            };
+            
+            priceSocket.onclose = () => {
+                setTimeout(connectPriceStream, 5000);
+            };
+            
+            priceSocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+        
+        // Load sessions from API
+        async function loadSessions() {
+            try {
+                const response = await fetch(`${API_URL}/paper-trading/sessions`);
+                const data = await response.json();
+                
+                updateSessionsList(data.sessions || []);
+                
+                if (data.sessions && data.sessions.length > 0) {
+                    if (!selectedSession) {
+                        selectSession(data.sessions[0].session_id);
+                    } else {
+                        loadSessionDetails(selectedSession);
+                    }
+                }
+                
+                document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString('pt-BR');
+                
+            } catch (error) {
+                console.error('Error loading sessions:', error);
+                document.getElementById('connectionStatus').textContent = 'Desconectado';
+                document.querySelector('.status-dot').style.background = '#f85149';
+            }
+        }
+        
+        // Update sessions list UI
+        function updateSessionsList(sessions) {
+            const container = document.getElementById('sessionsList');
+            
+            if (sessions.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-secondary py-4">
+                        <i class="bi bi-inbox" style="font-size: 2rem;"></i>
+                        <p class="mt-2 mb-0">Nenhuma sessão ativa</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = sessions.map(s => `
+                <div class="session-item ${selectedSession === s.session_id ? 'active' : ''}" 
+                     onclick="selectSession('${s.session_id}')">
+                    <div class="session-header">
+                        <span class="session-name">${s.session_id}</span>
+                        <span class="session-status ${s.is_running ? 'running' : 'stopped'}">
+                            ${s.is_running ? 'Ativo' : 'Parado'}
+                        </span>
+                    </div>
+                    <div class="session-info">${s.strategy} • ${s.symbol}</div>
+                    <div class="session-pnl ${s.total_pnl >= 0 ? 'profit' : 'loss'}">
+                        ${s.total_pnl >= 0 ? '+' : ''}$${(s.total_pnl || 0).toFixed(2)}
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Select session
+        function selectSession(sessionId) {
+            selectedSession = sessionId;
+            loadSessions();
+            loadSessionDetails(sessionId);
+            
+            // Update buttons
+            document.getElementById('btnStart').style.display = 'none';
+            document.getElementById('btnStop').style.display = 'flex';
+        }
+        
+        // Load session details
+        async function loadSessionDetails(sessionId) {
+            try {
+                const [statusRes, tradesRes] = await Promise.all([
+                    fetch(`${API_URL}/paper-trading/${sessionId}/status`),
+                    fetch(`${API_URL}/paper-trading/${sessionId}/trades?limit=10`)
+                ]);
+                
+                const status = await statusRes.json();
+                const trades = await tradesRes.json();
+                
+                // Update account summary
+                const account = status.account_summary || {};
+                document.getElementById('balance').textContent = '$' + (account.balance || 1000).toFixed(2);
+                document.getElementById('equity').textContent = '$' + (account.equity || 1000).toFixed(2);
+                
+                const realizedPnl = document.getElementById('realizedPnl');
+                realizedPnl.textContent = (account.realized_pnl >= 0 ? '+' : '') + '$' + (account.realized_pnl || 0).toFixed(2);
+                realizedPnl.className = 'account-value ' + (account.realized_pnl >= 0 ? 'profit' : 'loss');
+                
+                const unrealizedPnl = document.getElementById('unrealizedPnl');
+                unrealizedPnl.textContent = (account.unrealized_pnl >= 0 ? '+' : '') + '$' + (account.unrealized_pnl || 0).toFixed(2);
+                unrealizedPnl.className = 'account-value ' + (account.unrealized_pnl >= 0 ? 'profit' : 'loss');
+                
+                // Update stats
+                document.getElementById('tradesToday').textContent = account.total_trades || 0;
+                document.getElementById('activeSignals').textContent = status.signals_generated || 0;
+                
+                // Update trades list
+                updateTradesList(trades);
+                
+                // Update symbol
+                if (status.symbol) {
+                    currentSymbol = status.symbol;
+                    document.getElementById('symbolName').textContent = status.symbol;
+                }
+                
+            } catch (error) {
+                console.error('Error loading session details:', error);
+            }
+        }
+        
+        // Update trades list
+        function updateTradesList(trades) {
+            const container = document.getElementById('tradesList');
+            document.getElementById('tradesCount').textContent = trades.length;
+            
+            if (!trades || trades.length === 0) {
+                container.innerHTML = `
+                    <div class="text-center text-secondary py-4">
+                        <i class="bi bi-hourglass-split" style="font-size: 2rem;"></i>
+                        <p class="mt-2 mb-0">Aguardando trades...</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            container.innerHTML = trades.map(t => `
+                <div class="trade-item">
+                    <div class="trade-header">
+                        <span class="trade-side ${t.side}">${t.side.toUpperCase()}</span>
+                        <span class="trade-time">${new Date(t.timestamp).toLocaleTimeString('pt-BR')}</span>
+                    </div>
+                    <div class="trade-details">
+                        <span>${t.quantity} @ $${t.price?.toFixed(2)}</span>
+                        <span class="trade-pnl ${(t.pnl || 0) >= 0 ? 'text-success' : 'text-danger'}">
+                            ${(t.pnl || 0) >= 0 ? '+' : ''}$${(t.pnl || 0).toFixed(2)}
+                        </span>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        // Start auto refresh
+        function startAutoRefresh() {
+            refreshInterval = setInterval(() => {
+                loadSessions();
+            }, 5000);
+        }
+        
+        // Show new session modal
+        function showNewSessionModal() {
+            const modal = new bootstrap.Modal(document.getElementById('newSessionModal'));
+            modal.show();
+        }
+        
+        // Create new session
+        async function createSession() {
+            const sessionId = document.getElementById('newSessionId').value || 'session_' + Date.now();
+            const strategy = document.getElementById('newSessionStrategy').value;
+            const symbol = document.getElementById('newSessionSymbol').value;
+            const timeframe = document.getElementById('newSessionTimeframe').value;
+            const capital = parseFloat(document.getElementById('newSessionCapital').value) || 1000;
+            
+            try {
+                const response = await fetch(`${API_URL}/paper-trading/start`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        strategy: strategy,
+                        symbol: symbol,
+                        timeframe: timeframe,
+                        initial_capital: capital
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'started' || data.status === 'already_running') {
+                    bootstrap.Modal.getInstance(document.getElementById('newSessionModal')).hide();
+                    addNotification('success', 'Sessão Iniciada', `${sessionId} está rodando com ${strategy}`);
+                    selectSession(sessionId);
+                    loadSessions();
+                    
+                    // Send notification
+                    sendNotification('trade', `🚀 Nova sessão iniciada: ${sessionId}\nEstratégia: ${strategy}\nSímbolo: ${symbol}`);
+                }
+                
+            } catch (error) {
+                console.error('Error creating session:', error);
+                addNotification('error', 'Erro', 'Falha ao criar sessão');
+            }
+        }
+        
+        // Start session
+        function startSession() {
+            showNewSessionModal();
+        }
+        
+        // Stop session
+        async function stopSession() {
+            if (!selectedSession) return;
+            
+            if (!confirm(`Parar sessão ${selectedSession}?`)) return;
+            
+            try {
+                const response = await fetch(`${API_URL}/paper-trading/${selectedSession}/stop`, {
+                    method: 'POST'
+                });
+                
+                const data = await response.json();
+                addNotification('warning', 'Sessão Parada', `${selectedSession} foi interrompida`);
+                
+                sendNotification('trade', `⏹️ Sessão parada: ${selectedSession}`);
+                
+                loadSessions();
+                
+            } catch (error) {
+                console.error('Error stopping session:', error);
+                addNotification('error', 'Erro', 'Falha ao parar sessão');
+            }
+        }
+        
+        // Select strategy
+        function selectStrategy(strategy) {
+            document.getElementById('newSessionStrategy').value = strategy;
+            showNewSessionModal();
+        }
+        
+        // Add notification to UI
+        function addNotification(type, title, text) {
+            const container = document.getElementById('notificationsList');
+            const iconMap = {
+                success: 'bi-check-circle text-success',
+                warning: 'bi-exclamation-triangle text-warning',
+                error: 'bi-x-circle text-danger',
+                info: 'bi-info-circle text-info'
+            };
+            
+            const notification = document.createElement('div');
+            notification.className = `notification-item ${type}`;
+            notification.innerHTML = `
+                <i class="bi ${iconMap[type]} notification-icon"></i>
+                <div class="notification-content">
+                    <div class="notification-title">${title}</div>
+                    <div class="notification-text">${text}</div>
+                </div>
+                <div class="notification-time">Agora</div>
+            `;
+            
+            container.insertBefore(notification, container.firstChild);
+            
+            // Keep only last 10 notifications
+            while (container.children.length > 10) {
+                container.removeChild(container.lastChild);
+            }
+        }
+        
+        // Show notification settings modal
+        function showNotificationSettings() {
+            // Load current settings
+            document.getElementById('telegramEnabled').checked = notificationSettings.telegram.enabled;
+            document.getElementById('telegramBotToken').value = notificationSettings.telegram.botToken;
+            document.getElementById('telegramChatId').value = notificationSettings.telegram.chatId;
+            document.getElementById('discordEnabled').checked = notificationSettings.discord.enabled;
+            document.getElementById('discordWebhook').value = notificationSettings.discord.webhook;
+            document.getElementById('notifyTrades').checked = notificationSettings.types.trades;
+            document.getElementById('notifySignals').checked = notificationSettings.types.signals;
+            document.getElementById('notifyPnL').checked = notificationSettings.types.pnl;
+            document.getElementById('notifyErrors').checked = notificationSettings.types.errors;
+            
+            const modal = new bootstrap.Modal(document.getElementById('notificationModal'));
+            modal.show();
+        }
+        
+        // Save notification settings
+        function saveNotificationSettings() {
+            notificationSettings = {
+                telegram: {
+                    enabled: document.getElementById('telegramEnabled').checked,
+                    botToken: document.getElementById('telegramBotToken').value,
+                    chatId: document.getElementById('telegramChatId').value
+                },
+                discord: {
+                    enabled: document.getElementById('discordEnabled').checked,
+                    webhook: document.getElementById('discordWebhook').value
+                },
+                types: {
+                    trades: document.getElementById('notifyTrades').checked,
+                    signals: document.getElementById('notifySignals').checked,
+                    pnl: document.getElementById('notifyPnL').checked,
+                    errors: document.getElementById('notifyErrors').checked
+                }
+            };
+            
+            localStorage.setItem('notificationSettings', JSON.stringify(notificationSettings));
+            
+            bootstrap.Modal.getInstance(document.getElementById('notificationModal')).hide();
+            addNotification('success', 'Configurações Salvas', 'Notificações configuradas com sucesso');
+        }
+        
+        // Load notification settings
+        function loadNotificationSettings() {
+            const saved = localStorage.getItem('notificationSettings');
+            if (saved) {
+                notificationSettings = JSON.parse(saved);
+            }
+        }
+        
+        // Test notification
+        async function testNotification() {
+            await sendNotification('test', '🔔 Teste de Notificação\nSe você recebeu esta mensagem, as notificações estão funcionando!');
+            addNotification('info', 'Teste Enviado', 'Verifique seu Telegram/Discord');
+        }
+        
+        // Send notification via Telegram/Discord
+        async function sendNotification(type, message) {
+            // Check if this type is enabled
+            if (type === 'trade' && !notificationSettings.types.trades) return;
+            if (type === 'signal' && !notificationSettings.types.signals) return;
+            if (type === 'pnl' && !notificationSettings.types.pnl) return;
+            if (type === 'error' && !notificationSettings.types.errors) return;
+            
+            // Send to Telegram
+            if (notificationSettings.telegram.enabled && notificationSettings.telegram.botToken && notificationSettings.telegram.chatId) {
+                try {
+                    await fetch(`https://api.telegram.org/bot${notificationSettings.telegram.botToken}/sendMessage`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chat_id: notificationSettings.telegram.chatId,
+                            text: message,
+                            parse_mode: 'HTML'
+                        })
+                    });
+                } catch (error) {
+                    console.error('Telegram notification error:', error);
+                }
+            }
+            
+            // Send to Discord
+            if (notificationSettings.discord.enabled && notificationSettings.discord.webhook) {
+                try {
+                    await fetch(notificationSettings.discord.webhook, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            content: message,
+                            username: 'AI Trading Bot'
+                        })
+                    });
+                } catch (error) {
+                    console.error('Discord notification error:', error);
+                }
+            }
+        }
+    </script>
+</body>
+</html>

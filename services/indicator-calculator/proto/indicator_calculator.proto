@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package indicator_calculator;
+
+// Serviço principal para cálculo de indicadores técnicos
+service IndicatorCalculatorService {
+    // Calcular indicadores técnicos para um símbolo
+    rpc CalculateIndicators(CalculateIndicatorsRequest) returns (CalculateIndicatorsResponse);
+    
+    // Calcular indicadores em lote
+    rpc CalculateBatchIndicators(CalculateBatchIndicatorsRequest) returns (CalculateBatchIndicatorsResponse);
+    
+    // Obter dados de saúde do serviço
+    rpc GetHealth(HealthRequest) returns (HealthResponse);
+}
+
+// Request para cálculo de indicadores
+message CalculateIndicatorsRequest {
+    string symbol = 1;
+    string timeframe = 2;
+    int32 limit = 3;
+    repeated string indicators = 4;
+    map<string, string> parameters = 5;
+}
+
+// Response com os indicadores calculados
+message CalculateIndicatorsResponse {
+    string symbol = 1;
+    string timeframe = 2;
+    repeated IndicatorData indicators = 3;
+    string status = 4;
+    string message = 5;
+}
+
+// Request para cálculo em lote
+message CalculateBatchIndicatorsRequest {
+    repeated CalculateIndicatorsRequest requests = 1;
+}
+
+// Response para cálculo em lote
+message CalculateBatchIndicatorsResponse {
+    repeated CalculateIndicatorsResponse responses = 1;
+}
+
+// Dados de um indicador
+message IndicatorData {
+    string name = 1;
+    string type = 2;
+    repeated double values = 3;
+    repeated int64 timestamps = 4;
+    map<string, string> metadata = 5;
+}
+
+// Health check
+message HealthRequest {}
+
+message HealthResponse {
+    string status = 1;
+    string version = 2;
+    int64 uptime = 3;
+    map<string, string> connections = 4;
+}

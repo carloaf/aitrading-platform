@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trading Platform - Backtesting</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --primary-color: #1a1a1a;
+            --secondary-color: #2d2d2d;
+            --accent-color: #00d4aa;
+            --text-color: #ffffff;
+            --text-secondary: #b0b0b0;
+            --success-color: #00c896;
+            --danger-color: #ff4757;
+            --warning-color: #ffa726;
+        }
+
+        body {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .navbar {
+            background-color: var(--secondary-color);
+            border-bottom: 1px solid #404040;
+            padding: 0.5rem 1rem;
+        }
+
+        .navbar-brand {
+            color: var(--accent-color) !important;
+            font-weight: bold;
+            font-size: 1.4rem;
+        }
+
+        .nav-link {
+            color: var(--text-secondary) !important;
+            transition: color 0.3s ease;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--accent-color) !important;
+        }
+
+        .container-fluid {
+            padding: 2rem;
+        }
+
+        .card {
+            background-color: var(--secondary-color);
+            border: 1px solid #404040;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-header {
+            background-color: var(--secondary-color);
+            border-bottom: 1px solid #404040;
+            color: var(--text-color);
+            font-weight: 600;
+        }
+
+        .card-body {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+        }
+
+        .form-control, .form-select {
+            background-color: var(--primary-color);
+            border: 1px solid #404040;
+            color: var(--text-color);
+        }
+
+        .form-control:focus, .form-select:focus {
+            background-color: var(--primary-color);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 0.2rem rgba(0, 212, 170, 0.25);
+            color: var(--text-color);
+        }
+
+        .form-control option, .form-select option {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+        }
+
+        .btn-primary {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #000;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            background-color: #00b894;
+            border-color: #00b894;
+        }
+
+        .btn-outline-light {
+            color: var(--text-color);
+            border-color: #404040;
+        }
+
+        .btn-outline-light:hover {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #000;
+        }
+
+        .alert-info {
+            background-color: rgba(0, 212, 170, 0.1);
+            border-color: var(--accent-color);
+            color: var(--text-color);
+        }
+
+        .alert-success {
+            background-color: rgba(0, 200, 150, 0.1);
+            border-color: var(--success-color);
+            color: var(--text-color);
+        }
+
+        .alert-danger {
+            background-color: rgba(255, 71, 87, 0.1);
+            border-color: var(--danger-color);
+            color: var(--text-color);
+        }
+
+        .table-dark {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+        }
+
+        .table-dark td, .table-dark th {
+            border-color: #404040;
+        }
+
+        .text-success { color: var(--success-color) !important; }
+        .text-danger { color: var(--danger-color) !important; }
+        .text-warning { color: var(--warning-color) !important; }
+
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background-color: var(--secondary-color);
+            border: 1px solid #404040;
+            border-radius: 8px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .loading-spinner {
+            text-align: center;
+            padding: 2rem;
+            color: var(--text-secondary);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 1rem 0;
+        }
+
+        @media (max-width: 768px) {
+            .container-fluid {
+                padding: 1rem;
+            }
+            
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-line me-2"></i>
+                AI Trading Platform
+            </a>
+            
+            <div class="d-flex align-items-center">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/backtesting">
+                            <i class="fas fa-history me-1"></i>Backtesting
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/signals">
+                            <i class="fas fa-bell me-1"></i>Sinais
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/news">
+                            <i class="fas fa-newspaper me-1"></i>Notícias
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Configuration Panel -->
+            <div class="col-lg-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fas fa-cog me-2"></i>Configuração do Backtest
+                        </h5>
+                    </div>
+                    <div class="card-body">
+                        <form id="backtestForm">
+                            <!-- Symbol Selection -->
+                            <div class="mb-3">
+                                <label for="symbolSelect" class="form-label">Símbolo</label>
+                                <select class="form-select" id="symbolSelect" required>
+                                    <optgroup label="Criptomoedas">
+                                        <option value="BTCUSDT">Bitcoin (BTC/USDT)</option>
+                                        <option value="ETHUSDT">Ethereum (ETH/USDT)</option>
+                                        <option value="ADAUSDT">Cardano (ADA/USDT)</option>
+                                        <option value="DOTUSDT">Polkadot (DOT/USDT)</option>
+                                        <option value="LINKUSDT">Chainlink (LINK/USDT)</option>
+                                    </optgroup>
+                                    <optgroup label="Ações">
+                                        <option value="AAPL">Apple Inc. (AAPL)</option>
+                                        <option value="GOOGL">Alphabet Inc. (GOOGL)</option>
+                                        <option value="MSFT">Microsoft Corporation (MSFT)</option>
+                                        <option value="TSLA">Tesla Inc. (TSLA)</option>
+                                    </optgroup>
+                                </select>
+                            </div>
+
+                            <!-- Strategy Selection -->
+                            <div class="mb-3">
+                                <label for="strategySelect" class="form-label">Estratégia</label>
+                                <select class="form-select" id="strategySelect" required>
+                                    <option value="sma_crossover">SMA Crossover</option>
+                                    <option value="rsi_oversold">RSI Oversold/Overbought</option>
+                                    <option value="macd_signal">MACD Signal</option>
+                                </select>
+                            </div>
+
+                            <!-- Date Range -->
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label for="startDate" class="form-label">Data Inicial</label>
+                                        <input type="date" class="form-control" id="startDate" required>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label for="endDate" class="form-label">Data Final</label>
+                                        <input type="date" class="form-control" id="endDate" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Capital and Commission -->
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label for="initialCapital" class="form-label">Capital Inicial ($)</label>
+                                        <input type="number" class="form-control" id="initialCapital" value="10000" min="1000" step="100" required>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="mb-3">
+                                        <label for="commission" class="form-label">Comissão (%)</label>
+                                        <input type="number" class="form-control" id="commission" value="0.1" min="0" max="5" step="0.01" required>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-play me-2"></i>Executar Backtest
+                            </button>
+                        </form>
+
+                        <!-- Loading Indicator -->
+                        <div id="loadingIndicator" class="loading-spinner" style="display: none;">
+                            <div class="spinner-border text-light" role="status">
+                                <span class="visually-hidden">Carregando...</span>
+                            </div>
+                            <p class="mt-2">Executando backtest...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Backtests -->
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-clock me-2"></i>Backtests Recentes
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div id="recentBacktests">
+                            <p class="text-muted text-center">Nenhum backtest executado ainda</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Panel -->
+            <div class="col-lg-8">
+                <!-- Results Overview -->
+                <div id="resultsContainer" style="display: none;">
+                    <!-- Performance Metrics -->
+                    <div class="stats-row" id="performanceMetrics">
+                        <!-- Metrics will be populated here -->
+                    </div>
+
+                    <!-- Charts -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-chart-area me-2"></i>Curva de Equity
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="equityChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trades Table -->
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-list me-2"></i>Histórico de Trades
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-dark table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Data Entrada</th>
+                                            <th>Data Saída</th>
+                                            <th>Lado</th>
+                                            <th>Quantidade</th>
+                                            <th>Preço Entrada</th>
+                                            <th>Preço Saída</th>
+                                            <th>P&L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tradesTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Welcome Message -->
+                <div id="welcomeMessage" class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-chart-line fa-4x text-muted mb-4"></i>
+                        <h3>Sistema de Backtesting</h3>
+                        <p class="text-muted">Configure os parâmetros ao lado e execute seu primeiro backtest para ver os resultados aqui.</p>
+                        <div class="row mt-4">
+                            <div class="col-md-4">
+                                <i class="fas fa-history fa-2x text-info mb-2"></i>
+                                <h6>Dados Históricos</h6>
+                                <p class="small text-muted">Analise estratégias com dados históricos reais</p>
+                            </div>
+                            <div class="col-md-4">
+                                <i class="fas fa-calculator fa-2x text-warning mb-2"></i>
+                                <h6>Métricas Precisas</h6>
+                                <p class="small text-muted">Win rate, Sharpe ratio, drawdown e mais</p>
+                            </div>
+                            <div class="col-md-4">
+                                <i class="fas fa-chart-area fa-2x text-success mb-2"></i>
+                                <h6>Visualizações</h6>
+                                <p class="small text-muted">Gráficos e tabelas detalhadas</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Backtesting Script -->
+    <script>
+        class BacktestingInterface {
+            constructor() {
+                this.setupEventListeners();
+                this.setDefaultDates();
+                this.loadRecentBacktests();
+            }
+
+            setupEventListeners() {
+                document.getElementById('backtestForm').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.executeBacktest();
+                });
+            }
+
+            setDefaultDates() {
+                const endDate = new Date();
+                const startDate = new Date();
+                startDate.setFullYear(endDate.getFullYear() - 1);
+
+                document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+                document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+            }
+
+            async executeBacktest() {
+                const form = document.getElementById('backtestForm');
+                const formData = new FormData(form);
+                
+                const backtestConfig = {
+                    symbol: document.getElementById('symbolSelect').value,
+                    strategy: this.getStrategyConfig(),
+                    start_date: document.getElementById('startDate').value,
+                    end_date: document.getElementById('endDate').value,
+                    initial_capital: parseFloat(document.getElementById('initialCapital').value),
+                    commission: parseFloat(document.getElementById('commission').value) / 100
+                };
+
+                this.showLoading();
+
+                try {
+                    const response = await fetch('http://localhost:3007/backtest', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(backtestConfig)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    this.displayResults(result);
+                    this.saveToHistory(backtestConfig, result);
+
+                } catch (error) {
+                    console.error('Erro no backtest:', error);
+                    this.showError('Erro ao executar backtest: ' + error.message);
+                } finally {
+                    this.hideLoading();
+                }
+            }
+
+            getStrategyConfig() {
+                const strategyType = document.getElementById('strategySelect').value;
+                
+                const strategies = {
+                    sma_crossover: {
+                        name: "SMA Crossover",
+                        description: "Estratégia baseada em cruzamento de médias móveis",
+                        parameters: { sma_fast: 10, sma_slow: 20 },
+                        entry_conditions: ["SMA_10 > SMA_20"],
+                        exit_conditions: ["SMA_10 < SMA_20"]
+                    },
+                    rsi_oversold: {
+                        name: "RSI Oversold/Overbought",
+                        description: "Estratégia baseada no RSI",
+                        parameters: { rsi_oversold: 30, rsi_overbought: 70 },
+                        entry_conditions: ["RSI < 30"],
+                        exit_conditions: ["RSI > 70"]
+                    },
+                    macd_signal: {
+                        name: "MACD Signal",
+                        description: "Estratégia baseada no MACD",
+                        parameters: {},
+                        entry_conditions: ["MACD > 0"],
+                        exit_conditions: ["MACD < 0"]
+                    }
+                };
+
+                return strategies[strategyType];
+            }
+
+            displayResults(result) {
+                document.getElementById('welcomeMessage').style.display = 'none';
+                document.getElementById('resultsContainer').style.display = 'block';
+
+                this.updatePerformanceMetrics(result);
+                this.updateEquityChart(result);
+                this.updateTradesTable(result);
+            }
+
+            updatePerformanceMetrics(result) {
+                const metrics = [
+                    { label: 'Retorno Total', value: `${(result.total_return * 100).toFixed(2)}%`, class: result.total_return >= 0 ? 'text-success' : 'text-danger' },
+                    { label: 'Total de Trades', value: result.total_trades, class: 'text-info' },
+                    { label: 'Taxa de Acerto', value: `${(result.win_rate * 100).toFixed(1)}%`, class: result.win_rate >= 0.5 ? 'text-success' : 'text-warning' },
+                    { label: 'Sharpe Ratio', value: result.sharpe_ratio.toFixed(2), class: result.sharpe_ratio >= 1 ? 'text-success' : 'text-warning' },
+                    { label: 'Max Drawdown', value: `${(result.max_drawdown * 100).toFixed(2)}%`, class: 'text-danger' },
+                    { label: 'Profit Factor', value: result.profit_factor.toFixed(2), class: result.profit_factor >= 1 ? 'text-success' : 'text-danger' }
+                ];
+
+                const container = document.getElementById('performanceMetrics');
+                container.innerHTML = metrics.map(metric => `
+                    <div class="stat-card">
+                        <div class="stat-value ${metric.class}">${metric.value}</div>
+                        <div class="stat-label">${metric.label}</div>
+                    </div>
+                `).join('');
+            }
+
+            updateEquityChart(result) {
+                const ctx = document.getElementById('equityChart').getContext('2d');
+                
+                // Destroy existing chart if it exists
+                if (window.equityChart instanceof Chart) {
+                    window.equityChart.destroy();
+                }
+
+                const data = result.equity_curve.map(point => ({
+                    x: new Date(point.date),
+                    y: point.equity
+                }));
+
+                window.equityChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Equity',
+                            data: data,
+                            borderColor: '#00d4aa',
+                            backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                            borderWidth: 2,
+                            fill: true,
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                labels: { color: '#ffffff' }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                ticks: { color: '#b0b0b0' },
+                                grid: { color: '#404040' }
+                            },
+                            y: {
+                                ticks: { color: '#b0b0b0' },
+                                grid: { color: '#404040' }
+                            }
+                        }
+                    }
+                });
+            }
+
+            updateTradesTable(result) {
+                const tbody = document.getElementById('tradesTableBody');
+                tbody.innerHTML = result.trades.map(trade => `
+                    <tr>
+                        <td>${new Date(trade.entry_date).toLocaleDateString()}</td>
+                        <td>${trade.exit_date ? new Date(trade.exit_date).toLocaleDateString() : '-'}</td>
+                        <td><span class="badge bg-${trade.side === 'buy' ? 'success' : 'danger'}">${trade.side.toUpperCase()}</span></td>
+                        <td>${trade.quantity}</td>
+                        <td>$${trade.entry_price.toFixed(2)}</td>
+                        <td>${trade.exit_price ? '$' + trade.exit_price.toFixed(2) : '-'}</td>
+                        <td class="${trade.pnl >= 0 ? 'text-success' : 'text-danger'}">
+                            ${trade.pnl ? '$' + trade.pnl.toFixed(2) : '-'}
+                        </td>
+                    </tr>
+                `).join('');
+            }
+
+            saveToHistory(config, result) {
+                let history = JSON.parse(localStorage.getItem('backtestHistory') || '[]');
+                history.unshift({
+                    timestamp: new Date().toISOString(),
+                    config,
+                    result: {
+                        total_return: result.total_return,
+                        total_trades: result.total_trades,
+                        win_rate: result.win_rate
+                    }
+                });
+                
+                // Keep only last 10 results
+                history = history.slice(0, 10);
+                localStorage.setItem('backtestHistory', JSON.stringify(history));
+                this.loadRecentBacktests();
+            }
+
+            loadRecentBacktests() {
+                const history = JSON.parse(localStorage.getItem('backtestHistory') || '[]');
+                const container = document.getElementById('recentBacktests');
+                
+                if (history.length === 0) {
+                    container.innerHTML = '<p class="text-muted text-center">Nenhum backtest executado ainda</p>';
+                    return;
+                }
+
+                container.innerHTML = history.map(item => `
+                    <div class="mb-2 p-2 rounded" style="background-color: var(--primary-color); border: 1px solid #404040;">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <small class="text-muted">${new Date(item.timestamp).toLocaleDateString()}</small>
+                                <div class="fw-bold">${item.config.symbol}</div>
+                                <small class="text-muted">${item.config.strategy.name}</small>
+                            </div>
+                            <div class="text-end">
+                                <div class="${item.result.total_return >= 0 ? 'text-success' : 'text-danger'} fw-bold">
+                                    ${(item.result.total_return * 100).toFixed(1)}%
+                                </div>
+                                <small class="text-muted">${item.result.total_trades} trades</small>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            showLoading() {
+                document.getElementById('loadingIndicator').style.display = 'block';
+                document.querySelector('button[type="submit"]').disabled = true;
+            }
+
+            hideLoading() {
+                document.getElementById('loadingIndicator').style.display = 'none';
+                document.querySelector('button[type="submit"]').disabled = false;
+            }
+
+            showError(message) {
+                const alertHtml = `
+                    <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        ${message}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                `;
+                document.querySelector('.card-body').insertAdjacentHTML('beforeend', alertHtml);
+            }
+        }
+
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new BacktestingInterface();
+        });
+    </script>
+</body>
+</html>

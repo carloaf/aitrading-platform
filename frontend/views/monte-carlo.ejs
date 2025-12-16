@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monte Carlo Simulation - AI Trading Platform</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --success-color: #27ae60;
+            --danger-color: #e74c3c;
+            --warning-color: #f39c12;
+            --info-color: #3498db;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .dashboard-container {
+            padding: 30px;
+        }
+        
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border: none;
+            margin-bottom: 25px;
+            transition: transform 0.3s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .card-header {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #34495e 100%);
+            color: white;
+            border-radius: 15px 15px 0 0 !important;
+            padding: 20px;
+            font-weight: 600;
+            font-size: 1.2rem;
+        }
+        
+        .metric-card {
+            text-align: center;
+            padding: 25px;
+            border-radius: 15px;
+            background: white;
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            box-shadow: 0 15px 40px rgba(0,0,0,0.15);
+        }
+        
+        .metric-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin: 10px 0;
+        }
+        
+        .metric-label {
+            color: #7f8c8d;
+            font-size: 0.95rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .positive { color: var(--success-color); }
+        .negative { color: var(--danger-color); }
+        .neutral { color: var(--warning-color); }
+        
+        .strategy-selector {
+            margin-bottom: 30px;
+        }
+        
+        .strategy-btn {
+            margin: 5px;
+            border-radius: 25px;
+            padding: 10px 25px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .strategy-btn.active {
+            background: var(--info-color);
+            color: white;
+            transform: scale(1.05);
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+        
+        .comparison-table {
+            font-size: 0.9rem;
+        }
+        
+        .comparison-table th {
+            background: var(--primary-color);
+            color: white;
+            padding: 15px;
+            font-weight: 600;
+        }
+        
+        .comparison-table td {
+            padding: 12px;
+            vertical-align: middle;
+        }
+        
+        .rank-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 0.85rem;
+        }
+        
+        .rank-1 { background: #FFD700; color: #000; }
+        .rank-2 { background: #C0C0C0; color: #000; }
+        .rank-3 { background: #CD7F32; color: #fff; }
+        
+        .loading-spinner {
+            text-align: center;
+            padding: 50px;
+        }
+        
+        .scenario-card {
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+            border-left: 5px solid;
+        }
+        
+        .best-case { border-color: var(--success-color); background: #d4edda; }
+        .median-case { border-color: var(--warning-color); background: #fff3cd; }
+        .worst-case { border-color: var(--danger-color); background: #f8d7da; }
+        
+        /* Simulation Progress Styles */
+        .simulation-progress-container {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            z-index: 9999;
+            min-width: 500px;
+            display: none;
+        }
+        
+        .simulation-progress-container.active {
+            display: block;
+        }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 9998;
+            display: none;
+        }
+        
+        .overlay.active {
+            display: block;
+        }
+        
+        .progress-bar-custom {
+            height: 30px;
+            border-radius: 15px;
+            background: #e0e0e0;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--info-color), var(--success-color));
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+        
+        .config-modal {
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .form-label {
+            font-weight: 600;
+            color: var(--primary-color);
+        }
+        
+        .simulation-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--info-color);
+        }
+        
+        .stat-label {
+            font-size: 0.85rem;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Overlay for Progress -->
+    <div class="overlay" id="progressOverlay"></div>
+    
+    <!-- Simulation Progress Container -->
+    <div class="simulation-progress-container" id="progressContainer">
+        <h3 class="text-center mb-4">🎲 Simulação em Andamento</h3>
+        <div class="text-center mb-3">
+            <strong id="strategyName"></strong>
+        </div>
+        <div class="progress-bar-custom">
+            <div class="progress-fill" id="progressFill" style="width: 0%">0%</div>
+        </div>
+        <div class="text-center mb-3">
+            <span id="iterationText">0 / 0 iterações</span>
+        </div>
+        <div class="simulation-stats">
+            <div class="stat-item">
+                <div class="stat-value" id="elapsedTime">00:00</div>
+                <div class="stat-label">Tempo Decorrido</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="estimatedTime">--:--</div>
+                <div class="stat-label">Tempo Estimado</div>
+            </div>
+        </div>
+        <div class="text-center mt-4">
+            <button class="btn btn-danger" id="cancelBtn" onclick="cancelSimulation()">
+                <i class="fas fa-stop"></i> Cancelar
+            </button>
+        </div>
+    </div>
+    
+    <!-- Configuration Modal -->
+    <div class="modal fade" id="configModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">⚙️ Configurar Simulação</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body config-modal">
+                    <div class="mb-4">
+                        <h6 class="text-primary">Estratégia Selecionada</h6>
+                        <p class="fs-5" id="modalStrategyName"></p>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Número de Iterações</label>
+                            <input type="range" class="form-range" id="iterationsSlider" 
+                                   min="100" max="10000" step="100" value="1000"
+                                   oninput="updateIterationsValue(this.value)">
+                            <div class="text-center mt-2">
+                                <span class="badge bg-primary fs-6" id="iterationsValue">1000</span> iterações
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Período de Análise (dias)</label>
+                            <select class="form-select" id="lookbackDays">
+                                <option value="7">7 dias</option>
+                                <option value="14">14 dias</option>
+                                <option value="30" selected>30 dias</option>
+                                <option value="60">60 dias</option>
+                                <option value="90">90 dias</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Símbolo</label>
+                            <input type="text" class="form-control" id="symbolInput" value="BTCUSDT">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Intervalo</label>
+                            <select class="form-select" id="intervalSelect">
+                                <option value="1m">1 minuto</option>
+                                <option value="5m">5 minutos</option>
+                                <option value="15m">15 minutos</option>
+                                <option value="1h" selected>1 hora</option>
+                                <option value="4h">4 horas</option>
+                                <option value="1d">1 dia</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Capital Inicial</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control" id="initialBalance" 
+                                   value="10000" min="1000" step="1000">
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <strong>💡 Estimativa:</strong>
+                        <span id="estimateText">Com 1000 iterações, a simulação levará aproximadamente 2-5 minutos.</span>
+                    </div>
+                    
+                    <div id="parameterRanges" class="mt-3"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" onclick="startSimulation()">
+                        <i class="fas fa-play"></i> Iniciar Simulação
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="dashboard-container">
+        <div class="container-fluid">
+            <!-- Market Regime Filter Widget -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <%- include('partials/market-regime-widget', { 
+                        mode: 'filter',
+                        symbol: 'BTCUSDT',
+                        interval: '1h'
+                    }) %>
+                </div>
+            </div>
+
+            <!-- Header -->
+            <div class="row mb-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <div>
+                                <i class="bi bi-dice-5"></i> Monte Carlo Simulation - Análise de Estratégias
+                            </div>
+                            <button class="btn btn-light" onclick="refreshData()">
+                                <i class="bi bi-arrow-clockwise"></i> Atualizar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Strategy Selector -->
+            <div class="row strategy-selector">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <button class="btn btn-outline-primary strategy-btn active" data-strategy="all" onclick="selectStrategy('all')">
+                                📊 Todas as Estratégias
+                            </button>
+                            <button class="btn btn-outline-primary strategy-btn" data-strategy="momentum" onclick="selectStrategy('momentum')">
+                                🚀 Momentum
+                            </button>
+                            <button class="btn btn-outline-primary strategy-btn" data-strategy="macd_rsi_combo" onclick="selectStrategy('macd_rsi_combo')">
+                                📈 MACD + RSI
+                            </button>
+                            <button class="btn btn-outline-primary strategy-btn" data-strategy="trend_following" onclick="selectStrategy('trend_following')">
+                                📉 Trend Following
+                            </button>
+                            <button class="btn btn-outline-primary strategy-btn" data-strategy="volatility_breakout" onclick="selectStrategy('volatility_breakout')">
+                                ⚡ Volatility Breakout
+                            </button>
+                            <button class="btn btn-outline-primary strategy-btn" data-strategy="bollinger_bands" onclick="selectStrategy('bollinger_bands')">
+                                🎯 Bollinger Bands
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Loading -->
+            <div id="loading" class="loading-spinner">
+                <div class="spinner-border text-primary" role="status" style="width: 4rem; height: 4rem;">
+                    <span class="visually-hidden">Carregando...</span>
+                </div>
+                <p class="mt-3 text-white fw-bold">Carregando dados Monte Carlo...</p>
+            </div>
+            
+            <!-- Main Content -->
+            <div id="mainContent" style="display: none;">
+                <!-- Key Metrics -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-label">Retorno Médio</div>
+                            <div class="metric-value" id="meanReturn">--</div>
+                            <small id="meanReturnCi">95% CI: --</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-label">Probabilidade de Lucro</div>
+                            <div class="metric-value" id="probProfit">--</div>
+                            <small>de sucesso</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-label">Sharpe Ratio</div>
+                            <div class="metric-value" id="sharpeRatio">--</div>
+                            <small id="sharpeQuality">--</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="metric-card">
+                            <div class="metric-label">VaR 95%</div>
+                            <div class="metric-value" id="var95">--</div>
+                            <small>Máximo prejuízo esperado</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Charts Row 1 -->
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-bar-chart"></i> Distribuição de Retornos
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="returnDistribution"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-lightning"></i> Sharpe Ratio vs Drawdown
+                            </div>
+                            <div class="card-body">
+                                <div class="chart-container">
+                                    <canvas id="sharpeVsDrawdown"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Scenarios -->
+                <div class="row mt-4">
+                    <div class="col-md-4">
+                        <div class="scenario-card best-case">
+                            <h5><i class="bi bi-trophy"></i> Melhor Cenário</h5>
+                            <div class="fs-3 fw-bold" id="bestCase">--</div>
+                            <small>Top 5% dos resultados</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="scenario-card median-case">
+                            <h5><i class="bi bi-graph-up"></i> Cenário Mediano</h5>
+                            <div class="fs-3 fw-bold" id="medianCase">--</div>
+                            <small>Resultado típico (50%)</small>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="scenario-card worst-case">
+                            <h5><i class="bi bi-exclamation-triangle"></i> Pior Cenário</h5>
+                            <div class="fs-3 fw-bold" id="worstCase">--</div>
+                            <small>Bottom 5% dos resultados</small>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Comparison Table -->
+                <div class="row mt-4">
+                    <div class="col-12">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-table"></i> Comparativo de Estratégias
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-hover comparison-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Rank</th>
+                                                <th>Estratégia</th>
+                                                <th>Retorno (%)</th>
+                                                <th>Prob. Lucro (%)</th>
+                                                <th>Sharpe</th>
+                                                <th>VaR 95% (%)</th>
+                                                <th>Max DD (%)</th>
+                                                <th>Iterações</th>
+                                                <th>Score</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="comparisonTableBody">
+                                            <tr>
+                                                <td colspan="9" class="text-center">Carregando dados...</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Risk Metrics -->
+                <div class="row mt-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-shield-exclamation"></i> Métricas de Risco
+                            </div>
+                            <div class="card-body">
+                                <table class="table">
+                                    <tr>
+                                        <td><strong>VaR 95%:</strong></td>
+                                        <td id="riskVar" class="text-end">--</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>CVaR (Expected Shortfall):</strong></td>
+                                        <td id="riskCvar" class="text-end">--</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Max Drawdown Médio:</strong></td>
+                                        <td id="riskAvgDD" class="text-end">--</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Pior Drawdown:</strong></td>
+                                        <td id="riskWorstDD" class="text-end">--</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Desvio Padrão:</strong></td>
+                                        <td id="riskStd" class="text-end">--</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <i class="bi bi-info-circle"></i> Informações da Simulação
+                            </div>
+                            <div class="card-body">
+                                <table class="table">
+                                    <tr>
+                                        <td><strong>Total de Iterações:</strong></td>
+                                        <td id="infoIterations" class="text-end">--</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Simulações Bem-sucedidas:</strong></td>
+                                        <td id="infoSuccessful" class="text-end">--</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Taxa de Sucesso:</strong></td>
+                                        <td id="infoSuccessRate" class="text-end">--</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Tempo de Execução:</strong></td>
+                                        <td id="infoExecTime" class="text-end">--</td>
+                                    </tr>
+                                    <tr>
+                                        <td><strong>Lookback Period:</strong></td>
+                                        <td id="infoLookback" class="text-end">30 dias</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:3008/api/monte-carlo';
+        let currentStrategy = 'all';
+        let allReports = [];
+        let charts = {};
+        
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadReports();
+        });
+        
+        async function loadReports() {
+            try {
+                const response = await fetch(`${API_URL}/reports`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                allReports = data.reports || [];
+                
+                console.log(`📊 Loaded ${allReports.length} reports`);
+                
+                if (allReports.length === 0) {
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('mainContent').style.display = 'block';
+                    document.getElementById('mainContent').innerHTML = `
+                        <div class="alert alert-info text-center mt-5">
+                            <h4>🎲 Nenhum relatório Monte Carlo encontrado</h4>
+                            <p>Clique em uma estratégia acima para iniciar sua primeira simulação.</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Log structure of first report for debugging
+                if (allReports.length > 0) {
+                    console.log('Sample report structure:', Object.keys(allReports[0]));
+                }
+                
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('mainContent').style.display = 'block';
+                
+                renderData(currentStrategy);
+            } catch (error) {
+                console.error('❌ Erro ao carregar relatórios:', error);
+                document.getElementById('loading').innerHTML = `
+                    <div class="alert alert-danger">
+                        <h5>Erro ao conectar à API</h5>
+                        <p>${error.message}</p>
+                        <p>Verifique se o execution-engine está rodando em <code>localhost:3008</code></p>
+                        <button class="btn btn-primary" onclick="location.reload()">Tentar Novamente</button>
+                    </div>
+                `;
+            }
+        }
+        
+        let selectedStrategyForSim = null;
+        let simulationInterval = null;
+        let simulationStartTime = null;
+        
+        async function selectStrategy(strategy) {
+            currentStrategy = strategy;
+            
+            // Update button states
+            document.querySelectorAll('.strategy-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            document.querySelector(`[data-strategy="${strategy}"]`).classList.add('active');
+            
+            // If clicking a specific strategy, show config modal
+            if (strategy !== 'all') {
+                showConfigModal(strategy);
+            } else {
+                renderData(strategy);
+            }
+        }
+        
+        function showConfigModal(strategy) {
+            selectedStrategyForSim = strategy;
+            
+            // Display strategy name
+            const strategyNames = {
+                'momentum': 'Momentum',
+                'macd_rsi_combo': 'MACD + RSI',
+                'trend_following': 'Trend Following',
+                'volatility_breakout': 'Volatility Breakout',
+                'bollinger_bands': 'Bollinger Bands'
+            };
+            
+            document.getElementById('modalStrategyName').textContent = strategyNames[strategy] || strategy;
+            
+            // Show parameter ranges based on strategy
+            loadParameterRanges(strategy);
+            
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('configModal'));
+            modal.show();
+        }
+        
+        function loadParameterRanges(strategy) {
+            const paramRanges = {
+                'momentum': {
+                    'roc_period': [5, 20],
+                    'threshold': [0.5, 3.0]
+                },
+                'macd_rsi_combo': {
+                    'macd_fast': [8, 16],
+                    'macd_slow': [20, 30],
+                    'macd_signal': [7, 12],
+                    'rsi_period': [10, 20],
+                    'rsi_overbought': [65, 75],
+                    'rsi_oversold': [25, 35]
+                },
+                'trend_following': {
+                    'ema_fast': [10, 30],
+                    'ema_slow': [40, 80],
+                    'adx_period': [10, 20],
+                    'adx_threshold': [20, 30]
+                },
+                'volatility_breakout': {
+                    'atr_period': [10, 20],
+                    'atr_multiplier': [1.5, 3.0],
+                    'volume_ma_period': [15, 30]
+                },
+                'bollinger_bands': {
+                    'bb_period': [15, 25],
+                    'bb_std': [1.5, 2.5],
+                    'rsi_period': [10, 20]
+                }
+            };
+            
+            const ranges = paramRanges[strategy] || {};
+            let html = '<h6 class="text-primary">Faixas de Parâmetros:</h6><ul class="list-group">';
+            
+            for (const [param, range] of Object.entries(ranges)) {
+                html += `<li class="list-group-item d-flex justify-content-between">
+                    <strong>${param}:</strong> <span class="text-muted">${range[0]} - ${range[1]}</span>
+                </li>`;
+            }
+            
+            html += '</ul>';
+            document.getElementById('parameterRanges').innerHTML = html;
+        }
+        
+        function updateIterationsValue(value) {
+            document.getElementById('iterationsValue').textContent = value;
+            
+            // Update estimate
+            let estimate = '';
+            if (value <= 500) estimate = '1-3 minutos';
+            else if (value <= 1000) estimate = '2-5 minutos';
+            else if (value <= 5000) estimate = '10-20 minutos';
+            else estimate = '20-40 minutos';
+            
+            document.getElementById('estimateText').textContent = 
+                `Com ${value} iterações, a simulação levará aproximadamente ${estimate}.`;
+        }
+        
+        async function startSimulation() {
+            // Get configuration values
+            const strategy = selectedStrategyForSim;
+            const iterations = parseInt(document.getElementById('iterationsSlider').value);
+            const lookback = parseInt(document.getElementById('lookbackDays').value);
+            const symbol = document.getElementById('symbolInput').value;
+            const interval = document.getElementById('intervalSelect').value;
+            const initialBalance = parseFloat(document.getElementById('initialBalance').value);
+            
+            // Remove focus from any element in modal before closing (fixes aria-hidden warning)
+            document.activeElement.blur();
+            
+            // Close modal
+            const modalEl = document.getElementById('configModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            if (modal) {
+                modal.hide();
+            }
+            
+            // Show progress
+            showProgress(strategy, iterations);
+            
+            // Prepare request
+            const paramRanges = {
+                'momentum': {
+                    'roc_period': [5, 20],
+                    'threshold': [0.5, 3.0]
+                },
+                'macd_rsi_combo': {
+                    'macd_fast': [8, 16],
+                    'macd_slow': [20, 30],
+                    'macd_signal': [7, 12],
+                    'rsi_period': [10, 20],
+                    'rsi_overbought': [65, 75],
+                    'rsi_oversold': [25, 35]
+                },
+                'trend_following': {
+                    'ema_fast': [10, 30],
+                    'ema_slow': [40, 80],
+                    'adx_period': [10, 20],
+                    'adx_threshold': [20, 30]
+                },
+                'volatility_breakout': {
+                    'atr_period': [10, 20],
+                    'atr_multiplier': [1.5, 3.0],
+                    'volume_ma_period': [15, 30]
+                },
+                'bollinger_bands': {
+                    'bb_period': [15, 25],
+                    'bb_std': [1.5, 2.5],
+                    'rsi_period': [10, 20]
+                }
+            };
+            
+            const request = {
+                strategy_name: strategy,
+                symbol: symbol,
+                interval: interval,
+                lookback_days: lookback,
+                iterations: iterations,
+                initial_balance: initialBalance,
+                parameter_ranges: paramRanges[strategy] || {}
+            };
+            
+            try {
+                // Start progress polling FIRST (before waiting for response)
+                console.log('🚀 Starting progress polling for', strategy);
+                pollProgress(strategy, iterations);
+                
+                // Start simulation (this will block until complete, but polling runs in parallel)
+                const response = await fetch(`${API_URL}/simulate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(request)
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Erro ao executar simulação');
+                }
+                
+                // Simulation completed - response received
+                const result = await response.json();
+                console.log('✅ Simulation API response:', result.status);
+                
+                // The pollProgress will detect completion via the progress endpoint
+                // or via the new report appearing
+                
+            } catch (error) {
+                console.error('Erro:', error);
+                alert('Erro ao iniciar simulação: ' + error.message);
+                hideProgress();
+            }
+        }
+        
+        function showProgress(strategy, iterations) {
+            const strategyNames = {
+                'momentum': 'Momentum',
+                'macd_rsi_combo': 'MACD + RSI',
+                'trend_following': 'Trend Following',
+                'volatility_breakout': 'Volatility Breakout',
+                'bollinger_bands': 'Bollinger Bands'
+            };
+            
+            document.getElementById('strategyName').textContent = strategyNames[strategy];
+            document.getElementById('iterationText').textContent = `0 / ${iterations} iterações`;
+            document.getElementById('progressFill').style.width = '0%';
+            document.getElementById('progressFill').textContent = '0%';
+            document.getElementById('elapsedTime').textContent = '00:00';
+            document.getElementById('estimatedTime').textContent = '--:--';
+            
+            document.getElementById('progressOverlay').classList.add('active');
+            document.getElementById('progressContainer').classList.add('active');
+            
+            simulationStartTime = Date.now();
+            updateElapsedTime();
+        }
+        
+        function hideProgress() {
+            document.getElementById('progressOverlay').classList.remove('active');
+            document.getElementById('progressContainer').classList.remove('active');
+            
+            if (simulationInterval) {
+                clearInterval(simulationInterval);
+                simulationInterval = null;
+            }
+        }
+        
+        function updateElapsedTime() {
+            simulationInterval = setInterval(() => {
+                if (!simulationStartTime) return;
+                
+                const elapsed = Math.floor((Date.now() - simulationStartTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                
+                document.getElementById('elapsedTime').textContent = 
+                    `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+            }, 1000);
+        }
+        
+        async function pollProgress(strategy, totalIterations) {
+            let pollCount = 0;
+            const maxPolls = 600; // 10 minutes max
+            let lastReportCount = 0;
+            let useRealProgress = true; // Try real progress first
+            
+            // Get initial report count for this strategy
+            try {
+                const initResponse = await fetch(`${API_URL}/reports`);
+                const initData = await initResponse.json();
+                lastReportCount = (initData.reports || []).filter(r => r.strategy === strategy).length;
+                console.log(`📊 Initial report count for ${strategy}: ${lastReportCount}`);
+            } catch (e) {
+                console.warn('Could not get initial report count');
+            }
+            
+            const pollInterval = setInterval(async () => {
+                pollCount++;
+                
+                if (pollCount > maxPolls) {
+                    clearInterval(pollInterval);
+                    alert('Timeout: simulação demorou muito tempo.');
+                    hideProgress();
+                    return;
+                }
+                
+                try {
+                    // Try to get real progress from backend
+                    if (useRealProgress) {
+                        const progressResponse = await fetch(`${API_URL}/progress/${strategy}`);
+                        const progressData = await progressResponse.json();
+                        
+                        console.log(`📊 Real progress: ${JSON.stringify(progressData)}`);
+                        
+                        if (progressData.status === 'running' || progressData.status === 'saving') {
+                            const progress = progressData.progress || 0;
+                            const currentIter = progressData.current_iteration || 0;
+                            
+                            // Update progress display with REAL values
+                            document.getElementById('progressFill').style.width = `${Math.floor(progress)}%`;
+                            document.getElementById('progressFill').textContent = `${Math.floor(progress)}%`;
+                            document.getElementById('iterationText').textContent = 
+                                `${currentIter} / ${totalIterations} iterações`;
+                            
+                            // Calculate remaining time based on real progress
+                            const elapsedSeconds = Math.floor((Date.now() - simulationStartTime) / 1000);
+                            if (progress > 5 && elapsedSeconds > 2) {
+                                const totalEstimatedTime = elapsedSeconds / (progress / 100);
+                                const remainingSeconds = Math.max(0, Math.floor(totalEstimatedTime - elapsedSeconds));
+                                const remMin = Math.floor(remainingSeconds / 60);
+                                const remSec = remainingSeconds % 60;
+                                document.getElementById('estimatedTime').textContent = 
+                                    `${String(remMin).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+                            }
+                        }
+                        
+                        if (progressData.status === 'completed') {
+                            // Simulation completed!
+                            console.log('✅ Progress endpoint reports completion!');
+                            clearInterval(pollInterval);
+                            clearInterval(simulationInterval);
+                            
+                            // Update progress to 100%
+                            document.getElementById('progressFill').style.width = '100%';
+                            document.getElementById('progressFill').textContent = '100%';
+                            document.getElementById('iterationText').textContent = 
+                                `${totalIterations} / ${totalIterations} iterações`;
+                            document.getElementById('estimatedTime').textContent = '00:00';
+                            
+                            // Wait 2 seconds and update UI
+                            setTimeout(async () => {
+                                hideProgress();
+                                
+                                // Reload reports
+                                await loadReports();
+                                
+                                // Update UI to show new report
+                                currentStrategy = strategy;
+                                document.querySelectorAll('.strategy-btn').forEach(btn => {
+                                    btn.classList.remove('active');
+                                });
+                                const stratBtn = document.querySelector(`[data-strategy="${strategy}"]`);
+                                if (stratBtn) stratBtn.classList.add('active');
+                                
+                                // Render the strategy data
+                                await renderData(strategy);
+                                
+                                // Always update comparison table after simulation
+                                renderComparisonTable();
+                                
+                                console.log('✅ UI updated with new simulation results');
+                            }, 2000);
+                            return;
+                        }
+                        
+                        if (progressData.status === 'not_found') {
+                            // Progress endpoint not tracking this simulation
+                            useRealProgress = false;
+                            console.log('⚠️ Progress tracking not available, falling back to estimation');
+                        }
+                    }
+                    
+                    // Fallback: estimate progress based on time
+                    if (!useRealProgress) {
+                        const elapsedSeconds = Math.floor((Date.now() - simulationStartTime) / 1000);
+                        const estimatedSecondsPerIteration = 0.5;
+                        const totalEstimatedTime = totalIterations * estimatedSecondsPerIteration;
+                        const estimatedProgress = Math.min(95, (elapsedSeconds / totalEstimatedTime) * 100);
+                        const estimatedIterations = Math.min(totalIterations - 1, Math.floor(elapsedSeconds / estimatedSecondsPerIteration));
+                        
+                        // Update progress display with estimated values
+                        document.getElementById('progressFill').style.width = `${Math.floor(estimatedProgress)}%`;
+                        document.getElementById('progressFill').textContent = `${Math.floor(estimatedProgress)}%`;
+                        document.getElementById('iterationText').textContent = 
+                            `~${estimatedIterations} / ${totalIterations} iterações`;
+                        
+                        // Calculate estimated time remaining
+                        if (elapsedSeconds > 5 && estimatedProgress > 0) {
+                            const remainingSeconds = Math.max(0, Math.floor(totalEstimatedTime - elapsedSeconds));
+                            const remMin = Math.floor(remainingSeconds / 60);
+                            const remSec = remainingSeconds % 60;
+                            document.getElementById('estimatedTime').textContent = 
+                                `${String(remMin).padStart(2, '0')}:${String(remSec).padStart(2, '0')}`;
+                        }
+                    }
+                    
+                    // Check if new report exists (backup completion detection)
+                    const response = await fetch(`${API_URL}/reports`);
+                    const data = await response.json();
+                    const reports = data.reports || [];
+                    const strategyReports = reports.filter(r => r.strategy === strategy);
+                    
+                    // Check if we have a NEW report (more reports than before)
+                    if (strategyReports.length > lastReportCount) {
+                        // Simulation completed!
+                        console.log('✅ New report detected! Simulation completed.');
+                        clearInterval(pollInterval);
+                        clearInterval(simulationInterval);
+                        
+                        // Update progress to 100%
+                        document.getElementById('progressFill').style.width = '100%';
+                        document.getElementById('progressFill').textContent = '100%';
+                        document.getElementById('iterationText').textContent = 
+                            `${totalIterations} / ${totalIterations} iterações`;
+                        document.getElementById('estimatedTime').textContent = '00:00';
+                        
+                        // Wait 2 seconds and update UI
+                        setTimeout(async () => {
+                            hideProgress();
+                            
+                            // Reload reports
+                            await loadReports();
+                            
+                            // Update UI to show new report
+                            currentStrategy = strategy;
+                            document.querySelectorAll('.strategy-btn').forEach(btn => {
+                                btn.classList.remove('active');
+                            });
+                            const stratBtn = document.querySelector(`[data-strategy="${strategy}"]`);
+                            if (stratBtn) stratBtn.classList.add('active');
+                            
+                            // Render the strategy data
+                            await renderData(strategy);
+                            
+                            // Always update comparison table after simulation
+                            renderComparisonTable();
+                            
+                            console.log('✅ UI updated with new simulation results');
+                        }, 2000);
+                        return;
+                    }
+                } catch (error) {
+                    console.warn('Poll error:', error);
+                }
+            }, 1000); // Poll every 1 second for smoother progress
+        }
+        
+        function cancelSimulation() {
+            if (confirm('Tem certeza que deseja cancelar a simulação?')) {
+                hideProgress();
+                alert('Simulação cancelada. Note que o processo pode continuar no backend.');
+            }
+        }
+        
+        async function renderData(strategy) {
+            if (strategy === 'all') {
+                renderComparisonTable();
+                // For "all", show aggregated metrics
+                calculateAggregatedMetrics();
+            } else {
+                const report = allReports.find(r => r.strategy === strategy);
+                if (report) {
+                    await loadFullReport(report.filename);
+                }
+            }
+        }
+        
+        async function loadFullReport(filename) {
+            try {
+                console.log(`📥 Loading full report: ${filename}`);
+                const response = await fetch(`${API_URL}/report/${filename}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: Failed to load report`);
+                }
+                
+                const data = await response.json();
+                const report = data.report;
+                
+                if (!report) {
+                    throw new Error('Report data is empty');
+                }
+                
+                console.log('✅ Report loaded successfully:', {
+                    strategy: report.strategy,
+                    iterations: report.iterations,
+                    hasMetrics: !!(report.mean_return && report.mean_sharpe)
+                });
+                
+                // Update metrics first (doesn't depend on DOM)
+                updateMetrics(report);
+                
+                // Wait for next frame to ensure DOM is ready for charts
+                await new Promise(resolve => requestAnimationFrame(() => {
+                    requestAnimationFrame(resolve);
+                }));
+                
+                // Now render charts and other visual elements
+                renderCharts(report);
+                renderScenarios(report);
+                renderRiskMetrics(report);
+                renderSimulationInfo(report, filename);
+            } catch (error) {
+                console.error('❌ Erro ao carregar relatório completo:', error);
+                alert(`Erro ao carregar relatório: ${error.message}`);
+            }
+        }
+        
+        function updateMetrics(report) {
+            // Safe value extraction with defaults
+            const meanReturn = report.mean_return || 0;
+            const percentile5 = report.percentile_5 || 0;
+            const percentile95 = report.percentile_95 || 0;
+            const probProfit = report.probability_of_profit || 0;
+            const sharpeRatio = report.mean_sharpe_ratio || report.mean_sharpe || 0;
+            const var95Value = report.value_at_risk_95 || report.value_at_risk || 0;
+            
+            const meanReturnEl = document.getElementById('meanReturn');
+            if (meanReturnEl) {
+                meanReturnEl.textContent = `${meanReturn.toFixed(2)}%`;
+                meanReturnEl.className = 'metric-value ' + (meanReturn > 0 ? 'positive' : 'negative');
+            }
+            
+            const meanReturnCi = document.getElementById('meanReturnCi');
+            if (meanReturnCi) {
+                meanReturnCi.textContent = 
+                    `95% CI: [${percentile5.toFixed(2)}%, ${percentile95.toFixed(2)}%]`;
+            }
+            
+            const probProfitEl = document.getElementById('probProfit');
+            if (probProfitEl) {
+                probProfitEl.textContent = `${probProfit.toFixed(1)}%`;
+                probProfitEl.className = 'metric-value ' + (probProfit >= 60 ? 'positive' : 'negative');
+            }
+            
+            const sharpeEl = document.getElementById('sharpeRatio');
+            if (sharpeEl) {
+                sharpeEl.textContent = sharpeRatio.toFixed(2);
+                sharpeEl.className = 'metric-value ' + 
+                    (sharpeRatio > 1.5 ? 'positive' : sharpeRatio > 0.5 ? 'neutral' : 'negative');
+            }
+            
+            const sharpeQuality = document.getElementById('sharpeQuality');
+            if (sharpeQuality) {
+                sharpeQuality.textContent = 
+                    sharpeRatio > 2.0 ? 'Excelente' :
+                    sharpeRatio > 1.5 ? 'Bom' :
+                    sharpeRatio > 0.5 ? 'Aceitável' : 'Ruim';
+            }
+            
+            const var95El = document.getElementById('var95');
+            if (var95El) {
+                var95El.textContent = `${var95Value.toFixed(2)}%`;
+                var95El.className = 'metric-value ' + (var95Value > -15 ? 'positive' : 'negative');
+            }
+        }
+        
+        function renderCharts(report) {
+            // Return Distribution Histogram
+            const returns = report.all_results.map(r => r.total_return);
+            const histogram = createHistogram(returns, 50);
+            
+            // Check if canvas element exists
+            const returnDistCanvas = document.getElementById('returnDistribution');
+            if (!returnDistCanvas) {
+                console.error('❌ Canvas element "returnDistribution" not found in DOM');
+                return;
+            }
+            
+            if (charts.returnDist) charts.returnDist.destroy();
+            charts.returnDist = new Chart(returnDistCanvas, {
+                type: 'bar',
+                data: {
+                    labels: histogram.labels,
+                    datasets: [{
+                        label: 'Frequência',
+                        data: histogram.data,
+                        backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                        borderColor: 'rgba(52, 152, 219, 1)',
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Distribuição de Retornos (%)'
+                        }
+                    },
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+            
+            // Sharpe vs Drawdown Scatter
+            const sharpeCanvas = document.getElementById('sharpeVsDrawdown');
+            if (!sharpeCanvas) {
+                console.error('❌ Canvas element "sharpeVsDrawdown" not found in DOM');
+                return;
+            }
+            
+            if (charts.sharpeScatter) charts.sharpeScatter.destroy();
+            charts.sharpeScatter = new Chart(sharpeCanvas, {
+                type: 'scatter',
+                data: {
+                    datasets: [{
+                        label: 'Simulações',
+                        data: report.all_results.map(r => ({
+                            x: r.max_drawdown,
+                            y: r.sharpe_ratio
+                        })),
+                        backgroundColor: 'rgba(231, 76, 60, 0.5)',
+                        borderColor: 'rgba(231, 76, 60, 1)',
+                        pointRadius: 3
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: 'Relação Risco-Retorno'
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Max Drawdown (%)'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Sharpe Ratio'
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function createHistogram(data, bins) {
+            const min = Math.min(...data);
+            const max = Math.max(...data);
+            const binSize = (max - min) / bins;
+            
+            const histogram = new Array(bins).fill(0);
+            const labels = [];
+            
+            for (let i = 0; i < bins; i++) {
+                labels.push((min + i * binSize).toFixed(1));
+            }
+            
+            data.forEach(value => {
+                const binIndex = Math.min(Math.floor((value - min) / binSize), bins - 1);
+                histogram[binIndex]++;
+            });
+            
+            return { labels, data: histogram };
+        }
+        
+        function renderScenarios(report) {
+            // Get scenarios from report (nested structure)
+            const scenarios = report.scenarios || {};
+            const bestCase = scenarios.best_case || {};
+            const medianCase = scenarios.median_case || {};
+            const worstCase = scenarios.worst_case || {};
+            
+            // Extract total_return from each scenario
+            const bestReturn = bestCase.total_return || 0;
+            const medianReturn = medianCase.total_return || 0;
+            const worstReturn = worstCase.total_return || 0;
+            
+            const bestEl = document.getElementById('bestCase');
+            const medianEl = document.getElementById('medianCase');
+            const worstEl = document.getElementById('worstCase');
+            
+            if (bestEl) bestEl.textContent = `${bestReturn >= 0 ? '+' : ''}${bestReturn.toFixed(2)}%`;
+            if (medianEl) medianEl.textContent = `${medianReturn >= 0 ? '+' : ''}${medianReturn.toFixed(2)}%`;
+            if (worstEl) worstEl.textContent = `${worstReturn.toFixed(2)}%`;
+        }
+        
+        function renderRiskMetrics(report) {
+            // Safe value extraction with fallbacks
+            const var95 = report.value_at_risk_95 || report.value_at_risk || 0;
+            const cvar95 = report.conditional_var_95 || 0;
+            const meanDD = report.mean_drawdown || 0;
+            const worstDD = report.worst_drawdown || 0;
+            const stdReturn = report.std_return || report.std || 0;
+            
+            const varEl = document.getElementById('riskVar');
+            const cvarEl = document.getElementById('riskCvar');
+            const avgDDEl = document.getElementById('riskAvgDD');
+            const worstDDEl = document.getElementById('riskWorstDD');
+            const stdEl = document.getElementById('riskStd');
+            
+            if (varEl) varEl.textContent = `${var95.toFixed(2)}%`;
+            if (cvarEl) cvarEl.textContent = `${cvar95.toFixed(2)}%`;
+            if (avgDDEl) avgDDEl.textContent = `${meanDD.toFixed(2)}%`;
+            if (worstDDEl) worstDDEl.textContent = `${worstDD.toFixed(2)}%`;
+            if (stdEl) stdEl.textContent = `${stdReturn.toFixed(2)}%`;
+        }
+        
+        function renderSimulationInfo(report, filename) {
+            const allResults = report.all_results || [];
+            const successful = allResults.length;
+            const total = report.iterations || successful;
+            const execTime = report.execution_time || 0;
+            
+            const iterEl = document.getElementById('infoIterations');
+            const successEl = document.getElementById('infoSuccessful');
+            const rateEl = document.getElementById('infoSuccessRate');
+            const timeEl = document.getElementById('infoExecTime');
+            
+            if (iterEl) iterEl.textContent = total.toLocaleString();
+            if (successEl) successEl.textContent = successful.toLocaleString();
+            if (rateEl) rateEl.textContent = total > 0 ? `${((successful / total) * 100).toFixed(1)}%` : '0%';
+            if (timeEl) timeEl.textContent = execTime > 0 ? `${execTime.toFixed(1)}s` : '--';
+        }
+        
+        function renderComparisonTable() {
+            const tbody = document.getElementById('comparisonTableBody');
+            tbody.innerHTML = '';
+            
+            if (allReports.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center">Nenhum relatório disponível</td></tr>';
+                return;
+            }
+            
+            // Validate and filter reports with required fields
+            const validReports = allReports.filter(r => {
+                const hasRequiredFields = r.mean_return !== undefined && 
+                                         r.probability_of_profit !== undefined &&
+                                         r.mean_sharpe !== undefined &&
+                                         r.value_at_risk !== undefined;
+                if (!hasRequiredFields) {
+                    console.warn('Invalid report structure:', r);
+                }
+                return hasRequiredFields;
+            });
+            
+            if (validReports.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="text-center text-warning">Relatórios sem dados válidos. Execute uma simulação.</td></tr>';
+                return;
+            }
+            
+            // Calculate scores and sort
+            const scored = validReports.map(r => ({
+                ...r,
+                score: (r.mean_return * 0.3) + (r.probability_of_profit * 0.3) + 
+                       (r.mean_sharpe * 10 * 0.2) + (r.value_at_risk * -0.2)
+            })).sort((a, b) => b.score - a.score);
+            
+            scored.forEach((report, index) => {
+                const row = document.createElement('tr');
+                
+                let rankBadge = '';
+                if (index === 0) rankBadge = '<span class="rank-badge rank-1">🥇 1º</span>';
+                else if (index === 1) rankBadge = '<span class="rank-badge rank-2">🥈 2º</span>';
+                else if (index === 2) rankBadge = '<span class="rank-badge rank-3">🥉 3º</span>';
+                else rankBadge = `<span class="badge bg-secondary">${index + 1}º</span>`;
+                
+                // Safe value extraction with defaults
+                const meanReturn = report.mean_return || 0;
+                const probProfit = report.probability_of_profit || 0;
+                const meanSharpe = report.mean_sharpe || 0;
+                const var95 = report.value_at_risk || 0;
+                const iterations = report.iterations || 0;
+                const score = report.score || 0;
+                
+                const returnClass = meanReturn > 0 ? 'text-success fw-bold' : 'text-danger fw-bold';
+                
+                row.innerHTML = `
+                    <td>${rankBadge}</td>
+                    <td><strong>${report.strategy || 'Unknown'}</strong></td>
+                    <td class="${returnClass}">${meanReturn.toFixed(2)}%</td>
+                    <td>${probProfit.toFixed(1)}%</td>
+                    <td>${meanSharpe.toFixed(2)}</td>
+                    <td>${var95.toFixed(2)}%</td>
+                    <td>--</td>
+                    <td>${iterations.toLocaleString()}</td>
+                    <td><span class="badge bg-primary">${score.toFixed(2)}</span></td>
+                `;
+                
+                row.style.cursor = 'pointer';
+                row.onclick = () => selectStrategy(report.strategy);
+                
+                tbody.appendChild(row);
+            });
+        }
+        
+        function calculateAggregatedMetrics() {
+            if (allReports.length === 0) return;
+            
+            const avgReturn = allReports.reduce((sum, r) => sum + r.mean_return, 0) / allReports.length;
+            const avgProb = allReports.reduce((sum, r) => sum + r.probability_of_profit, 0) / allReports.length;
+            const avgSharpe = allReports.reduce((sum, r) => sum + r.mean_sharpe, 0) / allReports.length;
+            const avgVar = allReports.reduce((sum, r) => sum + r.value_at_risk, 0) / allReports.length;
+            
+            document.getElementById('meanReturn').textContent = `${avgReturn.toFixed(2)}%`;
+            document.getElementById('meanReturn').className = 'metric-value ' + (avgReturn > 0 ? 'positive' : 'negative');
+            document.getElementById('meanReturnCi').textContent = '(média de todas)';
+            
+            document.getElementById('probProfit').textContent = `${avgProb.toFixed(1)}%`;
+            document.getElementById('probProfit').className = 'metric-value neutral';
+            
+            document.getElementById('sharpeRatio').textContent = avgSharpe.toFixed(2);
+            document.getElementById('sharpeRatio').className = 'metric-value neutral';
+            document.getElementById('sharpeQuality').textContent = 'Média geral';
+            
+            document.getElementById('var95').textContent = `${avgVar.toFixed(2)}%`;
+            document.getElementById('var95').className = 'metric-value neutral';
+        }
+        
+        function refreshData() {
+            location.reload();
+        }
+    </script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

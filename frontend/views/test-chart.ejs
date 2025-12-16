@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teste de Gráfico</title>
+    <script src="https://unpkg.com/lightweight-charts@3.8.0/dist/lightweight-charts.standalone.production.js"></script>
+    <style>
+        body {
+            background-color: #1a1a1a;
+            color: white;
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+        #chart {
+            width: 800px;
+            height: 400px;
+            margin: 20px auto;
+        }
+        .status {
+            text-align: center;
+            padding: 20px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="status" id="status">Carregando biblioteca TradingView...</div>
+    <div id="chart"></div>
+
+    <script>
+        function checkLibrary() {
+            const statusDiv = document.getElementById('status');
+            
+            if (typeof LightweightCharts === 'undefined') {
+                statusDiv.innerHTML = '❌ TradingView library não carregada. Tentando novamente...';
+                setTimeout(checkLibrary, 1000);
+                return;
+            }
+            
+            statusDiv.innerHTML = '✅ TradingView library carregada com sucesso!';
+            
+            try {
+                // Create simple chart
+                const chart = LightweightCharts.createChart(document.getElementById('chart'), {
+                    width: 800,
+                    height: 400,
+                    layout: {
+                        background: { color: '#1a1a1a' },
+                        textColor: '#ffffff',
+                    },
+                    grid: {
+                        vertLines: { color: '#404040' },
+                        horzLines: { color: '#404040' },
+                    },
+                });
+
+                // Check available methods
+                statusDiv.innerHTML += '<br>Available methods: ' + Object.getOwnPropertyNames(chart).filter(prop => typeof chart[prop] === 'function' && prop.includes('add')).join(', ');
+
+                // Try different candlestick method names
+                let candlestickSeries;
+                if (typeof chart.addCandlestickSeries === 'function') {
+                    candlestickSeries = chart.addCandlestickSeries({
+                        upColor: '#00c896',
+                        downColor: '#ff4757',
+                        borderDownColor: '#ff4757',
+                        borderUpColor: '#00c896',
+                        wickDownColor: '#ff4757',
+                        wickUpColor: '#00c896',
+                    });
+                } else if (typeof chart.addCandleSeries === 'function') {
+                    candlestickSeries = chart.addCandleSeries({
+                        upColor: '#00c896',
+                        downColor: '#ff4757',
+                        borderDownColor: '#ff4757',
+                        borderUpColor: '#00c896',
+                        wickDownColor: '#ff4757',
+                        wickUpColor: '#00c896',
+                    });
+                } else {
+                    // Use line series as fallback
+                    candlestickSeries = chart.addLineSeries({
+                        color: '#00d4aa',
+                        lineWidth: 2,
+                    });
+                    statusDiv.innerHTML += '<br>⚠️ Using line series fallback';
+                }
+
+                // Add sample data
+                const data = [
+                    { time: '2023-01-01', open: 100, high: 110, low: 95, close: 105 },
+                    { time: '2023-01-02', open: 105, high: 115, low: 102, close: 112 },
+                    { time: '2023-01-03', open: 112, high: 118, low: 108, close: 115 },
+                    { time: '2023-01-04', open: 115, high: 120, low: 110, close: 117 },
+                    { time: '2023-01-05', open: 117, high: 125, low: 114, close: 122 },
+                ];
+
+                if (candlestickSeries) {
+                    candlestickSeries.setData(data);
+                }
+                
+                statusDiv.innerHTML = '🎉 Gráfico criado com sucesso!';
+                
+            } catch (error) {
+                statusDiv.innerHTML = '❌ Erro ao criar gráfico: ' + error.message;
+                console.error('Chart error:', error);
+            }
+        }
+        
+        // Start checking after page loads
+        document.addEventListener('DOMContentLoaded', checkLibrary);
+    </script>
+</body>
+</html>

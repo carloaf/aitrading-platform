@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - AI Trading Platform</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <style>
+        .navbar-brand {
+            font-weight: bold;
+            color: #007bff !important;
+        }
+        .main-content {
+            padding: 2rem;
+            background-color: #f8f9fa;
+            min-height: calc(100vh - 56px);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-graph-up-arrow"></i> AI Trading Platform
+            </a>
+            
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">
+                            <i class="bi bi-house"></i> Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/signals">
+                            <i class="bi bi-activity"></i> Sinais
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/news">
+                            <i class="bi bi-newspaper"></i> Notícias
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="container-fluid main-content">
+        <div class="container-fluid d-flex flex-column align-items-center justify-content-center" style="min-height: 80vh;">
+            <div class="text-center">
+                <i class="bi bi-exclamation-triangle-fill text-warning" style="font-size: 5rem;"></i>
+                <h1 class="display-4 mt-3"><%= locals.error && error.status ? error.status : 'Erro' %></h1>
+                <h2 class="mb-4"><%= title %></h2>
+                <p class="lead text-muted mb-4"><%= message %></p>
+                
+                <div class="d-flex justify-content-center gap-3">
+                    <a href="/" class="btn btn-primary">
+                        <i class="bi bi-house"></i> Voltar ao Início
+                    </a>
+                    <button class="btn btn-outline-secondary" onclick="history.back()">
+                        <i class="bi bi-arrow-left"></i> Página Anterior
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

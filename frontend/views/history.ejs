@@ -1,0 +1,757 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - AI Trading Platform</title>
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <style>
+        body {
+            background-color: #0a0e27;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .navbar {
+            background: linear-gradient(135deg, #1a1f3a 0%, #0a0e27 100%);
+            border-bottom: 2px solid #2d3561;
+        }
+        
+        .navbar-brand {
+            color: #00d4ff !important;
+            font-weight: bold;
+            font-size: 1.5rem;
+        }
+        
+        .main-content {
+            padding: 2rem;
+            min-height: calc(100vh - 56px);
+        }
+        
+        .metric-card {
+            background: linear-gradient(135deg, #1e2746 0%, #141829 100%);
+            border: 1px solid #2d3561;
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 212, 255, 0.2);
+        }
+        
+        .metric-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .metric-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+        
+        .metric-label {
+            color: #8892b0;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .metric-change {
+            font-size: 0.9rem;
+            margin-top: 0.5rem;
+        }
+        
+        .positive {
+            color: #00ff88;
+        }
+        
+        .negative {
+            color: #ff4757;
+        }
+        
+        .neutral {
+            color: #ffa502;
+        }
+        
+        .chart-container {
+            background: linear-gradient(135deg, #1e2746 0%, #141829 100%);
+            border: 1px solid #2d3561;
+            border-radius: 15px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            position: relative;
+            height: 400px;
+        }
+        
+        .table-container {
+            background: linear-gradient(135deg, #1e2746 0%, #141829 100%);
+            border: 1px solid #2d3561;
+            border-radius: 15px;
+            padding: 2rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+            overflow-x: auto;
+        }
+        
+        .table {
+            color: #e0e0e0;
+            margin-bottom: 0;
+        }
+        
+        .table thead th {
+            background-color: #0a0e27;
+            border-color: #2d3561;
+            color: #00d4ff;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .table tbody tr {
+            border-color: #2d3561;
+            transition: background-color 0.2s ease;
+        }
+        
+        .table tbody tr:hover {
+            background-color: rgba(0, 212, 255, 0.1);
+        }
+        
+        .badge-buy {
+            background: linear-gradient(135deg, #00ff88 0%, #00d4aa 100%);
+            color: #0a0e27;
+            font-weight: 600;
+        }
+        
+        .badge-sell {
+            background: linear-gradient(135deg, #ff4757 0%, #ff3838 100%);
+            color: white;
+            font-weight: 600;
+        }
+        
+        .session-selector {
+            background: linear-gradient(135deg, #1e2746 0%, #141829 100%);
+            border: 1px solid #2d3561;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .form-select {
+            background-color: #0a0e27;
+            border: 1px solid #2d3561;
+            color: #e0e0e0;
+            border-radius: 8px;
+        }
+        
+        .form-select:focus {
+            border-color: #00d4ff;
+            box-shadow: 0 0 0 0.2rem rgba(0, 212, 255, 0.25);
+            background-color: #0a0e27;
+            color: #e0e0e0;
+        }
+        
+        .form-select option {
+            background-color: #0a0e27;
+            color: #e0e0e0;
+        }
+        
+        .btn-refresh {
+            background: linear-gradient(135deg, #00d4ff 0%, #0099cc 100%);
+            border: none;
+            color: #0a0e27;
+            font-weight: 600;
+            border-radius: 8px;
+            padding: 0.5rem 1.5rem;
+            transition: transform 0.2s ease;
+        }
+        
+        .btn-refresh:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(0, 212, 255, 0.4);
+        }
+        
+        .loading-spinner {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .spinner-border {
+            color: #00d4ff;
+        }
+        
+        h2, h3 {
+            color: #00d4ff;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+        
+        .no-data {
+            text-align: center;
+            padding: 3rem;
+            color: #8892b0;
+            font-size: 1.1rem;
+        }
+        
+        .refresh-indicator {
+            font-size: 0.85rem;
+            color: #8892b0;
+            margin-left: 1rem;
+        }
+        
+        .refresh-indicator.active {
+            color: #00ff88;
+        }
+    </style>
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="bi bi-graph-up-arrow"></i> AI Trading Platform
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/">Dashboard</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/trading-dashboard">Paper Trading</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/history">
+                            <i class="bi bi-clock-history"></i> Histórico
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="container-fluid">
+            <!-- Header -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2><i class="bi bi-clock-history"></i> Histórico de Trading</h2>
+                <div class="d-flex align-items-center">
+                    <button class="btn btn-refresh" onclick="refreshData()">
+                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                    </button>
+                    <span class="refresh-indicator" id="refreshIndicator">
+                        <i class="bi bi-circle-fill"></i> Atualização automática em <span id="countdown">10</span>s
+                    </span>
+                </div>
+            </div>
+
+            <!-- Session Selector -->
+            <div class="session-selector">
+                <div class="row align-items-end">
+                    <div class="col-md-8">
+                        <label for="sessionSelect" class="form-label">Selecione a Sessão</label>
+                        <select class="form-select form-select-lg" id="sessionSelect" onchange="loadSessionData()">
+                            <option value="">Carregando sessões...</option>
+                        </select>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" type="checkbox" id="autoRefresh" checked>
+                            <label class="form-check-label" for="autoRefresh">
+                                Atualização automática
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Metrics Cards -->
+            <div class="row" id="metricsContainer">
+                <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6">
+                    <div class="metric-card text-center">
+                        <div class="metric-icon">💰</div>
+                        <div class="metric-value positive" id="metricBalance">--</div>
+                        <div class="metric-label">Saldo Atual</div>
+                        <div class="metric-change" id="metricBalanceChange">--</div>
+                    </div>
+                </div>
+                <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6">
+                    <div class="metric-card text-center">
+                        <div class="metric-icon">📈</div>
+                        <div class="metric-value" id="metricROI">--</div>
+                        <div class="metric-label">ROI</div>
+                    </div>
+                </div>
+                <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6">
+                    <div class="metric-card text-center">
+                        <div class="metric-icon">🎯</div>
+                        <div class="metric-value" id="metricWinRate">--</div>
+                        <div class="metric-label">Taxa de Acerto</div>
+                    </div>
+                </div>
+                <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6">
+                    <div class="metric-card text-center">
+                        <div class="metric-icon">⚡</div>
+                        <div class="metric-value" id="metricSharpe">--</div>
+                        <div class="metric-label">Sharpe Ratio</div>
+                    </div>
+                </div>
+                <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6">
+                    <div class="metric-card text-center">
+                        <div class="metric-icon">📉</div>
+                        <div class="metric-value negative" id="metricMaxDD">--</div>
+                        <div class="metric-label">Max Drawdown</div>
+                    </div>
+                </div>
+                <div class="col-xl-2 col-lg-3 col-md-4 col-sm-6">
+                    <div class="metric-card text-center">
+                        <div class="metric-icon">🔢</div>
+                        <div class="metric-value neutral" id="metricTrades">--</div>
+                        <div class="metric-label">Total de Trades</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Equity Curve Chart -->
+            <div class="chart-container">
+                <h3><i class="bi bi-graph-up"></i> Evolução do Capital (Equity Curve)</h3>
+                <div class="loading-spinner" id="chartSpinner">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                </div>
+                <canvas id="equityChart"></canvas>
+            </div>
+
+            <!-- Trades Table -->
+            <div class="table-container">
+                <h3><i class="bi bi-list-ul"></i> Histórico de Trades</h3>
+                <div class="loading-spinner" id="tableSpinner">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Carregando...</span>
+                    </div>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-hover" id="tradesTable">
+                        <thead>
+                            <tr>
+                                <th>Data/Hora</th>
+                                <th>Tipo</th>
+                                <th>Símbolo</th>
+                                <th>Preço</th>
+                                <th>Quantidade</th>
+                                <th>Valor</th>
+                                <th>P&L</th>
+                                <th>P&L %</th>
+                                <th>Saldo Após</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tradesTableBody">
+                            <tr>
+                                <td colspan="9" class="no-data">
+                                    Selecione uma sessão para visualizar os trades
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        let equityChart = null;
+        let currentSessionId = null;
+        let autoRefreshInterval = null;
+        let countdownInterval = null;
+        let countdownValue = 10;
+        
+        const EXECUTION_ENGINE_URL = 'http://localhost:3008';
+        
+        // Format currency
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'USD'
+            }).format(value);
+        }
+        
+        // Format percentage
+        function formatPercent(value) {
+            return `${value >= 0 ? '+' : ''}${value.toFixed(2)}%`;
+        }
+        
+        // Format date
+        function formatDate(dateString) {
+            return new Date(dateString).toLocaleString('pt-BR', {
+                day: '2-digit',
+                month: '2-digit',
+                year: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+        
+        // Load all sessions
+        async function loadSessions() {
+            try {
+                const response = await fetch(`${EXECUTION_ENGINE_URL}/api/history/all-sessions`);
+                const data = await response.json();
+                
+                const select = document.getElementById('sessionSelect');
+                select.innerHTML = '<option value="">Selecione uma sessão...</option>';
+                
+                if (data.sessions && data.sessions.length > 0) {
+                    data.sessions.forEach(session => {
+                        const option = document.createElement('option');
+                        option.value = session.session_id;
+                        option.textContent = `${session.strategy_name} - ${session.symbol} (${session.is_running ? 'Ativo' : 'Inativo'})`;
+                        select.appendChild(option);
+                    });
+                    
+                    // Auto-select first session
+                    if (!currentSessionId) {
+                        currentSessionId = data.sessions[0].session_id;
+                        select.value = currentSessionId;
+                        await loadSessionData();
+                    }
+                } else {
+                    select.innerHTML = '<option value="">Nenhuma sessão encontrada</option>';
+                }
+            } catch (error) {
+                console.error('Erro ao carregar sessões:', error);
+                document.getElementById('sessionSelect').innerHTML = '<option value="">Erro ao carregar sessões</option>';
+            }
+        }
+        
+        // Load session data
+        async function loadSessionData() {
+            const sessionId = document.getElementById('sessionSelect').value;
+            
+            if (!sessionId) {
+                return;
+            }
+            
+            currentSessionId = sessionId;
+            
+            // Show loading
+            document.getElementById('chartSpinner').style.display = 'block';
+            document.getElementById('tableSpinner').style.display = 'block';
+            
+            try {
+                // Load performance metrics
+                const perfResponse = await fetch(`${EXECUTION_ENGINE_URL}/api/history/performance/${sessionId}`);
+                const perfData = await perfResponse.json();
+                
+                updateMetrics(perfData);
+                updateEquityChart(perfData);
+                
+                // Load trades
+                const tradesResponse = await fetch(`${EXECUTION_ENGINE_URL}/api/history/trades/${sessionId}`);
+                const tradesData = await tradesResponse.json();
+                
+                updateTradesTable(tradesData.trades || []);
+                
+            } catch (error) {
+                console.error('Erro ao carregar dados da sessão:', error);
+            } finally {
+                document.getElementById('chartSpinner').style.display = 'none';
+                document.getElementById('tableSpinner').style.display = 'none';
+            }
+        }
+        
+        // Update metrics cards
+        function updateMetrics(data) {
+            const balance = data.current_balance || 0;
+            const initialBalance = data.initial_balance || 0;
+            const balanceChange = balance - initialBalance;
+            const balanceChangePercent = ((balanceChange / initialBalance) * 100).toFixed(2);
+            
+            document.getElementById('metricBalance').textContent = formatCurrency(balance);
+            document.getElementById('metricBalance').className = `metric-value ${balance >= initialBalance ? 'positive' : 'negative'}`;
+            
+            document.getElementById('metricBalanceChange').textContent = `${balanceChange >= 0 ? '+' : ''}${formatCurrency(balanceChange)} (${balanceChangePercent}%)`;
+            document.getElementById('metricBalanceChange').className = `metric-change ${balanceChange >= 0 ? 'positive' : 'negative'}`;
+            
+            document.getElementById('metricROI').textContent = formatPercent(data.roi || 0);
+            document.getElementById('metricROI').className = `metric-value ${(data.roi || 0) >= 0 ? 'positive' : 'negative'}`;
+            
+            document.getElementById('metricWinRate').textContent = `${(data.win_rate || 0).toFixed(1)}%`;
+            document.getElementById('metricWinRate').className = `metric-value ${(data.win_rate || 0) >= 50 ? 'positive' : 'negative'}`;
+            
+            const sharpe = data.sharpe_ratio || 0;
+            document.getElementById('metricSharpe').textContent = sharpe.toFixed(2);
+            document.getElementById('metricSharpe').className = `metric-value ${sharpe >= 1 ? 'positive' : sharpe >= 0 ? 'neutral' : 'negative'}`;
+            
+            document.getElementById('metricMaxDD').textContent = formatPercent(data.max_drawdown || 0);
+            
+            document.getElementById('metricTrades').textContent = data.total_trades || 0;
+        }
+        
+        // Update equity chart
+        function updateEquityChart(data) {
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            
+            // Destroy previous chart
+            if (equityChart) {
+                equityChart.destroy();
+            }
+            
+            const equityCurve = data.equity_curve || [];
+            
+            if (equityCurve.length === 0) {
+                // No data - show empty chart
+                equityChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: 'Sem dados',
+                            data: [],
+                            borderColor: '#8892b0',
+                            backgroundColor: 'rgba(136, 146, 176, 0.1)',
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                display: true,
+                                labels: { color: '#e0e0e0' }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Aguardando trades...',
+                                color: '#8892b0'
+                            }
+                        }
+                    }
+                });
+                return;
+            }
+            
+            const chartData = equityCurve.map(point => ({
+                x: new Date(point.timestamp),
+                y: point.balance
+            }));
+            
+            const initialBalance = data.initial_balance || 0;
+            
+            equityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [
+                        {
+                            label: 'Capital',
+                            data: chartData,
+                            borderColor: '#00d4ff',
+                            backgroundColor: 'rgba(0, 212, 255, 0.1)',
+                            borderWidth: 3,
+                            fill: true,
+                            tension: 0.4,
+                            pointRadius: 4,
+                            pointHoverRadius: 6,
+                            pointBackgroundColor: '#00d4ff',
+                            pointBorderColor: '#fff',
+                            pointBorderWidth: 2
+                        },
+                        {
+                            label: 'Capital Inicial',
+                            data: chartData.map(p => ({ x: p.x, y: initialBalance })),
+                            borderColor: '#8892b0',
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            fill: false,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        intersect: false,
+                        mode: 'index'
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top',
+                            labels: {
+                                color: '#e0e0e0',
+                                font: { size: 12 },
+                                padding: 15
+                            }
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(10, 14, 39, 0.95)',
+                            titleColor: '#00d4ff',
+                            bodyColor: '#e0e0e0',
+                            borderColor: '#2d3561',
+                            borderWidth: 1,
+                            padding: 12,
+                            displayColors: true,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + formatCurrency(context.parsed.y);
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'minute',
+                                displayFormats: {
+                                    minute: 'HH:mm',
+                                    hour: 'HH:mm',
+                                    day: 'dd/MM'
+                                }
+                            },
+                            grid: {
+                                color: 'rgba(45, 53, 97, 0.5)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#8892b0',
+                                font: { size: 11 }
+                            }
+                        },
+                        y: {
+                            beginAtZero: false,
+                            grid: {
+                                color: 'rgba(45, 53, 97, 0.5)',
+                                drawBorder: false
+                            },
+                            ticks: {
+                                color: '#8892b0',
+                                font: { size: 11 },
+                                callback: function(value) {
+                                    return formatCurrency(value);
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        // Update trades table
+        function updateTradesTable(trades) {
+            const tbody = document.getElementById('tradesTableBody');
+            
+            if (trades.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="no-data">Nenhum trade executado ainda</td></tr>';
+                return;
+            }
+            
+            tbody.innerHTML = trades.map(trade => {
+                const pnlClass = trade.pnl > 0 ? 'positive' : trade.pnl < 0 ? 'negative' : 'neutral';
+                const badgeClass = trade.trade_type === 'BUY' ? 'badge-buy' : 'badge-sell';
+                
+                return `
+                    <tr>
+                        <td>${formatDate(trade.timestamp)}</td>
+                        <td><span class="badge ${badgeClass}">${trade.trade_type}</span></td>
+                        <td><strong>${trade.symbol}</strong></td>
+                        <td>${formatCurrency(trade.price)}</td>
+                        <td>${trade.quantity.toFixed(6)}</td>
+                        <td>${formatCurrency(trade.value)}</td>
+                        <td class="${pnlClass}">${trade.pnl ? formatCurrency(trade.pnl) : '--'}</td>
+                        <td class="${pnlClass}">${trade.pnl_percent ? formatPercent(trade.pnl_percent) : '--'}</td>
+                        <td>${formatCurrency(trade.balance_after)}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+        
+        // Refresh data
+        async function refreshData() {
+            if (currentSessionId) {
+                await loadSessionData();
+            }
+        }
+        
+        // Start countdown
+        function startCountdown() {
+            countdownValue = 10;
+            document.getElementById('countdown').textContent = countdownValue;
+            
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+            }
+            
+            countdownInterval = setInterval(() => {
+                countdownValue--;
+                document.getElementById('countdown').textContent = countdownValue;
+                
+                if (countdownValue <= 0) {
+                    countdownValue = 10;
+                }
+            }, 1000);
+        }
+        
+        // Auto-refresh setup
+        function setupAutoRefresh() {
+            const autoRefreshCheckbox = document.getElementById('autoRefresh');
+            const refreshIndicator = document.getElementById('refreshIndicator');
+            
+            autoRefreshCheckbox.addEventListener('change', function() {
+                if (this.checked) {
+                    refreshIndicator.classList.add('active');
+                    autoRefreshInterval = setInterval(refreshData, 10000);
+                    startCountdown();
+                } else {
+                    refreshIndicator.classList.remove('active');
+                    if (autoRefreshInterval) {
+                        clearInterval(autoRefreshInterval);
+                    }
+                    if (countdownInterval) {
+                        clearInterval(countdownInterval);
+                    }
+                }
+            });
+            
+            // Start auto-refresh by default
+            if (autoRefreshCheckbox.checked) {
+                autoRefreshInterval = setInterval(refreshData, 10000);
+                startCountdown();
+                refreshIndicator.classList.add('active');
+            }
+        }
+        
+        // Initialize
+        document.addEventListener('DOMContentLoaded', async function() {
+            await loadSessions();
+            setupAutoRefresh();
+        });
+    </script>
+</body>
+</html>
