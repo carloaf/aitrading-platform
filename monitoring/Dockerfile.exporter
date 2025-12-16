@@ -1,0 +1,19 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copiar exporter
+COPY monitoring/wfo_exporter.py /app/
+
+# Criar diretório de logs
+RUN mkdir -p /app/logs/wfo
+
+# Expor porta
+EXPOSE 9090
+
+# Healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:9090/health')"
+
+# Run exporter
+CMD ["python", "/app/wfo_exporter.py", "--csv", "/app/logs/wfo/history.csv", "--port", "9090"]
