@@ -225,6 +225,17 @@ app.get('/scanner', (req, res) => {
   });
 });
 
+// ==========================================
+// BACKTEST VISUAL DASHBOARD (PASSO 33)
+// ==========================================
+app.get('/backtest-visual', (req, res) => {
+  const executionEngineUrl = process.env.EXECUTION_ENGINE_PUBLIC_URL || 'http://localhost:3008';
+  res.render('backtest-visual', {
+    title: 'Backtest Visual Dashboard',
+    executionEngineUrl
+  });
+});
+
 // Rota para Paper Trading Dashboard
 app.get('/paper-trading', (req, res) => {
   // Use localhost URL for browser access (not Docker internal URL)

@@ -94,50 +94,83 @@
                         <div class="mb-3">
                             <label class="form-label fw-bold">Símbolos a Monitorar</label>
                             <div class="row">
-                                <div class="col-6">
-                                    <div class="form-check">
+                                <div class="col-4">
+                                    <small class="text-muted d-block mb-1">Major Cryptos</small>
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="BTC/USDT" id="chkBTC" checked>
                                         <label class="form-check-label" for="chkBTC">BTC/USDT</label>
                                     </div>
-                                    <div class="form-check">
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="ETH/USDT" id="chkETH" checked>
                                         <label class="form-check-label" for="chkETH">ETH/USDT</label>
                                     </div>
-                                    <div class="form-check">
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="SOL/USDT" id="chkSOL" checked>
                                         <label class="form-check-label" for="chkSOL">SOL/USDT</label>
                                     </div>
-                                    <div class="form-check">
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="BNB/USDT" id="chkBNB" checked>
                                         <label class="form-check-label" for="chkBNB">BNB/USDT</label>
                                     </div>
-                                    <div class="form-check">
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="XRP/USDT" id="chkXRP" checked>
                                         <label class="form-check-label" for="chkXRP">XRP/USDT</label>
                                     </div>
                                 </div>
-                                <div class="col-6">
-                                    <div class="form-check">
+                                <div class="col-4">
+                                    <small class="text-muted d-block mb-1">Altcoins Top</small>
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="ADA/USDT" id="chkADA">
                                         <label class="form-check-label" for="chkADA">ADA/USDT</label>
                                     </div>
-                                    <div class="form-check">
+                                    <div class="form-check form-check-sm">
+                                        <input class="form-check-input" type="checkbox" value="DOGE/USDT" id="chkDOGE">
+                                        <label class="form-check-label" for="chkDOGE">DOGE/USDT</label>
+                                    </div>
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="AVAX/USDT" id="chkAVAX">
                                         <label class="form-check-label" for="chkAVAX">AVAX/USDT</label>
                                     </div>
-                                    <div class="form-check">
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="DOT/USDT" id="chkDOT">
                                         <label class="form-check-label" for="chkDOT">DOT/USDT</label>
                                     </div>
-                                    <div class="form-check">
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="MATIC/USDT" id="chkMATIC">
                                         <label class="form-check-label" for="chkMATIC">MATIC/USDT</label>
                                     </div>
-                                    <div class="form-check">
+                                </div>
+                                <div class="col-4">
+                                    <small class="text-muted d-block mb-1">DeFi & L2</small>
+                                    <div class="form-check form-check-sm">
                                         <input class="form-check-input" type="checkbox" value="LINK/USDT" id="chkLINK">
                                         <label class="form-check-label" for="chkLINK">LINK/USDT</label>
                                     </div>
+                                    <div class="form-check form-check-sm">
+                                        <input class="form-check-input" type="checkbox" value="UNI/USDT" id="chkUNI">
+                                        <label class="form-check-label" for="chkUNI">UNI/USDT</label>
+                                    </div>
+                                    <div class="form-check form-check-sm">
+                                        <input class="form-check-input" type="checkbox" value="LTC/USDT" id="chkLTC">
+                                        <label class="form-check-label" for="chkLTC">LTC/USDT</label>
+                                    </div>
+                                    <div class="form-check form-check-sm">
+                                        <input class="form-check-input" type="checkbox" value="ARB/USDT" id="chkARB">
+                                        <label class="form-check-label" for="chkARB">ARB/USDT</label>
+                                    </div>
+                                    <div class="form-check form-check-sm">
+                                        <input class="form-check-input" type="checkbox" value="OP/USDT" id="chkOP">
+                                        <label class="form-check-label" for="chkOP">OP/USDT</label>
+                                    </div>
                                 </div>
+                            </div>
+                            <div class="mt-2">
+                                <button type="button" class="btn btn-outline-secondary btn-sm me-1" onclick="selectAllSymbols()">
+                                    <i class="bi bi-check-all"></i> Todos
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="selectTopSymbols()">
+                                    <i class="bi bi-star"></i> Top 5
+                                </button>
                             </div>
                         </div>
                         
@@ -1027,6 +1060,25 @@
             if (cb.value.includes('/')) symbols.push(cb.value);
         });
         return symbols.length > 0 ? symbols : ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'];
+    }
+    
+    // Select all symbols
+    function selectAllSymbols() {
+        document.querySelectorAll('#scannerConfigForm input[type="checkbox"][id^="chk"]').forEach(cb => {
+            if (cb.value.includes('/')) cb.checked = true;
+        });
+        saveConfig();
+    }
+    
+    // Select top 5 symbols only
+    function selectTopSymbols() {
+        const topSymbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT'];
+        document.querySelectorAll('#scannerConfigForm input[type="checkbox"][id^="chk"]').forEach(cb => {
+            if (cb.value.includes('/')) {
+                cb.checked = topSymbols.includes(cb.value);
+            }
+        });
+        saveConfig();
     }
     
     function getSelectedTimeframes() {

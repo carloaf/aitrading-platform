@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Trading Platform - Backtest Visual Dashboard</title>
+    
+    <!-- Favicon -->
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📊</text></svg>">
+    
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- Custom Styles -->
+    <style>
+        :root {
+            --primary-color: #1a1a1a;
+            --secondary-color: #2d2d2d;
+            --accent-color: #00d4aa;
+            --text-color: #ffffff;
+            --text-secondary: #b0b0b0;
+            --success-color: #00c896;
+            --danger-color: #ff4757;
+            --warning-color: #ffa726;
+            --info-color: #3498db;
+        }
+
+        body {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .navbar {
+            background-color: var(--secondary-color);
+            border-bottom: 1px solid #404040;
+            padding: 0.5rem 1rem;
+        }
+
+        .navbar-brand {
+            color: var(--accent-color) !important;
+            font-weight: bold;
+            font-size: 1.4rem;
+        }
+
+        .nav-link {
+            color: var(--text-secondary) !important;
+            transition: color 0.3s ease;
+        }
+
+        .nav-link:hover, .nav-link.active {
+            color: var(--accent-color) !important;
+        }
+
+        .container-fluid {
+            padding: 1.5rem;
+        }
+
+        .card {
+            background-color: var(--secondary-color);
+            border: 1px solid #404040;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .card-header {
+            background-color: var(--secondary-color);
+            border-bottom: 1px solid #404040;
+            color: var(--text-color);
+            font-weight: 600;
+            padding: 0.75rem 1rem;
+        }
+
+        .card-body {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            padding: 1rem;
+        }
+
+        .form-control, .form-select {
+            background-color: var(--primary-color);
+            border: 1px solid #404040;
+            color: var(--text-color);
+            font-size: 0.9rem;
+        }
+
+        .form-control:focus, .form-select:focus {
+            background-color: var(--primary-color);
+            border-color: var(--accent-color);
+            box-shadow: 0 0 0 0.2rem rgba(0, 212, 170, 0.25);
+            color: var(--text-color);
+        }
+
+        .form-control option, .form-select option {
+            background-color: var(--primary-color);
+            color: var(--text-color);
+        }
+
+        .form-label {
+            font-size: 0.85rem;
+            margin-bottom: 0.25rem;
+            color: var(--text-secondary);
+        }
+
+        .btn-primary {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #000;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            background-color: #00b894;
+            border-color: #00b894;
+        }
+
+        .btn-primary:disabled {
+            background-color: #555;
+            border-color: #555;
+            color: #999;
+        }
+
+        .btn-outline-secondary {
+            color: var(--text-secondary);
+            border-color: #404040;
+        }
+
+        .btn-outline-secondary:hover {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            color: #000;
+        }
+
+        .text-success { color: var(--success-color) !important; }
+        .text-danger { color: var(--danger-color) !important; }
+        .text-warning { color: var(--warning-color) !important; }
+        .text-info { color: var(--info-color) !important; }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat-card {
+            background-color: var(--primary-color);
+            border: 1px solid #404040;
+            border-radius: 6px;
+            padding: 1rem;
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-color);
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        /* Chart containers */
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+
+        .chart-container-lg {
+            height: 400px;
+        }
+
+        /* Trade table */
+        .table-dark {
+            background-color: var(--secondary-color);
+            color: var(--text-color);
+            font-size: 0.85rem;
+        }
+
+        .table-dark td, .table-dark th {
+            border-color: #404040;
+            padding: 0.5rem;
+        }
+
+        .table-dark thead th {
+            border-bottom-width: 2px;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .badge-long {
+            background-color: var(--success-color);
+            color: #000;
+        }
+
+        .badge-short {
+            background-color: var(--danger-color);
+            color: #fff;
+        }
+
+        /* Loading Overlay */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+        }
+
+        .loading-content {
+            text-align: center;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid rgba(0, 212, 170, 0.3);
+            border-top-color: var(--accent-color);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Drawdown bar */
+        .drawdown-bar {
+            height: 20px;
+            background: linear-gradient(to right, var(--danger-color), transparent);
+            border-radius: 4px;
+        }
+
+        /* Pattern stats */
+        .pattern-stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }
+
+        .pattern-item {
+            background-color: var(--primary-color);
+            border-radius: 4px;
+            padding: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .pattern-name {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        .pattern-value {
+            font-weight: bold;
+        }
+
+        /* Heatmap */
+        .monthly-heatmap {
+            display: grid;
+            grid-template-columns: repeat(12, 1fr);
+            gap: 4px;
+        }
+
+        .heatmap-cell {
+            aspect-ratio: 1;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: bold;
+        }
+
+        .heatmap-positive { background-color: rgba(0, 200, 150, 0.7); }
+        .heatmap-negative { background-color: rgba(255, 71, 87, 0.7); }
+        .heatmap-neutral { background-color: #404040; color: #888; }
+
+        /* Responsive adjustments */
+        @media (max-width: 992px) {
+            .stats-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .pattern-stats {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Parameter section styling */
+        .params-section {
+            background-color: var(--primary-color);
+            border-radius: 6px;
+            padding: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .params-section-title {
+            font-size: 0.85rem;
+            color: var(--accent-color);
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .form-check-input:checked {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+        }
+
+        /* Comparison mode */
+        .comparison-badge {
+            background-color: var(--info-color);
+            color: #fff;
+            font-size: 0.7rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 10px;
+        }
+
+        .result-improved {
+            color: var(--success-color);
+        }
+
+        .result-worse {
+            color: var(--danger-color);
+        }
+
+        /* Tab styling */
+        .nav-tabs {
+            border-bottom: 1px solid #404040;
+        }
+
+        .nav-tabs .nav-link {
+            color: var(--text-secondary);
+            border: none;
+            border-bottom: 2px solid transparent;
+        }
+
+        .nav-tabs .nav-link:hover {
+            border-color: transparent;
+            border-bottom-color: var(--accent-color);
+        }
+
+        .nav-tabs .nav-link.active {
+            background-color: transparent;
+            color: var(--accent-color);
+            border-color: transparent;
+            border-bottom-color: var(--accent-color);
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/">
+                <i class="fas fa-chart-line me-2"></i>AI Trading Platform
+            </a>
+            
+            <div class="d-flex align-items-center">
+                <ul class="navbar-nav">
+                    <li class="nav-item">
+                        <a class="nav-link" href="/dashboard">
+                            <i class="fas fa-tachometer-alt me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/scanner">
+                            <i class="fas fa-search-dollar me-1"></i>Scanner
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" href="/backtest-visual">
+                            <i class="fas fa-chart-area me-1"></i>Backtest Visual
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/technical-analysis">
+                            <i class="fas fa-chart-bar me-1"></i>Análise Técnica
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="/signals">
+                            <i class="fas fa-bell me-1"></i>Sinais
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay" style="display: none;">
+        <div class="loading-content">
+            <div class="loading-spinner mx-auto mb-3"></div>
+            <h5>Executando Backtest...</h5>
+            <p class="text-muted" id="loadingStatus">Carregando dados históricos...</p>
+        </div>
+    </div>
+
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Left Panel - Configuration -->
+            <div class="col-lg-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-sliders-h me-2"></i>Configuração RSI Divergence v2.1
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <form id="backtestForm">
+                            <!-- Symbol & Timeframe -->
+                            <div class="params-section">
+                                <div class="params-section-title">
+                                    <i class="fas fa-coins me-1"></i>Ativo & Período
+                                </div>
+                                <div class="mb-2">
+                                    <label for="symbolSelect" class="form-label">Símbolo</label>
+                                    <select class="form-select form-select-sm" id="symbolSelect">
+                                        <optgroup label="Major Cryptos">
+                                            <option value="BTCUSDT" selected>Bitcoin (BTC/USDT)</option>
+                                            <option value="ETHUSDT">Ethereum (ETH/USDT)</option>
+                                            <option value="BNBUSDT">BNB (BNB/USDT)</option>
+                                            <option value="XRPUSDT">Ripple (XRP/USDT)</option>
+                                            <option value="SOLUSDT">Solana (SOL/USDT)</option>
+                                        </optgroup>
+                                        <optgroup label="Altcoins">
+                                            <option value="ADAUSDT">Cardano (ADA/USDT)</option>
+                                            <option value="DOGEUSDT">Dogecoin (DOGE/USDT)</option>
+                                            <option value="AVAXUSDT">Avalanche (AVAX/USDT)</option>
+                                            <option value="LINKUSDT">Chainlink (LINK/USDT)</option>
+                                            <option value="DOTUSDT">Polkadot (DOT/USDT)</option>
+                                            <option value="MATICUSDT">Polygon (MATIC/USDT)</option>
+                                            <option value="UNIUSDT">Uniswap (UNI/USDT)</option>
+                                            <option value="LTCUSDT">Litecoin (LTC/USDT)</option>
+                                            <option value="ATOMUSDT">Cosmos (ATOM/USDT)</option>
+                                            <option value="NEARUSDT">NEAR Protocol (NEAR/USDT)</option>
+                                            <option value="APTUSDT">Aptos (APT/USDT)</option>
+                                            <option value="ARBUSDT">Arbitrum (ARB/USDT)</option>
+                                            <option value="OPUSDT">Optimism (OP/USDT)</option>
+                                        </optgroup>
+                                    </select>
+                                </div>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label for="timeframeSelect" class="form-label">Timeframe</label>
+                                        <select class="form-select form-select-sm" id="timeframeSelect">
+                                            <option value="15m">15 minutos</option>
+                                            <option value="1h" selected>1 hora</option>
+                                            <option value="4h">4 horas</option>
+                                            <option value="1d">1 dia</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="initialCapital" class="form-label">Capital ($)</label>
+                                        <input type="number" class="form-control form-control-sm" id="initialCapital" value="100000" min="1000" step="1000">
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <label for="startDate" class="form-label">Data Inicial</label>
+                                        <input type="date" class="form-control form-control-sm" id="startDate">
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="endDate" class="form-label">Data Final</label>
+                                        <input type="date" class="form-control form-control-sm" id="endDate">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- RSI Parameters -->
+                            <div class="params-section">
+                                <div class="params-section-title">
+                                    <i class="fas fa-chart-line me-1"></i>Parâmetros RSI
+                                </div>
+                                <div class="row">
+                                    <div class="col-4">
+                                        <label for="rsiPeriod" class="form-label">Período</label>
+                                        <input type="number" class="form-control form-control-sm" id="rsiPeriod" value="14" min="5" max="30">
+                                    </div>
+                                    <div class="col-4">
+                                        <label for="rsiOversold" class="form-label">Oversold</label>
+                                        <input type="number" class="form-control form-control-sm" id="rsiOversold" value="25" min="10" max="40">
+                                    </div>
+                                    <div class="col-4">
+                                        <label for="rsiOverbought" class="form-label">Overbought</label>
+                                        <input type="number" class="form-control form-control-sm" id="rsiOverbought" value="75" min="60" max="90">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Divergence Parameters -->
+                            <div class="params-section">
+                                <div class="params-section-title">
+                                    <i class="fas fa-exchange-alt me-1"></i>Detecção de Divergência
+                                </div>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label for="lookbackPeriods" class="form-label">Lookback</label>
+                                        <input type="number" class="form-control form-control-sm" id="lookbackPeriods" value="15" min="5" max="30">
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="minSignalStrength" class="form-label">Força Mín (%)</label>
+                                        <input type="number" class="form-control form-control-sm" id="minSignalStrength" value="50" min="30" max="80" step="5">
+                                    </div>
+                                </div>
+                                <div class="row mt-2">
+                                    <div class="col-6">
+                                        <label for="minAdxTrend" class="form-label">ADX Mín</label>
+                                        <input type="number" class="form-control form-control-sm" id="minAdxTrend" value="18" min="10" max="30">
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="volumeMultiplier" class="form-label">Vol. Mult.</label>
+                                        <input type="number" class="form-control form-control-sm" id="volumeMultiplier" value="1.5" min="1.0" max="3.0" step="0.1">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Risk Management -->
+                            <div class="params-section">
+                                <div class="params-section-title">
+                                    <i class="fas fa-shield-alt me-1"></i>Gestão de Risco (ATR)
+                                </div>
+                                <div class="row">
+                                    <div class="col-6">
+                                        <label for="stopLossAtr" class="form-label">Stop Loss</label>
+                                        <input type="number" class="form-control form-control-sm" id="stopLossAtr" value="2.0" min="1.0" max="5.0" step="0.5">
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="takeProfitAtr" class="form-label">Take Profit</label>
+                                        <input type="number" class="form-control form-control-sm" id="takeProfitAtr" value="4.0" min="1.5" max="10.0" step="0.5">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Filters -->
+                            <div class="params-section">
+                                <div class="params-section-title">
+                                    <i class="fas fa-filter me-1"></i>Filtros Avançados
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="useEmaFilter" checked>
+                                    <label class="form-check-label" for="useEmaFilter">
+                                        EMA 50/200 (Tendência)
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="useMtfFilter">
+                                    <label class="form-check-label" for="useMtfFilter">
+                                        Multi-Timeframe (4h/1d)
+                                    </label>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-play me-2"></i>Executar Backtest
+                            </button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Quick Presets -->
+                <div class="card">
+                    <div class="card-header">
+                        <h6 class="mb-0">
+                            <i class="fas fa-bookmark me-2"></i>Presets Rápidos
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-outline-secondary btn-sm" onclick="loadPreset('conservative')">
+                                <i class="fas fa-shield-alt me-1"></i>Conservador
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="loadPreset('balanced')">
+                                <i class="fas fa-balance-scale me-1"></i>Balanceado
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="loadPreset('aggressive')">
+                                <i class="fas fa-bolt me-1"></i>Agressivo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel - Results -->
+            <div class="col-lg-9">
+                <!-- Welcome Message -->
+                <div id="welcomeMessage" class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="fas fa-chart-area fa-4x text-muted mb-4"></i>
+                        <h3>Backtest Visual Dashboard</h3>
+                        <p class="text-muted mb-4">
+                            Execute backtests da estratégia RSI Divergence v2.1 com visualizações avançadas.
+                        </p>
+                        <div class="row justify-content-center">
+                            <div class="col-md-3">
+                                <i class="fas fa-chart-line fa-2x text-info mb-2"></i>
+                                <h6>Equity Curve</h6>
+                                <p class="small text-muted">Visualize a evolução do capital</p>
+                            </div>
+                            <div class="col-md-3">
+                                <i class="fas fa-table fa-2x text-warning mb-2"></i>
+                                <h6>Heatmap Mensal</h6>
+                                <p class="small text-muted">Retornos por mês</p>
+                            </div>
+                            <div class="col-md-3">
+                                <i class="fas fa-chart-bar fa-2x text-success mb-2"></i>
+                                <h6>Distribuição P&L</h6>
+                                <p class="small text-muted">Histograma de trades</p>
+                            </div>
+                            <div class="col-md-3">
+                                <i class="fas fa-exchange-alt fa-2x text-danger mb-2"></i>
+                                <h6>Análise Patterns</h6>
+                                <p class="small text-muted">Performance por tipo de divergência</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Results Container -->
+                <div id="resultsContainer" style="display: none;">
+                    <!-- Performance Summary -->
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="fas fa-trophy me-2"></i>Resumo de Performance
+                            </h6>
+                            <span id="resultHeader" class="text-muted">-</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="stats-grid" id="statsGrid">
+                                <!-- Stats will be populated here -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Row -->
+                    <div class="row">
+                        <!-- Equity Curve -->
+                        <div class="col-lg-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-chart-area me-2"></i>Curva de Equity
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container chart-container-lg">
+                                        <canvas id="equityChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Drawdown Chart -->
+                        <div class="col-lg-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-chart-line me-2"></i>Drawdown
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="drawdownChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Second Charts Row -->
+                    <div class="row">
+                        <!-- P&L Distribution -->
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-chart-bar me-2"></i>Distribuição de P&L
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="pnlDistChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Pattern Performance -->
+                        <div class="col-lg-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-exchange-alt me-2"></i>Performance por Padrão
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="patternChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Monthly Heatmap & Exit Reasons -->
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-th me-2"></i>Retornos Mensais
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="monthlyHeatmap" class="monthly-heatmap">
+                                        <!-- Heatmap will be populated here -->
+                                    </div>
+                                    <div class="row mt-2 text-center">
+                                        <div class="col"><small class="text-muted">Jan</small></div>
+                                        <div class="col"><small class="text-muted">Fev</small></div>
+                                        <div class="col"><small class="text-muted">Mar</small></div>
+                                        <div class="col"><small class="text-muted">Abr</small></div>
+                                        <div class="col"><small class="text-muted">Mai</small></div>
+                                        <div class="col"><small class="text-muted">Jun</small></div>
+                                        <div class="col"><small class="text-muted">Jul</small></div>
+                                        <div class="col"><small class="text-muted">Ago</small></div>
+                                        <div class="col"><small class="text-muted">Set</small></div>
+                                        <div class="col"><small class="text-muted">Out</small></div>
+                                        <div class="col"><small class="text-muted">Nov</small></div>
+                                        <div class="col"><small class="text-muted">Dez</small></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-lg-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <h6 class="mb-0">
+                                        <i class="fas fa-door-open me-2"></i>Razões de Saída
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="exitReasonsChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trades Table -->
+                    <div class="card">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="fas fa-list me-2"></i>Últimos Trades
+                            </h6>
+                            <span class="text-muted" id="totalTradesLabel">0 trades</span>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-dark table-hover mb-0">
+                                    <thead>
+                                        <tr>
+                                            <th>Data Entrada</th>
+                                            <th>Tipo</th>
+                                            <th>Sinal</th>
+                                            <th>Força</th>
+                                            <th>Preço Entrada</th>
+                                            <th>Preço Saída</th>
+                                            <th>Razão Saída</th>
+                                            <th>P&L</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tradesTableBody">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Dashboard Script -->
+    <script>
+        // Configuration
+        const API_URL = 'http://localhost:3008';
+        const STORAGE_KEY = 'backtestVisualConfig';
+
+        // Chart instances
+        let equityChart = null;
+        let drawdownChart = null;
+        let pnlDistChart = null;
+        let patternChart = null;
+        let exitReasonsChart = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setDefaultDates();
+            loadSavedConfig();
+            setupEventListeners();
+        });
+
+        function setDefaultDates() {
+            const endDate = new Date();
+            const startDate = new Date();
+            startDate.setMonth(startDate.getMonth() - 12); // Last 12 months
+
+            document.getElementById('endDate').value = endDate.toISOString().split('T')[0];
+            document.getElementById('startDate').value = startDate.toISOString().split('T')[0];
+        }
+
+        function loadSavedConfig() {
+            try {
+                const saved = localStorage.getItem(STORAGE_KEY);
+                if (saved) {
+                    const config = JSON.parse(saved);
+                    if (config.symbol) document.getElementById('symbolSelect').value = config.symbol;
+                    if (config.timeframe) document.getElementById('timeframeSelect').value = config.timeframe;
+                    if (config.initialCapital) document.getElementById('initialCapital').value = config.initialCapital;
+                    if (config.rsiPeriod) document.getElementById('rsiPeriod').value = config.rsiPeriod;
+                    if (config.rsiOversold) document.getElementById('rsiOversold').value = config.rsiOversold;
+                    if (config.rsiOverbought) document.getElementById('rsiOverbought').value = config.rsiOverbought;
+                    if (config.useEmaFilter !== undefined) document.getElementById('useEmaFilter').checked = config.useEmaFilter;
+                    if (config.useMtfFilter !== undefined) document.getElementById('useMtfFilter').checked = config.useMtfFilter;
+                }
+            } catch (e) {
+                console.error('Error loading saved config:', e);
+            }
+        }
+
+        function saveConfig() {
+            const config = {
+                symbol: document.getElementById('symbolSelect').value,
+                timeframe: document.getElementById('timeframeSelect').value,
+                initialCapital: document.getElementById('initialCapital').value,
+                rsiPeriod: document.getElementById('rsiPeriod').value,
+                rsiOversold: document.getElementById('rsiOversold').value,
+                rsiOverbought: document.getElementById('rsiOverbought').value,
+                useEmaFilter: document.getElementById('useEmaFilter').checked,
+                useMtfFilter: document.getElementById('useMtfFilter').checked
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+        }
+
+        function setupEventListeners() {
+            document.getElementById('backtestForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                runBacktest();
+            });
+
+            // Auto-save on change
+            document.querySelectorAll('#backtestForm select, #backtestForm input').forEach(el => {
+                el.addEventListener('change', saveConfig);
+            });
+        }
+
+        // Presets
+        function loadPreset(preset) {
+            const presets = {
+                conservative: {
+                    rsiPeriod: 14,
+                    rsiOversold: 20,
+                    rsiOverbought: 80,
+                    lookbackPeriods: 20,
+                    minSignalStrength: 60,
+                    minAdxTrend: 22,
+                    volumeMultiplier: 2.0,
+                    stopLossAtr: 1.5,
+                    takeProfitAtr: 3.0,
+                    useEmaFilter: true,
+                    useMtfFilter: true
+                },
+                balanced: {
+                    rsiPeriod: 14,
+                    rsiOversold: 25,
+                    rsiOverbought: 75,
+                    lookbackPeriods: 15,
+                    minSignalStrength: 50,
+                    minAdxTrend: 18,
+                    volumeMultiplier: 1.5,
+                    stopLossAtr: 2.0,
+                    takeProfitAtr: 4.0,
+                    useEmaFilter: true,
+                    useMtfFilter: false
+                },
+                aggressive: {
+                    rsiPeriod: 10,
+                    rsiOversold: 30,
+                    rsiOverbought: 70,
+                    lookbackPeriods: 10,
+                    minSignalStrength: 40,
+                    minAdxTrend: 15,
+                    volumeMultiplier: 1.2,
+                    stopLossAtr: 2.5,
+                    takeProfitAtr: 5.0,
+                    useEmaFilter: false,
+                    useMtfFilter: false
+                }
+            };
+
+            const p = presets[preset];
+            if (p) {
+                document.getElementById('rsiPeriod').value = p.rsiPeriod;
+                document.getElementById('rsiOversold').value = p.rsiOversold;
+                document.getElementById('rsiOverbought').value = p.rsiOverbought;
+                document.getElementById('lookbackPeriods').value = p.lookbackPeriods;
+                document.getElementById('minSignalStrength').value = p.minSignalStrength;
+                document.getElementById('minAdxTrend').value = p.minAdxTrend;
+                document.getElementById('volumeMultiplier').value = p.volumeMultiplier;
+                document.getElementById('stopLossAtr').value = p.stopLossAtr;
+                document.getElementById('takeProfitAtr').value = p.takeProfitAtr;
+                document.getElementById('useEmaFilter').checked = p.useEmaFilter;
+                document.getElementById('useMtfFilter').checked = p.useMtfFilter;
+                saveConfig();
+            }
+        }
+
+        // Run Backtest
+        async function runBacktest() {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingStatus = document.getElementById('loadingStatus');
+            
+            loadingOverlay.style.display = 'flex';
+            loadingStatus.textContent = 'Carregando dados históricos...';
+
+            const requestData = {
+                symbol: document.getElementById('symbolSelect').value,
+                start_date: document.getElementById('startDate').value,
+                end_date: document.getElementById('endDate').value,
+                initial_capital: parseFloat(document.getElementById('initialCapital').value),
+                timeframe: document.getElementById('timeframeSelect').value,
+                rsi_period: parseInt(document.getElementById('rsiPeriod').value),
+                rsi_oversold: parseInt(document.getElementById('rsiOversold').value),
+                rsi_overbought: parseInt(document.getElementById('rsiOverbought').value),
+                lookback_periods: parseInt(document.getElementById('lookbackPeriods').value),
+                min_signal_strength: parseInt(document.getElementById('minSignalStrength').value) / 100,
+                min_adx_trend: parseInt(document.getElementById('minAdxTrend').value),
+                volume_multiplier: parseFloat(document.getElementById('volumeMultiplier').value),
+                stop_loss_atr_mult: parseFloat(document.getElementById('stopLossAtr').value),
+                take_profit_atr_mult: parseFloat(document.getElementById('takeProfitAtr').value),
+                use_ema_filter: document.getElementById('useEmaFilter').checked,
+                use_mtf_filter: document.getElementById('useMtfFilter').checked
+            };
+
+            try {
+                loadingStatus.textContent = 'Executando estratégia RSI Divergence...';
+                
+                const response = await fetch(`${API_URL}/api/backtest/rsi-divergence`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestData)
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || 'Erro no backtest');
+                }
+
+                const result = await response.json();
+                loadingStatus.textContent = 'Gerando visualizações...';
+                
+                displayResults(result);
+
+            } catch (error) {
+                console.error('Backtest error:', error);
+                alert('Erro ao executar backtest: ' + error.message);
+            } finally {
+                loadingOverlay.style.display = 'none';
+            }
+        }
+
+        // Display Results
+        function displayResults(result) {
+            document.getElementById('welcomeMessage').style.display = 'none';
+            document.getElementById('resultsContainer').style.display = 'block';
+
+            // Header
+            document.getElementById('resultHeader').textContent = 
+                `${result.symbol} | ${result.timeframe} | ${result.period}`;
+
+            // Stats Grid
+            updateStatsGrid(result.results);
+
+            // Charts
+            updateEquityChart(result.equity_curve, result.results.initial_capital);
+            updateDrawdownChart(result.equity_curve);
+            updatePnlDistChart(result.trades);
+            updatePatternChart(result.pattern_statistics);
+            updateExitReasonsChart(result.results.exit_reasons);
+
+            // Monthly Heatmap
+            updateMonthlyHeatmap(result.trades);
+
+            // Trades Table
+            updateTradesTable(result.trades, result.results.total_trades);
+        }
+
+        function updateStatsGrid(results) {
+            const stats = [
+                { label: 'Retorno Total', value: `${results.total_return_pct.toFixed(2)}%`, class: results.total_return_pct >= 0 ? 'text-success' : 'text-danger' },
+                { label: 'Capital Final', value: `$${results.final_capital.toLocaleString()}`, class: 'text-info' },
+                { label: 'Total Trades', value: results.total_trades, class: '' },
+                { label: 'Win Rate', value: `${results.win_rate.toFixed(1)}%`, class: results.win_rate >= 50 ? 'text-success' : 'text-warning' },
+                { label: 'Max Drawdown', value: `${results.max_drawdown_pct.toFixed(2)}%`, class: 'text-danger' },
+                { label: 'Trades Vencedores', value: results.winning_trades, class: 'text-success' },
+                { label: 'Trades Perdedores', value: results.losing_trades, class: 'text-danger' },
+                { label: 'Média Lucro', value: `${results.avg_profit.toFixed(2)}%`, class: 'text-success' },
+                { label: 'Média Perda', value: `${results.avg_loss.toFixed(2)}%`, class: 'text-danger' },
+                { label: 'Profit Factor', value: (results.winning_trades * results.avg_profit / Math.abs(results.losing_trades * results.avg_loss || 1)).toFixed(2), class: 'text-info' }
+            ];
+
+            document.getElementById('statsGrid').innerHTML = stats.map(s => `
+                <div class="stat-card">
+                    <div class="stat-value ${s.class}">${s.value}</div>
+                    <div class="stat-label">${s.label}</div>
+                </div>
+            `).join('');
+        }
+
+        function updateEquityChart(equityCurve, initialCapital) {
+            const ctx = document.getElementById('equityChart').getContext('2d');
+            
+            if (equityChart) equityChart.destroy();
+
+            const data = equityCurve.map(p => ({
+                x: new Date(p.date),
+                y: p.equity
+            }));
+
+            // Add initial point
+            if (data.length > 0) {
+                data.unshift({ x: new Date(data[0].x.getTime() - 86400000), y: initialCapital });
+            }
+
+            equityChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Equity',
+                        data: data,
+                        borderColor: '#00d4aa',
+                        backgroundColor: 'rgba(0, 212, 170, 0.1)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1,
+                        pointRadius: 0
+                    }, {
+                        label: 'Capital Inicial',
+                        data: data.map(p => ({ x: p.x, y: initialCapital })),
+                        borderColor: '#666',
+                        borderWidth: 1,
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { intersect: false, mode: 'index' },
+                    plugins: {
+                        legend: { labels: { color: '#fff' } },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => `${ctx.dataset.label}: $${ctx.raw.y.toLocaleString()}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'month' },
+                            ticks: { color: '#b0b0b0' },
+                            grid: { color: '#333' }
+                        },
+                        y: {
+                            ticks: { 
+                                color: '#b0b0b0',
+                                callback: (v) => '$' + v.toLocaleString()
+                            },
+                            grid: { color: '#333' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateDrawdownChart(equityCurve) {
+            const ctx = document.getElementById('drawdownChart').getContext('2d');
+            
+            if (drawdownChart) drawdownChart.destroy();
+
+            // Calculate drawdown at each point
+            let maxEquity = equityCurve[0]?.equity || 0;
+            const drawdownData = equityCurve.map(p => {
+                if (p.equity > maxEquity) maxEquity = p.equity;
+                const dd = ((maxEquity - p.equity) / maxEquity) * 100;
+                return { x: new Date(p.date), y: -dd };
+            });
+
+            drawdownChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    datasets: [{
+                        label: 'Drawdown',
+                        data: drawdownData,
+                        borderColor: '#ff4757',
+                        backgroundColor: 'rgba(255, 71, 87, 0.3)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: { unit: 'month' },
+                            ticks: { color: '#b0b0b0' },
+                            grid: { color: '#333' }
+                        },
+                        y: {
+                            max: 0,
+                            ticks: { 
+                                color: '#b0b0b0',
+                                callback: (v) => v.toFixed(1) + '%'
+                            },
+                            grid: { color: '#333' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updatePnlDistChart(trades) {
+            const ctx = document.getElementById('pnlDistChart').getContext('2d');
+            
+            if (pnlDistChart) pnlDistChart.destroy();
+
+            // Create histogram bins
+            const pnls = trades.map(t => t.pnl * 100);
+            const bins = {};
+            const binSize = 2; // 2% bins
+
+            pnls.forEach(pnl => {
+                const bin = Math.floor(pnl / binSize) * binSize;
+                bins[bin] = (bins[bin] || 0) + 1;
+            });
+
+            const sortedBins = Object.keys(bins).map(Number).sort((a, b) => a - b);
+            const labels = sortedBins.map(b => `${b}% to ${b + binSize}%`);
+            const values = sortedBins.map(b => bins[b]);
+            const colors = sortedBins.map(b => b >= 0 ? 'rgba(0, 200, 150, 0.7)' : 'rgba(255, 71, 87, 0.7)');
+
+            pnlDistChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Frequência',
+                        data: values,
+                        backgroundColor: colors,
+                        borderColor: colors.map(c => c.replace('0.7', '1')),
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#b0b0b0', maxRotation: 45 },
+                            grid: { display: false }
+                        },
+                        y: {
+                            ticks: { color: '#b0b0b0' },
+                            grid: { color: '#333' }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updatePatternChart(patternStats) {
+            const ctx = document.getElementById('patternChart').getContext('2d');
+            
+            if (patternChart) patternChart.destroy();
+
+            if (!patternStats || Object.keys(patternStats).length === 0) {
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#888';
+                ctx.textAlign = 'center';
+                ctx.fillText('Sem dados de padrões', ctx.canvas.width / 2, ctx.canvas.height / 2);
+                return;
+            }
+
+            const labels = Object.keys(patternStats);
+            const counts = labels.map(l => patternStats[l].count || 0);
+            const avgStrengths = labels.map(l => (patternStats[l].avg_strength || 0) * 100);
+
+            patternChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels.map(l => l.replace('_', ' ')),
+                    datasets: [
+                        {
+                            label: 'Quantidade',
+                            data: counts,
+                            backgroundColor: 'rgba(52, 152, 219, 0.7)',
+                            yAxisID: 'y'
+                        },
+                        {
+                            label: 'Força Média (%)',
+                            data: avgStrengths,
+                            type: 'line',
+                            borderColor: '#00d4aa',
+                            backgroundColor: 'transparent',
+                            yAxisID: 'y1',
+                            tension: 0.2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#fff' } }
+                    },
+                    scales: {
+                        x: {
+                            ticks: { color: '#b0b0b0' },
+                            grid: { display: false }
+                        },
+                        y: {
+                            type: 'linear',
+                            position: 'left',
+                            ticks: { color: '#b0b0b0' },
+                            grid: { color: '#333' }
+                        },
+                        y1: {
+                            type: 'linear',
+                            position: 'right',
+                            ticks: { 
+                                color: '#00d4aa',
+                                callback: (v) => v + '%'
+                            },
+                            grid: { display: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateExitReasonsChart(exitReasons) {
+            const ctx = document.getElementById('exitReasonsChart').getContext('2d');
+            
+            if (exitReasonsChart) exitReasonsChart.destroy();
+
+            const labels = Object.keys(exitReasons);
+            const values = Object.values(exitReasons);
+            const colors = {
+                'TAKE_PROFIT': '#00c896',
+                'STOP_LOSS': '#ff4757',
+                'END_OF_DATA': '#3498db',
+                'SIGNAL': '#ffa726'
+            };
+
+            exitReasonsChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: labels.map(l => colors[l] || '#666'),
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#fff', padding: 15 }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateMonthlyHeatmap(trades) {
+            const container = document.getElementById('monthlyHeatmap');
+            
+            // Group trades by month
+            const monthlyReturns = {};
+            trades.forEach(t => {
+                if (t.exit_date) {
+                    const date = new Date(t.exit_date);
+                    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    monthlyReturns[key] = (monthlyReturns[key] || 0) + (t.pnl * 100);
+                }
+            });
+
+            // Get unique years and sort
+            const years = [...new Set(Object.keys(monthlyReturns).map(k => k.split('-')[0]))].sort();
+            
+            let html = '';
+            years.forEach(year => {
+                for (let m = 1; m <= 12; m++) {
+                    const key = `${year}-${String(m).padStart(2, '0')}`;
+                    const ret = monthlyReturns[key];
+                    
+                    if (ret !== undefined) {
+                        const className = ret > 0 ? 'heatmap-positive' : ret < 0 ? 'heatmap-negative' : 'heatmap-neutral';
+                        html += `<div class="heatmap-cell ${className}" title="${key}: ${ret.toFixed(2)}%">${ret.toFixed(1)}%</div>`;
+                    } else {
+                        html += `<div class="heatmap-cell heatmap-neutral" title="${key}: sem trades">-</div>`;
+                    }
+                }
+            });
+
+            container.innerHTML = html || '<p class="text-muted text-center">Sem dados suficientes para heatmap</p>';
+        }
+
+        function updateTradesTable(trades, totalTrades) {
+            document.getElementById('totalTradesLabel').textContent = `${totalTrades} trades (exibindo ${trades.length})`;
+            
+            const tbody = document.getElementById('tradesTableBody');
+            tbody.innerHTML = trades.map(t => {
+                const signalClass = t.signal === 1 ? 'badge-long' : 'badge-short';
+                const signalText = t.signal === 1 ? 'LONG' : 'SHORT';
+                const pnlClass = t.pnl >= 0 ? 'text-success' : 'text-danger';
+                const pnlPrefix = t.pnl >= 0 ? '+' : '';
+                
+                return `
+                    <tr>
+                        <td>${new Date(t.entry_date).toLocaleDateString('pt-BR')}</td>
+                        <td><span class="badge ${signalClass}">${signalText}</span></td>
+                        <td>${t.signal_type || '-'}</td>
+                        <td>${((t.signal_strength || 0) * 100).toFixed(0)}%</td>
+                        <td>$${t.entry_price.toLocaleString()}</td>
+                        <td>$${t.exit_price?.toLocaleString() || '-'}</td>
+                        <td><small class="text-muted">${t.exit_reason || '-'}</small></td>
+                        <td class="${pnlClass}">${pnlPrefix}${(t.pnl * 100).toFixed(2)}%</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    </script>
+</body>
+</html>
