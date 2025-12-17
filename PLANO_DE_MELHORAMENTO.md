@@ -35,6 +35,8 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 - [PASSO 30](#passo-30-paper-trading-live): Paper Trading Live ✅
 - [PASSO 31](#passo-31-live-trading-integration--dashboard-consolidado-): Live Trading + Dashboard ✅
 - [PASSO 32](#passo-32-multi-symbol-rsi-divergence-scanner--dashboard-): Multi-Symbol Scanner + Dashboard ✅
+- [PASSO 33](#passo-33-backtest-visual-dashboard-): Backtest Visual Dashboard ✅
+- [PASSO 34](#passo-34-machine-learning-signal-filter-planejamento): Machine Learning Signal Filter (Planejamento) 📋
 
 ---
 
@@ -55,6 +57,8 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 | **Live Trading Test** | ✅ Operacional | Dry Run Mode | PASSO 31 |
 | **Dashboard Consolidado** | ✅ Operacional | 4 tabs unificadas | PASSO 31 |
 | **Scanner RSI Divergence** | ✅ Operacional | Multi-symbol real-time | PASSO 32 |
+| **Backtest Visual Dashboard** | ✅ Operacional | Charts interativos | PASSO 33 |
+| **ML Signal Filter** | 📋 Planejado | LightGBM classifier | PASSO 34 |
 | **Sentiment Layer** | 🟡 MVP Integrado | Opt-in | PASSO 28 (sentiment filter) |
 | **Multi-Timeframe Filter** | ✅ Implementado | Opt-in | PASSO 29 (HTF bias 4h/1d + RSI v2.1) |
 
@@ -3834,3 +3838,315 @@ git checkout dev
 4. **Multi-Timeframe Confluence**: Sinais confirmados em 1h + 4h = maior confiança
 
 ---
+
+## 📊 PASSO 33: BACKTEST VISUAL DASHBOARD ✅
+
+**Data**: 18 de Dezembro de 2025
+**Commit**: `844d92c`
+
+### 🎯 Objetivo
+
+Criar um dashboard visual interativo para backtesting da estratégia RSI Divergence v2.1, com gráficos avançados e métricas detalhadas.
+
+### ✅ Funcionalidades Implementadas
+
+#### 1. Nova Página `/backtest-visual`
+
+**Acesso**: `http://localhost:8081/backtest-visual`
+
+#### 2. Gráficos Interativos (Chart.js)
+
+| Gráfico | Descrição |
+|---------|-----------|
+| **Curva de Equity** | Evolução do capital com linha de referência (capital inicial) |
+| **Drawdown** | Visualização do drawdown em tempo real (área vermelha) |
+| **Distribuição P&L** | Histograma de trades por faixa de retorno |
+| **Performance por Padrão** | Barras + linha mostrando quantidade e força média por tipo de divergência |
+| **Razões de Saída** | Gráfico donut (Take Profit vs Stop Loss vs End of Data) |
+| **Heatmap Mensal** | Grid colorido de retornos por mês (verde=positivo, vermelho=negativo) |
+
+#### 3. Métricas de Performance
+
+- Retorno Total (%)
+- Capital Final ($)
+- Total de Trades
+- Win Rate (%)
+- Max Drawdown (%)
+- Trades Vencedores / Perdedores
+- Média de Lucro / Perda (%)
+- Profit Factor
+
+#### 4. Configuração Completa RSI Divergence v2.1
+
+**Parâmetros Configuráveis:**
+```
+- Símbolo: 15+ criptomoedas
+- Timeframe: 15m, 1h, 4h, 1d
+- Capital Inicial
+- RSI: Período, Oversold, Overbought
+- Divergência: Lookback, Força Mínima, ADX Mínimo, Volume Multiplier
+- Risco: Stop Loss ATR, Take Profit ATR
+- Filtros: EMA 50/200, Multi-Timeframe
+```
+
+#### 5. Presets de Configuração
+
+| Preset | Descrição | Características |
+|--------|-----------|-----------------|
+| **Conservador** | Menos trades, maior qualidade | RSI 20/80, Força 60%, MTF ativo |
+| **Balanceado** | Equilíbrio quantidade/qualidade | RSI 25/75, Força 50%, padrão |
+| **Agressivo** | Mais trades, maior risco | RSI 30/70, Força 40%, filtros off |
+
+#### 6. Símbolos Disponíveis (15 Ativos)
+
+**Major Cryptos:**
+- BTC/USDT, ETH/USDT, SOL/USDT, BNB/USDT, XRP/USDT
+
+**Altcoins:**
+- ADA/USDT, DOGE/USDT, AVAX/USDT, DOT/USDT, MATIC/USDT
+
+**DeFi & Layer 2:**
+- LINK/USDT, UNI/USDT, LTC/USDT, ARB/USDT, OP/USDT
+
+#### 7. Persistência de Configuração
+
+- Configurações salvas em `localStorage` (key: `backtestVisualConfig`)
+- Auto-save em eventos de change
+- Restauração automática ao recarregar página
+
+### 📁 Arquivos Criados/Modificados
+
+| Arquivo | Alteração |
+|---------|-----------|
+| `frontend/views/backtest-visual.ejs` | **NOVO** - Dashboard completo (~1400 linhas) |
+| `frontend/server.js` | Adicionada rota `/backtest-visual` |
+| `frontend/views/scanner-dashboard.ejs` | Expandido para 15 símbolos + botões seleção |
+
+### 🔗 Integração API
+
+**Endpoint utilizado:**
+```
+POST http://localhost:3008/api/backtest/rsi-divergence
+```
+
+**Request Body:**
+```json
+{
+  "symbol": "BTCUSDT",
+  "start_date": "2024-01-01",
+  "end_date": "2024-12-18",
+  "initial_capital": 100000,
+  "timeframe": "1h",
+  "rsi_period": 14,
+  "rsi_oversold": 25,
+  "rsi_overbought": 75,
+  "lookback_periods": 15,
+  "min_signal_strength": 0.5,
+  "min_adx_trend": 18,
+  "volume_multiplier": 1.5,
+  "stop_loss_atr_mult": 2.0,
+  "take_profit_atr_mult": 4.0,
+  "use_ema_filter": true,
+  "use_mtf_filter": false
+}
+```
+
+### 🎨 Screenshots Conceituais
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ AI Trading Platform - Backtest Visual Dashboard                      │
+├────────────────────┬─────────────────────────────────────────────────┤
+│                    │  📊 Resumo de Performance                        │
+│ ⚙️ Configuração    │  ┌────┬────┬────┬────┬────┬────┐                │
+│                    │  │+25%│ $125k │ 42 │ 62%│-8% │ 26 │              │
+│ Símbolo: BTCUSDT   │  └────┴────┴────┴────┴────┴────┘                │
+│ Timeframe: 1h      │                                                  │
+│ Capital: $100k     │  📈 Curva de Equity                             │
+│                    │  ┌─────────────────────────────────┐            │
+│ RSI: 14 (25/75)    │  │     ___/\___/\____/\____      │            │
+│ Lookback: 15       │  │   _/                    \__    │            │
+│ Força: 50%         │  │ _/                         \__ │            │
+│ ADX: 18            │  │/______________________________\│            │
+│                    │  └─────────────────────────────────┘            │
+│ [▶️ EXECUTAR]      │                                                  │
+│                    │  📉 Drawdown        📊 P&L Dist                  │
+│ 📌 Presets         │  ┌────────┐        ┌────────┐                   │
+│ • Conservador      │  │▓▓▓▓▓░░░│        │  ▓▓    │                   │
+│ • Balanceado       │  │▓▓▓░░░░░│        │▓▓▓▓▓▓▓▓│                   │
+│ • Agressivo        │  └────────┘        └────────┘                   │
+└────────────────────┴─────────────────────────────────────────────────┘
+```
+
+---
+
+## 🤖 PASSO 34: MACHINE LEARNING SIGNAL FILTER (PLANEJAMENTO)
+
+**Status**: 📋 PLANEJADO
+
+### 🎯 Objetivo
+
+Adicionar uma camada de Machine Learning para filtrar e classificar sinais da estratégia RSI Divergence, melhorando o win rate e reduzindo falsos positivos.
+
+### 📊 Features Propostas
+
+#### 1. Conjunto de Features (Input)
+
+**Indicadores Técnicos:**
+```python
+features = [
+    # RSI
+    'rsi_current',           # RSI atual
+    'rsi_at_divergence',     # RSI no ponto de divergência
+    'rsi_delta',             # Variação RSI (momentum)
+    
+    # Divergência
+    'divergence_strength',   # Força da divergência (0-1)
+    'price_move_pct',        # Movimento de preço desde pivot
+    'rsi_move_pct',          # Movimento RSI desde pivot
+    
+    # Tendência
+    'ema_50_distance',       # Distância % do preço à EMA 50
+    'ema_200_distance',      # Distância % do preço à EMA 200
+    'ema_50_200_cross',      # 1 = Golden Cross, -1 = Death Cross, 0 = neutral
+    'trend_strength',        # ADX normalizado
+    
+    # Volume
+    'volume_ratio',          # Volume atual / Volume médio 20 períodos
+    'volume_trend',          # Tendência de volume (SMA 5 vs SMA 20)
+    
+    # Volatilidade
+    'atr_ratio',             # ATR / Preço (volatilidade relativa)
+    'bb_width',              # Largura Bollinger Bands (volatilidade)
+    'bb_position',           # Posição nas Bandas (-1 a 1)
+    
+    # Multi-Timeframe
+    'htf_trend_alignment',   # Alinhamento com 4h/1d (0 ou 1)
+    'htf_rsi',               # RSI do timeframe superior
+    
+    # Market Context
+    'market_regime',         # BULL=1, BEAR=-1, SIDEWAYS=0
+    'regime_confidence',     # Confiança do regime (0-1)
+    
+    # Pattern Quality
+    'pivot_quality',         # Qualidade dos pivots detectados (0-1)
+    'pattern_type',          # 0=bullish, 1=bearish, 2=hidden_bull, 3=hidden_bear
+]
+```
+
+#### 2. Target (Output)
+
+```python
+# Classificação binária
+target = 'trade_outcome'  # 1 = Trade Vencedor, 0 = Trade Perdedor
+
+# Ou regressão
+target = 'pnl_pct'  # Retorno % do trade
+```
+
+#### 3. Modelos Candidatos
+
+| Modelo | Vantagens | Desvantagens |
+|--------|-----------|--------------|
+| **XGBoost** | Alta performance, feature importance | Pode overfit |
+| **LightGBM** | Rápido, eficiente em memória | Similar ao XGBoost |
+| **Random Forest** | Robusto, interpretável | Mais lento |
+| **Neural Network** | Captura padrões complexos | Black box, precisa mais dados |
+
+**Recomendação**: Começar com **LightGBM** pela velocidade e performance.
+
+#### 4. Pipeline de Training
+
+```python
+# 1. Coletar dados históricos de trades
+historical_trades = load_backtest_results()
+
+# 2. Extrair features de cada trade
+X = extract_features(historical_trades)
+y = historical_trades['is_winner']
+
+# 3. Split temporal (não aleatório!)
+X_train, X_test = temporal_split(X, train_ratio=0.8)
+
+# 4. Treinar modelo
+model = LGBMClassifier(
+    n_estimators=100,
+    max_depth=5,
+    learning_rate=0.1,
+    min_child_samples=20,
+    class_weight='balanced'
+)
+model.fit(X_train, y_train)
+
+# 5. Avaliar
+predictions = model.predict_proba(X_test)[:, 1]
+auc = roc_auc_score(y_test, predictions)
+```
+
+#### 5. Integração no Sistema
+
+**Novo Endpoint:**
+```
+POST /api/ml/predict-signal-quality
+Body: { features: {...} }
+Response: { probability: 0.78, recommendation: "TAKE", confidence: "HIGH" }
+```
+
+**Modificação na Estratégia:**
+```python
+# Em rsi_divergence.py
+def _apply_ml_filter(self, pattern: DivergencePattern) -> bool:
+    """Filtro ML para sinais"""
+    features = self._extract_ml_features(pattern)
+    probability = self.ml_model.predict_proba(features)[0]
+    
+    # Só aceitar sinais com >60% probabilidade
+    return probability >= self.ml_threshold
+```
+
+#### 6. Requisitos de Dados
+
+- **Mínimo**: 500 trades históricos para training inicial
+- **Ideal**: 2000+ trades para modelo robusto
+- **Walk-Forward**: Re-treinar a cada 100 novos trades
+
+#### 7. Métricas de Avaliação
+
+```python
+metrics = {
+    'auc_roc': 0.72,           # Área sob curva ROC
+    'precision': 0.68,          # Precisão (trades vencedores previstos / previstos)
+    'recall': 0.75,             # Recall (trades vencedores capturados / reais)
+    'f1_score': 0.71,           # Média harmônica precision/recall
+    'profit_factor_lift': 1.3,  # Melhoria no profit factor vs baseline
+    'win_rate_lift': 0.08       # +8pp no win rate
+}
+```
+
+### 📋 Cronograma Proposto
+
+| Fase | Descrição | Duração |
+|------|-----------|---------|
+| **1. Data Collection** | Coletar 1000+ trades de backtest | 1-2 dias |
+| **2. Feature Engineering** | Criar pipeline de features | 1 dia |
+| **3. Model Training** | Treinar e validar modelos | 2-3 dias |
+| **4. Integration** | Integrar no execution-engine | 1 dia |
+| **5. Testing** | Backtest com ML filter ativo | 1 dia |
+| **6. Dashboard** | UI para ver probabilidades | 1 dia |
+
+### ⚠️ Considerações
+
+1. **Overfitting**: Usar validação walk-forward, não cross-validation aleatória
+2. **Data Leakage**: Features devem ser calculadas apenas com dados disponíveis no momento do sinal
+3. **Custo Computacional**: Inference deve ser <100ms para não atrasar sinais
+4. **Interpretabilidade**: Usar SHAP values para explicar decisões
+
+### 🔗 Dependências
+
+- `lightgbm>=4.0.0`
+- `scikit-learn>=1.3.0`
+- `shap>=0.42.0` (opcional, para interpretabilidade)
+- `joblib>=1.3.0` (para salvar/carregar modelos)
+
+---
+
