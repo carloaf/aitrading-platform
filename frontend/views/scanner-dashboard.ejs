@@ -1,0 +1,820 @@
+<%- include('layout', { body: `
+<div class="container-fluid px-4">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0">
+                <i class="bi bi-radar text-primary"></i> RSI Divergence Scanner
+            </h1>
+            <p class="text-muted mb-0">Monitoramento em tempo real de divergências RSI em múltiplas criptos</p>
+        </div>
+        <div>
+            <span id="lastScan" class="text-muted me-3">
+                <i class="bi bi-clock"></i> Último scan: --
+            </span>
+            <button class="btn btn-success btn-sm me-2" onclick="runScan()" id="btnScan">
+                <i class="bi bi-search"></i> Scan Agora
+            </button>
+            <button class="btn btn-outline-primary btn-sm" onclick="toggleContinuousScan()" id="btnContinuous">
+                <i class="bi bi-play-circle"></i> Iniciar Contínuo
+            </button>
+        </div>
+    </div>
+
+    <!-- Alerts Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div id="alertsContainer">
+                <!-- Alerts will be dynamically inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Active Signals Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-warning">
+                <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-bell-fill"></i> Sinais Ativos de RSI Divergence
+                        <span id="signalCount" class="badge bg-dark ms-2">0</span>
+                    </h5>
+                    <div>
+                        <span id="scannerStatus" class="badge bg-secondary me-2">Parado</span>
+                        <span id="symbolsMonitored" class="text-dark">0 símbolos</span>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover mb-0" id="signalsTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Símbolo</th>
+                                    <th>Tipo</th>
+                                    <th>Direção</th>
+                                    <th>Força</th>
+                                    <th>RSI</th>
+                                    <th>Preço Atual</th>
+                                    <th>Entrada</th>
+                                    <th>Stop Loss</th>
+                                    <th>Take Profit</th>
+                                    <th>R/R</th>
+                                    <th>Confirmações</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="signalsTableBody">
+                                <tr>
+                                    <td colspan="12" class="text-center text-muted py-5">
+                                        <i class="bi bi-inbox display-4 d-block mb-3"></i>
+                                        <p>Nenhum sinal detectado. Execute um scan para começar.</p>
+                                        <button class="btn btn-primary btn-sm" onclick="runScan()">
+                                            <i class="bi bi-search"></i> Executar Scan
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration & Near Alerts Row -->
+    <div class="row mb-4">
+        <!-- Scanner Configuration -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-gear text-secondary"></i> Configuração do Scanner</h5>
+                </div>
+                <div class="card-body">
+                    <form id="scannerConfigForm">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Símbolos a Monitorar</label>
+                            <div class="row">
+                                <div class="col-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="BTC/USDT" id="chkBTC" checked>
+                                        <label class="form-check-label" for="chkBTC">BTC/USDT</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="ETH/USDT" id="chkETH" checked>
+                                        <label class="form-check-label" for="chkETH">ETH/USDT</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="SOL/USDT" id="chkSOL" checked>
+                                        <label class="form-check-label" for="chkSOL">SOL/USDT</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="BNB/USDT" id="chkBNB" checked>
+                                        <label class="form-check-label" for="chkBNB">BNB/USDT</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="XRP/USDT" id="chkXRP" checked>
+                                        <label class="form-check-label" for="chkXRP">XRP/USDT</label>
+                                    </div>
+                                </div>
+                                <div class="col-6">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="ADA/USDT" id="chkADA">
+                                        <label class="form-check-label" for="chkADA">ADA/USDT</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="AVAX/USDT" id="chkAVAX">
+                                        <label class="form-check-label" for="chkAVAX">AVAX/USDT</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="DOT/USDT" id="chkDOT">
+                                        <label class="form-check-label" for="chkDOT">DOT/USDT</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="MATIC/USDT" id="chkMATIC">
+                                        <label class="form-check-label" for="chkMATIC">MATIC/USDT</label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="LINK/USDT" id="chkLINK">
+                                        <label class="form-check-label" for="chkLINK">LINK/USDT</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Timeframes</label>
+                            <div class="d-flex gap-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="1h" id="chk1h" checked>
+                                    <label class="form-check-label" for="chk1h">1h</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="4h" id="chk4h">
+                                    <label class="form-check-label" for="chk4h">4h</label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="1d" id="chk1d">
+                                    <label class="form-check-label" for="chk1d">1D</label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="minStrength" class="form-label fw-bold">
+                                Força Mínima do Sinal: <span id="strengthValue">0.3</span>
+                            </label>
+                            <input type="range" class="form-range" id="minStrength" min="0.1" max="0.9" step="0.05" value="0.3"
+                                onchange="document.getElementById('strengthValue').textContent = this.value">
+                            <small class="text-muted">Menor = mais sinais (menos qualidade), Maior = menos sinais (mais qualidade)</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="scanInterval" class="form-label fw-bold">
+                                Intervalo de Scan (segundos): <span id="intervalValue">60</span>
+                            </label>
+                            <input type="range" class="form-range" id="scanInterval" min="30" max="300" step="30" value="60"
+                                onchange="document.getElementById('intervalValue').textContent = this.value">
+                        </div>
+                        
+                        <button type="button" class="btn btn-primary w-100" onclick="applyConfig()">
+                            <i class="bi bi-check-circle"></i> Aplicar Configuração
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Near Alerts / Proximity -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-lightning-charge text-warning"></i> Proximidade de Alerta
+                        <small class="text-muted ms-2">(Sinais potenciais formando)</small>
+                    </h5>
+                </div>
+                <div class="card-body" id="nearAlertsContainer">
+                    <div class="row" id="nearAlertsRow">
+                        <!-- Near alerts cards will be inserted here -->
+                        <div class="col-12 text-center text-muted py-4">
+                            <i class="bi bi-hourglass-split display-4 d-block mb-2"></i>
+                            <p>Monitorando formação de divergências...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Market Overview Row -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-bar-chart-line text-info"></i> Visão Geral do Mercado</h5>
+                    <span id="marketUpdateTime" class="text-muted">--</span>
+                </div>
+                <div class="card-body">
+                    <div class="row" id="marketOverview">
+                        <!-- Market data cards will be inserted here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Historical Signals Log -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-clock-history text-secondary"></i> Histórico de Sinais (Últimas 24h)</h5>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="clearHistory()">
+                        <i class="bi bi-trash"></i> Limpar
+                    </button>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>Hora</th>
+                                    <th>Símbolo</th>
+                                    <th>Tipo</th>
+                                    <th>Direção</th>
+                                    <th>Força</th>
+                                    <th>Preço</th>
+                                    <th>RSI</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <tr>
+                                    <td colspan="7" class="text-center text-muted py-3">
+                                        Sem histórico ainda
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast Container for Notifications -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer">
+</div>
+
+<!-- Audio for alerts -->
+<audio id="alertSound" preload="auto">
+    <source src="https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3" type="audio/mpeg">
+</audio>
+
+<style>
+    .signal-bullish { background-color: rgba(40, 167, 69, 0.1); }
+    .signal-bearish { background-color: rgba(220, 53, 69, 0.1); }
+    
+    .strength-bar {
+        height: 8px;
+        border-radius: 4px;
+        background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
+    }
+    
+    .strength-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: white;
+        border: 2px solid #333;
+        position: relative;
+    }
+    
+    .near-alert-card {
+        border-left: 4px solid #ffc107;
+        transition: all 0.3s ease;
+    }
+    
+    .near-alert-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .near-alert-card.forming {
+        animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { border-left-color: #ffc107; }
+        50% { border-left-color: #ff9800; }
+        100% { border-left-color: #ffc107; }
+    }
+    
+    .rsi-gauge {
+        width: 100%;
+        height: 20px;
+        background: linear-gradient(90deg, #28a745 0%, #28a745 30%, #ffc107 30%, #ffc107 70%, #dc3545 70%, #dc3545 100%);
+        border-radius: 10px;
+        position: relative;
+    }
+    
+    .rsi-marker {
+        position: absolute;
+        top: -5px;
+        width: 4px;
+        height: 30px;
+        background: #333;
+        border-radius: 2px;
+        transform: translateX(-50%);
+    }
+    
+    .market-card {
+        transition: transform 0.2s;
+    }
+    
+    .market-card:hover {
+        transform: scale(1.02);
+    }
+    
+    .confirmation-badge {
+        font-size: 0.7rem;
+    }
+    
+    .badge-confirmed { background-color: #28a745; }
+    .badge-unconfirmed { background-color: #6c757d; }
+</style>
+
+<script>
+    // State
+    let isContinuousRunning = false;
+    let scanInterval = null;
+    let signalHistory = [];
+    let nearAlerts = {};
+    
+    const API_BASE = 'http://localhost:3008';
+    
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initializeScanner();
+        fetchMarketData();
+        updateNearAlerts();
+        
+        // Auto-refresh market data every 30 seconds
+        setInterval(fetchMarketData, 30000);
+        setInterval(updateNearAlerts, 15000);
+    });
+    
+    async function initializeScanner() {
+        try {
+            const symbols = getSelectedSymbols();
+            const timeframes = getSelectedTimeframes();
+            
+            const response = await fetch(API_BASE + '/api/scanner/init', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    symbols: symbols,
+                    timeframes: timeframes,
+                    min_signal_strength: parseFloat(document.getElementById('minStrength').value)
+                })
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                document.getElementById('symbolsMonitored').textContent = data.config.symbols.length + ' símbolos';
+                showToast('Scanner Inicializado', 'Monitorando ' + data.config.symbols.length + ' símbolos', 'success');
+            }
+        } catch (error) {
+            console.error('Error initializing scanner:', error);
+            showToast('Erro', 'Falha ao inicializar scanner', 'danger');
+        }
+    }
+    
+    async function runScan() {
+        const btn = document.getElementById('btnScan');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Escaneando...';
+        
+        try {
+            const symbols = getSelectedSymbols();
+            const timeframes = getSelectedTimeframes();
+            
+            const response = await fetch(API_BASE + '/api/scanner/scan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbols, timeframes })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                updateSignalsTable(data.signals);
+                updateLastScan(data.last_scan_time);
+                document.getElementById('signalCount').textContent = data.signals_found;
+                
+                // Add to history
+                if (data.signals && data.signals.length > 0) {
+                    addToHistory(data.signals);
+                    playAlertSound();
+                    showSignalAlerts(data.signals);
+                }
+                
+                showToast('Scan Completo', 
+                    'Encontrados ' + data.signals_found + ' sinais em ' + data.symbols_scanned + ' símbolos', 
+                    data.signals_found > 0 ? 'warning' : 'info');
+            }
+        } catch (error) {
+            console.error('Error running scan:', error);
+            showToast('Erro', 'Falha ao executar scan', 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="bi bi-search"></i> Scan Agora';
+        }
+    }
+    
+    function toggleContinuousScan() {
+        const btn = document.getElementById('btnContinuous');
+        const statusBadge = document.getElementById('scannerStatus');
+        
+        if (isContinuousRunning) {
+            // Stop
+            clearInterval(scanInterval);
+            isContinuousRunning = false;
+            btn.innerHTML = '<i class="bi bi-play-circle"></i> Iniciar Contínuo';
+            btn.classList.remove('btn-danger');
+            btn.classList.add('btn-outline-primary');
+            statusBadge.textContent = 'Parado';
+            statusBadge.classList.remove('bg-success');
+            statusBadge.classList.add('bg-secondary');
+            showToast('Scanner Parado', 'Monitoramento contínuo desativado', 'info');
+        } else {
+            // Start
+            const interval = parseInt(document.getElementById('scanInterval').value) * 1000;
+            runScan(); // Run immediately
+            scanInterval = setInterval(runScan, interval);
+            isContinuousRunning = true;
+            btn.innerHTML = '<i class="bi bi-stop-circle"></i> Parar';
+            btn.classList.remove('btn-outline-primary');
+            btn.classList.add('btn-danger');
+            statusBadge.textContent = 'Rodando';
+            statusBadge.classList.remove('bg-secondary');
+            statusBadge.classList.add('bg-success');
+            showToast('Scanner Iniciado', 'Escaneando a cada ' + (interval/1000) + ' segundos', 'success');
+        }
+    }
+    
+    function updateSignalsTable(signals) {
+        const tbody = document.getElementById('signalsTableBody');
+        
+        if (!signals || signals.length === 0) {
+            tbody.innerHTML = \`
+                <tr>
+                    <td colspan="12" class="text-center text-muted py-5">
+                        <i class="bi bi-check-circle display-4 d-block mb-3 text-success"></i>
+                        <p>Nenhuma divergência RSI detectada no momento.</p>
+                        <small>O scanner continua monitorando...</small>
+                    </td>
+                </tr>
+            \`;
+            return;
+        }
+        
+        let html = '';
+        signals.forEach(signal => {
+            const rowClass = signal.direction === 'BUY' ? 'signal-bullish' : 'signal-bearish';
+            const directionBadge = signal.direction === 'BUY' 
+                ? '<span class="badge bg-success"><i class="bi bi-arrow-up"></i> COMPRA</span>'
+                : '<span class="badge bg-danger"><i class="bi bi-arrow-down"></i> VENDA</span>';
+            
+            const strengthClass = signal.strength >= 0.7 ? 'text-success' : (signal.strength >= 0.5 ? 'text-warning' : 'text-danger');
+            
+            const confirmations = [];
+            if (signal.confirmations.volume) confirmations.push('<span class="badge badge-confirmed confirmation-badge">Vol</span>');
+            else confirmations.push('<span class="badge badge-unconfirmed confirmation-badge">Vol</span>');
+            if (signal.confirmations.macd) confirmations.push('<span class="badge badge-confirmed confirmation-badge">MACD</span>');
+            else confirmations.push('<span class="badge badge-unconfirmed confirmation-badge">MACD</span>');
+            if (signal.confirmations.trend) confirmations.push('<span class="badge badge-confirmed confirmation-badge">Trend</span>');
+            else confirmations.push('<span class="badge badge-unconfirmed confirmation-badge">Trend</span>');
+            
+            html += \`
+                <tr class="\${rowClass}">
+                    <td><strong>\${signal.symbol}</strong></td>
+                    <td>
+                        <span class="badge bg-info">\${formatSignalType(signal.type)}</span>
+                        <br><small class="text-muted">\${signal.timeframe}</small>
+                    </td>
+                    <td>\${directionBadge}</td>
+                    <td class="\${strengthClass}">
+                        <strong>\${(signal.strength * 100).toFixed(0)}%</strong>
+                        <br><small>\${signal.strength_level}</small>
+                    </td>
+                    <td>
+                        <div class="rsi-gauge" style="width: 80px;">
+                            <div class="rsi-marker" style="left: \${signal.rsi}%;"></div>
+                        </div>
+                        <small>\${signal.rsi.toFixed(1)}</small>
+                    </td>
+                    <td>\${formatPrice(signal.price)}</td>
+                    <td class="text-primary fw-bold">\${formatPrice(signal.entry)}</td>
+                    <td class="text-danger">\${formatPrice(signal.stop_loss)}</td>
+                    <td class="text-success">\${formatPrice(signal.take_profit)}</td>
+                    <td><span class="badge bg-secondary">\${signal.risk_reward.toFixed(1)}:1</span></td>
+                    <td>\${confirmations.join(' ')}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-success" onclick="openPaperTrade('\${signal.symbol}', '\${signal.direction}', \${signal.entry})">
+                            <i class="bi bi-play-circle"></i> Paper
+                        </button>
+                    </td>
+                </tr>
+            \`;
+        });
+        
+        tbody.innerHTML = html;
+    }
+    
+    function showSignalAlerts(signals) {
+        const container = document.getElementById('alertsContainer');
+        let html = '';
+        
+        signals.forEach(signal => {
+            const alertClass = signal.direction === 'BUY' ? 'alert-success' : 'alert-danger';
+            const icon = signal.direction === 'BUY' ? 'bi-arrow-up-circle-fill' : 'bi-arrow-down-circle-fill';
+            
+            html += \`
+                <div class="alert \${alertClass} alert-dismissible fade show" role="alert">
+                    <div class="d-flex align-items-center">
+                        <i class="bi \${icon} fs-3 me-3"></i>
+                        <div class="flex-grow-1">
+                            <h5 class="alert-heading mb-1">
+                                \${signal.direction === 'BUY' ? '🟢 SINAL DE COMPRA' : '🔴 SINAL DE VENDA'} - \${signal.symbol}
+                            </h5>
+                            <p class="mb-0">
+                                <strong>\${formatSignalType(signal.type)}</strong> detectada com 
+                                <strong>\${(signal.strength * 100).toFixed(0)}%</strong> de força
+                                (RSI: \${signal.rsi.toFixed(1)})
+                            </p>
+                            <small>
+                                Entrada: \${formatPrice(signal.entry)} | 
+                                SL: \${formatPrice(signal.stop_loss)} | 
+                                TP: \${formatPrice(signal.take_profit)} | 
+                                R/R: \${signal.risk_reward.toFixed(1)}:1
+                            </small>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-dark ms-3" onclick="openPaperTrade('\${signal.symbol}', '\${signal.direction}', \${signal.entry})">
+                            <i class="bi bi-play-circle"></i> Operar
+                        </button>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            \`;
+        });
+        
+        container.innerHTML = html;
+    }
+    
+    async function updateNearAlerts() {
+        // Simulated near alerts - in production this would come from a dedicated endpoint
+        // that tracks RSI approaching oversold/overbought with potential divergence forming
+        
+        const container = document.getElementById('nearAlertsRow');
+        
+        try {
+            // Fetch current RSI values for monitored symbols
+            const symbols = getSelectedSymbols().slice(0, 5); // Top 5
+            let html = '';
+            
+            // Mock data - replace with real API call
+            const nearAlertData = [
+                { symbol: 'BTC/USDT', rsi: 32.5, trend: 'forming_bullish', proximity: 75, price: 86500 },
+                { symbol: 'ETH/USDT', rsi: 68.2, trend: 'watching', proximity: 45, price: 2920 },
+                { symbol: 'SOL/USDT', rsi: 28.1, trend: 'forming_bullish', proximity: 85, price: 126 },
+            ];
+            
+            nearAlertData.forEach(item => {
+                const proximityColor = item.proximity >= 70 ? 'danger' : (item.proximity >= 50 ? 'warning' : 'secondary');
+                const statusText = item.trend === 'forming_bullish' ? 'Possível Bullish Div.' : 
+                                  item.trend === 'forming_bearish' ? 'Possível Bearish Div.' : 'Monitorando';
+                const cardClass = item.proximity >= 70 ? 'near-alert-card forming' : 'near-alert-card';
+                
+                html += \`
+                    <div class="col-md-4 mb-3">
+                        <div class="card \${cardClass}">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0 fw-bold">\${item.symbol}</h6>
+                                    <span class="badge bg-\${proximityColor}">\${item.proximity}% próximo</span>
+                                </div>
+                                <div class="rsi-gauge mb-2">
+                                    <div class="rsi-marker" style="left: \${item.rsi}%;"></div>
+                                </div>
+                                <div class="d-flex justify-content-between text-muted small">
+                                    <span>RSI: \${item.rsi.toFixed(1)}</span>
+                                    <span>\${formatPrice(item.price)}</span>
+                                </div>
+                                <p class="mb-0 mt-2 text-\${proximityColor === 'danger' ? 'danger' : 'muted'}">
+                                    <i class="bi bi-\${item.proximity >= 70 ? 'exclamation-triangle-fill' : 'hourglass-split'}"></i>
+                                    \${statusText}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                \`;
+            });
+            
+            if (html === '') {
+                html = \`
+                    <div class="col-12 text-center text-muted py-4">
+                        <i class="bi bi-check-circle display-4 d-block mb-2 text-success"></i>
+                        <p>Nenhuma divergência em formação no momento</p>
+                    </div>
+                \`;
+            }
+            
+            container.innerHTML = html;
+            
+        } catch (error) {
+            console.error('Error updating near alerts:', error);
+        }
+    }
+    
+    async function fetchMarketData() {
+        const container = document.getElementById('marketOverview');
+        
+        const marketData = [
+            { symbol: 'BTC/USDT', price: 86750, change: 2.3, rsi: 45.2 },
+            { symbol: 'ETH/USDT', price: 2925, change: -0.8, rsi: 52.1 },
+            { symbol: 'SOL/USDT', price: 127.5, change: 5.1, rsi: 61.3 },
+            { symbol: 'BNB/USDT', price: 245.3, change: 1.2, rsi: 48.7 },
+            { symbol: 'XRP/USDT', price: 0.623, change: -1.5, rsi: 38.9 },
+        ];
+        
+        let html = '';
+        marketData.forEach(coin => {
+            const changeClass = coin.change >= 0 ? 'text-success' : 'text-danger';
+            const changeIcon = coin.change >= 0 ? 'bi-caret-up-fill' : 'bi-caret-down-fill';
+            const rsiClass = coin.rsi < 30 ? 'text-success' : (coin.rsi > 70 ? 'text-danger' : 'text-muted');
+            
+            html += \`
+                <div class="col-md-2 col-6 mb-3">
+                    <div class="card market-card h-100">
+                        <div class="card-body text-center p-2">
+                            <h6 class="mb-1">\${coin.symbol.replace('/USDT', '')}</h6>
+                            <h5 class="mb-1">\${formatPrice(coin.price)}</h5>
+                            <span class="\${changeClass}">
+                                <i class="bi \${changeIcon}"></i> \${Math.abs(coin.change).toFixed(2)}%
+                            </span>
+                            <br>
+                            <small class="\${rsiClass}">RSI: \${coin.rsi.toFixed(1)}</small>
+                        </div>
+                    </div>
+                </div>
+            \`;
+        });
+        
+        container.innerHTML = html;
+        document.getElementById('marketUpdateTime').textContent = new Date().toLocaleTimeString();
+    }
+    
+    function addToHistory(signals) {
+        signals.forEach(signal => {
+            signalHistory.unshift({
+                ...signal,
+                time: new Date().toLocaleTimeString()
+            });
+        });
+        
+        // Keep only last 50
+        signalHistory = signalHistory.slice(0, 50);
+        updateHistoryTable();
+    }
+    
+    function updateHistoryTable() {
+        const tbody = document.getElementById('historyTableBody');
+        
+        if (signalHistory.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Sem histórico ainda</td></tr>';
+            return;
+        }
+        
+        let html = '';
+        signalHistory.forEach(signal => {
+            const dirBadge = signal.direction === 'BUY' 
+                ? '<span class="badge bg-success">COMPRA</span>' 
+                : '<span class="badge bg-danger">VENDA</span>';
+            
+            html += \`
+                <tr>
+                    <td>\${signal.time}</td>
+                    <td><strong>\${signal.symbol}</strong></td>
+                    <td><span class="badge bg-info">\${formatSignalType(signal.type)}</span></td>
+                    <td>\${dirBadge}</td>
+                    <td>\${(signal.strength * 100).toFixed(0)}%</td>
+                    <td>\${formatPrice(signal.price)}</td>
+                    <td>\${signal.rsi.toFixed(1)}</td>
+                </tr>
+            \`;
+        });
+        
+        tbody.innerHTML = html;
+    }
+    
+    function clearHistory() {
+        signalHistory = [];
+        updateHistoryTable();
+        document.getElementById('alertsContainer').innerHTML = '';
+        showToast('Histórico Limpo', 'Histórico de sinais foi limpo', 'info');
+    }
+    
+    function applyConfig() {
+        initializeScanner();
+        
+        // Update scan interval if continuous is running
+        if (isContinuousRunning) {
+            clearInterval(scanInterval);
+            const interval = parseInt(document.getElementById('scanInterval').value) * 1000;
+            scanInterval = setInterval(runScan, interval);
+        }
+    }
+    
+    function getSelectedSymbols() {
+        const symbols = [];
+        document.querySelectorAll('#scannerConfigForm input[type="checkbox"][id^="chk"]:checked').forEach(cb => {
+            if (cb.value.includes('/')) symbols.push(cb.value);
+        });
+        return symbols.length > 0 ? symbols : ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'];
+    }
+    
+    function getSelectedTimeframes() {
+        const timeframes = [];
+        ['1h', '4h', '1d'].forEach(tf => {
+            const cb = document.getElementById('chk' + tf);
+            if (cb && cb.checked) timeframes.push(tf);
+        });
+        return timeframes.length > 0 ? timeframes : ['1h'];
+    }
+    
+    function formatSignalType(type) {
+        const types = {
+            'bullish_divergence': 'Bullish Div.',
+            'bearish_divergence': 'Bearish Div.',
+            'hidden_bullish': 'Hidden Bullish',
+            'hidden_bearish': 'Hidden Bearish'
+        };
+        return types[type] || type;
+    }
+    
+    function formatPrice(price) {
+        if (price >= 1000) return '$' + price.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        if (price >= 1) return '$' + price.toFixed(2);
+        return '$' + price.toFixed(4);
+    }
+    
+    function updateLastScan(timestamp) {
+        const date = new Date(timestamp);
+        document.getElementById('lastScan').innerHTML = '<i class="bi bi-clock"></i> Último scan: ' + date.toLocaleTimeString();
+    }
+    
+    function playAlertSound() {
+        try {
+            const audio = document.getElementById('alertSound');
+            audio.volume = 0.3;
+            audio.play().catch(e => console.log('Audio play failed:', e));
+        } catch (e) {}
+    }
+    
+    function showToast(title, message, type = 'info') {
+        const container = document.getElementById('toastContainer');
+        const id = 'toast-' + Date.now();
+        
+        const bgClass = {
+            'success': 'bg-success',
+            'danger': 'bg-danger',
+            'warning': 'bg-warning text-dark',
+            'info': 'bg-info text-dark'
+        }[type] || 'bg-secondary';
+        
+        const html = \`
+            <div id="\${id}" class="toast" role="alert">
+                <div class="toast-header \${bgClass} text-white">
+                    <strong class="me-auto">\${title}</strong>
+                    <small>agora</small>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+                </div>
+                <div class="toast-body">\${message}</div>
+            </div>
+        \`;
+        
+        container.insertAdjacentHTML('beforeend', html);
+        const toast = new bootstrap.Toast(document.getElementById(id));
+        toast.show();
+    }
+    
+    function openPaperTrade(symbol, direction, price) {
+        // Redirect to paper trading with pre-filled data
+        const url = '/paper-trading?symbol=' + encodeURIComponent(symbol.replace('/', '')) + 
+                    '&direction=' + direction + 
+                    '&price=' + price;
+        window.open(url, '_blank');
+    }
+</script>
+`}) %>
