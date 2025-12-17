@@ -30,6 +30,7 @@ from enum import Enum
 import logging
 import ta
 from collections import defaultdict
+import re
 
 # Importar componentes do sistema
 try:
@@ -172,7 +173,11 @@ class MetaBacktester:
                  # PASSO 28: Sentiment filter (opt-in)
                  use_sentiment_filter: bool = False,
                  sentiment_score: float = 0.0,
-                 sentiment_min_score: float = -0.2):
+                 sentiment_min_score: float = -0.2,
+                 # PASSO 29: Multi-Timeframe confirmation (opt-in)
+                 use_multi_timeframe_filter: bool = False,
+                 mtf_timeframes: Optional[List[str]] = None,
+                 mtf_min_candles: int = 20):  # Realista para ano de dados 1h
         """
         Inicializa o Meta-Backtester
         
@@ -214,6 +219,14 @@ class MetaBacktester:
         self.use_sentiment_filter = bool(use_sentiment_filter)
         self.sentiment_score = float(sentiment_score)
         self.sentiment_min_score = float(sentiment_min_score)
+
+        # PASSO 29: Multi-Timeframe confirmation (opt-in)
+        self.use_multi_timeframe_filter = bool(use_multi_timeframe_filter)
+        self.mtf_timeframes = mtf_timeframes if mtf_timeframes is not None else ['4h', '1d']
+        self.mtf_min_candles = max(10, int(mtf_min_candles))
+        self.mtf_last_state: Optional[Dict[str, Any]] = None
+        self._mtf_state: Optional[Dict[str, Any]] = None
+        self._mtf_required_lookback_1h_candles = self._compute_mtf_required_lookback_1h_candles()
         
         # Componentes
         self.regime_detector = MarketRegimeDetector()
@@ -278,11 +291,16 @@ class MetaBacktester:
             'entry_accepted': defaultdict(int),
             'entry_rejected_quality': defaultdict(int),
             'entry_rejected_sentiment': defaultdict(int),
+            'entry_rejected_mtf': defaultdict(int),
             'entry_rejected_chop_protection': defaultdict(int),
             'entry_rejected_exception': defaultdict(int),
             'entry_rejected_missing_signal_col': defaultdict(int),
             'entry_rejected_unknown_strategy': defaultdict(int),
         }
+
+        # PASSO 29: reset MTF state
+        self.mtf_last_state = None
+        self._mtf_state = None
     
     def run_simulation(self,
                        df: pd.DataFrame,
@@ -437,6 +455,12 @@ class MetaBacktester:
             
             # === PASSO 4: Verificar Entradas ===
             if not self.open_position and candidates:
+                # PASSO 29: atualizar estado MTF uma vez por candle (evita recomputar por candidate)
+                if self.use_multi_timeframe_filter:
+                    mtf_lookback = max(self.regime_lookback, int(self._mtf_required_lookback_1h_candles))
+                    mtf_start = max(0, i - mtf_lookback + 1)
+                    self._update_multi_timeframe_state(df.iloc[mtf_start:i + 1])
+
                 # DEBUG: Log candidatos (a cada 500 candles)
                 if (i - self.regime_lookback) % 500 == 0:
                     cand_str = ', '.join([f"{s}:{d}" for s, d in candidates[:5]])
@@ -471,6 +495,115 @@ class MetaBacktester:
         
         # Calcular métricas finais
         return self._calculate_results()
+
+    def _resample_ohlcv(self, df: pd.DataFrame, rule: str) -> Optional[pd.DataFrame]:
+        """Resample OHLCV dataframe (index datetime) to higher timeframe."""
+        if df is None or df.empty:
+            return None
+
+        if not isinstance(df.index, pd.DatetimeIndex):
+            return None
+
+        required_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        for col in required_cols:
+            if col not in df.columns:
+                return None
+
+        ohlcv = df[required_cols].copy()
+        # Ensure time sorted
+        ohlcv = ohlcv.sort_index()
+
+        try:
+            resampled = ohlcv.resample(rule, label='right', closed='right').agg({
+                'Open': 'first',
+                'High': 'max',
+                'Low': 'min',
+                'Close': 'last',
+                'Volume': 'sum',
+            })
+            resampled = resampled.dropna(subset=['Open', 'High', 'Low', 'Close'])
+            return resampled
+        except Exception:
+            return None
+
+    def _timeframe_to_hours(self, tf: str) -> Optional[int]:
+        """Convert timeframe strings like '4h'/'1d' to hours (base timeframe assumed 1h)."""
+        if not tf:
+            return None
+        m = re.fullmatch(r"\s*(\d+)\s*([mhdw])\s*", str(tf).lower())
+        if not m:
+            return None
+
+        n = int(m.group(1))
+        unit = m.group(2)
+        if unit == 'h':
+            return n
+        if unit == 'd':
+            return n * 24
+        if unit == 'w':
+            return n * 24 * 7
+        # minutes are not supported for the MTF confirmation window
+        return None
+
+    def _compute_mtf_required_lookback_1h_candles(self) -> int:
+        """Minimum 1h candles required so the highest HTF has `mtf_min_candles` after resample."""
+        hours = [self._timeframe_to_hours(tf) for tf in (self.mtf_timeframes or [])]
+        hours = [h for h in hours if isinstance(h, int) and h > 0]
+        if not hours:
+            return int(self.mtf_min_candles)
+        return int(max(hours) * int(self.mtf_min_candles))
+
+    def _update_multi_timeframe_state(self, df_1h: pd.DataFrame) -> None:
+        """Computa regimes em timeframes maiores (ex.: 4h e 1d) para usar como bias."""
+        state: Dict[str, Any] = {
+            'timeframes': {},
+            'asof': df_1h.index[-1].isoformat() if isinstance(df_1h.index, pd.DatetimeIndex) and len(df_1h) else None,
+        }
+
+        for tf in (self.mtf_timeframes or []):
+            rule = None
+            if tf in ('4h', '4H'):
+                rule = '4H'
+            elif tf in ('1d', '1D', 'D'):
+                rule = '1D'
+            else:
+                # Unsupported timeframe string
+                state['timeframes'][tf] = {
+                    'regime': 'unknown',
+                    'confidence': 0.0,
+                    'candles': 0,
+                    'error': 'unsupported_timeframe'
+                }
+                continue
+
+            df_htf = self._resample_ohlcv(df_1h, rule)
+            if df_htf is None or len(df_htf) < self.mtf_min_candles:
+                state['timeframes'][tf] = {
+                    'regime': 'unknown',
+                    'confidence': 0.0,
+                    'candles': 0 if df_htf is None else int(len(df_htf)),
+                }
+                continue
+
+            try:
+                analysis = self.regime_detector.analyze(df_htf)
+                state['timeframes'][tf] = {
+                    'regime': analysis.regime.value,
+                    'confidence': float(getattr(analysis, 'confidence', 0.0) or 0.0),
+                    'trend_strength': float(getattr(analysis, 'trend_strength', 0.0) or 0.0),
+                    'volatility': float(getattr(analysis, 'volatility', 0.0) or 0.0),
+                    'candles': int(len(df_htf)),
+                }
+            except Exception as e:
+                state['timeframes'][tf] = {
+                    'regime': 'unknown',
+                    'confidence': 0.0,
+                    'candles': int(len(df_htf)),
+                    'error': str(e)[:200],
+                }
+
+        self._mtf_state = state
+        self.mtf_last_state = state
     
     def _prepare_data(self, df: pd.DataFrame) -> pd.DataFrame:
         """Prepara dados com indicadores básicos"""
@@ -803,6 +936,21 @@ class MetaBacktester:
 
             if not is_entry_signal:
                 return False
+
+            # PASSO 29: Multi-Timeframe confirmation (opt-in)
+            # Bias simples: bloquear LONG se algum HTF estiver BEAR; bloquear SHORT se algum HTF estiver BULL.
+            if self.use_multi_timeframe_filter:
+                if self._mtf_state is None:
+                    self._update_multi_timeframe_state(df)
+
+                timeframes = (self._mtf_state or {}).get('timeframes', {})
+                htf_regimes = [v.get('regime') for v in timeframes.values() if isinstance(v, dict)]
+                if direction == 'LONG' and any(r == MarketRegime.BEAR.value for r in htf_regimes if r):
+                    self.debug_stats['entry_rejected_mtf'][f"{strategy}:LONG:{self.current_regime.value}"] += 1
+                    return False
+                if direction == 'SHORT' and any(r == MarketRegime.BULL.value for r in htf_regimes if r):
+                    self.debug_stats['entry_rejected_mtf'][f"{strategy}:SHORT:{self.current_regime.value}"] += 1
+                    return False
 
             # PASSO 28: Sentiment filter (opt-in)
             # Objetivo: bloquear LONG quando sentiment agregado está negativo (ex.: notícias ruins)
@@ -1257,9 +1405,9 @@ class MetaBacktester:
             if hasattr(trade, 'exit_reason') and trade.exit_reason:
                 exit_reasons[trade.exit_reason] += 1
         
-        debug_out = {
-            k: dict(v) for k, v in self.debug_stats.items()
-        }
+        debug_out = {k: dict(v) for k, v in self.debug_stats.items()}
+        if self.use_multi_timeframe_filter:
+            debug_out['mtf_last_state'] = self.mtf_last_state
 
         return SimulationResult(
             initial_capital=self.initial_capital,

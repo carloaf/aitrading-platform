@@ -5,7 +5,7 @@ Endpoints para controlar paper trading e monitorar performance
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import logging
@@ -367,6 +367,11 @@ class MetaBacktestRequest(BaseModel):
     sentiment_min_score: float = -0.2
     sentiment_use_precomputed: bool = True
 
+    # PASSO 29: Multi-Timeframe confirmation (opt-in)
+    use_multi_timeframe_filter: bool = False
+    mtf_timeframes: List[str] = Field(default_factory=lambda: ["4h", "1d"])
+    mtf_min_candles: int = 20  # Realista: 1 ano 1h (~8760h) → 2190 candles 4h, 365 candles 1d
+
 
 class RiskCalculationRequest(BaseModel):
     """Requisição para cálculo de risco"""
@@ -562,6 +567,10 @@ async def run_meta_backtest(request: MetaBacktestRequest):
             use_sentiment_filter=request.use_sentiment_filter,
             sentiment_score=sentiment_score,
             sentiment_min_score=request.sentiment_min_score,
+            # PASSO 29: Multi-Timeframe confirmation
+            use_multi_timeframe_filter=request.use_multi_timeframe_filter,
+            mtf_timeframes=request.mtf_timeframes,
+            mtf_min_candles=request.mtf_min_candles,
         )
         
         result = backtester.run_simulation(df)
@@ -636,6 +645,12 @@ async def run_meta_backtest(request: MetaBacktestRequest):
                 "min_score": request.sentiment_min_score,
                 "score": round(float(sentiment_score), 4),
                 "details": sentiment_payload,
+            },
+
+            "multi_timeframe": {
+                "enabled": bool(request.use_multi_timeframe_filter),
+                "timeframes": list(request.mtf_timeframes or []),
+                "min_candles": int(request.mtf_min_candles),
             },
             
             "adaptability": {

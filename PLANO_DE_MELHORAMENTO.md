@@ -30,8 +30,8 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 
 ### FASE 6: ADVANCED FEATURES (PASSO 27+) 🚀
 - PASSO 27: Advanced WFO Features (Em Progresso)
-- PASSO 28: Sentiment Analysis Integration
-- PASSO 29: Multi-Timeframe Analysis
+- [PASSO 28](#passo-28-sentiment-analysis-integration-opt-in): Sentiment Analysis Integration ✅
+- [PASSO 29](#passo-29-multi-timeframe-confirmation-opt-in): Multi-Timeframe Analysis ✅
 - PASSO 30: Paper Trading Live
 
 ---
@@ -51,6 +51,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 | **Multi-Par Validation** | ✅ Operacional | BTC/ETH/SOL validated | Script validate_multipar.sh |
 | **Paper Trading** | ⏳ Planejado | - | PASSO 30 |
 | **Sentiment Layer** | 🟡 MVP Integrado | Opt-in | PASSO 28 (sentiment filter) |
+| **Multi-Timeframe Filter** | 🟡 MVP Integrado | Opt-in | PASSO 29 (HTF bias 4h/1d) |
 
 ### ✅ PASSOS CONCLUÍDOS
 
@@ -2978,11 +2979,55 @@ Se estratégia funciona apenas em 1 par = OVERFITTING → REJEITAR
 - ✅ Validação smoke test multi-par: BTC/ETH/SOL
 - **Objetivo**: Filtrar trades contra sentiment negativo (ex.: bloquear LONG com score < threshold)
 
-#### 4. **Multi-Timeframe Confirmation** (PASSO 29)
-- 1h + 4h + 1d confirmation
-- Higher timeframe bias filtering
-- Backtesting comparativo
-- **Objetivo**: Reduzir false signals com confluência multi-TF
+#### 4. **Multi-Timeframe Confirmation** (PASSO 29) ✅ MVP INTEGRADO
+- ✅ Resample 1h → 4h/1d via `_resample_ohlcv()`
+- ✅ Detecção de regime HTF via `MarketRegimeDetector` em cada timeframe
+- ✅ Filtro opt-in no MetaBacktester via `POST /api/meta-backtest/run` (`use_multi_timeframe_filter`, `mtf_timeframes`, `mtf_min_candles`)
+- ✅ Gate simples: bloqueia LONG se HTF=BEAR, bloqueia SHORT se HTF=BULL
+- ✅ Debug instrumentado: `debug.entry_rejected_mtf`, `debug.mtf_last_state`
+- ✅ Validação BTC Q1 2023: 4h=SIDEWAYS (120 candles), 1d=unknown (20 candles)
+- **Objetivo**: Reduzir false signals com confluência multi-TF (bias HTF)
+
+**Exemplo de Uso**:
+```bash
+curl -X POST http://localhost:3008/api/meta-backtest/run \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "symbol": "BTCUSDT",
+    "interval": "1h",
+    "start_date": "2023-01-01",
+    "end_date": "2023-12-31",
+    "use_multi_timeframe_filter": true,
+    "mtf_timeframes": ["4h", "1d"],
+    "mtf_min_candles": 20
+  }'
+```
+
+**Parâmetros**:
+- `use_multi_timeframe_filter` (bool): Habilitar filtro MTF (default: false)
+- `mtf_timeframes` (list): Timeframes HTF para análise (default: ["4h", "1d"])
+- `mtf_min_candles` (int): Mínimo de candles HTF para regime válido (default: 20)
+
+**Response** (adicional):
+```json
+{
+  "multi_timeframe": {
+    "enabled": true,
+    "timeframes": ["4h", "1d"],
+    "min_candles": 20
+  },
+  "debug": {
+    "entry_rejected_mtf": {"momentum:LONG:BULL": 3},
+    "mtf_last_state": {
+      "timeframes": {
+        "4h": {"regime": "sideways", "confidence": 0.65, "candles": 120},
+        "1d": {"regime": "unknown", "confidence": 0.0, "candles": 20}
+      },
+      "asof": "2023-12-31T00:00:00"
+    }
+  }
+}
+```
 
 ---
         
