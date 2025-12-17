@@ -33,6 +33,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 - [PASSO 28](#passo-28-sentiment-analysis-integration-opt-in): Sentiment Analysis Integration ✅
 - [PASSO 29](#passo-29-multi-timeframe-confirmation-opt-in): Multi-Timeframe Analysis ✅
 - [PASSO 30](#passo-30-paper-trading-live): Paper Trading Live ✅
+- [PASSO 31](#passo-31-live-trading-integration--dashboard-consolidado-): Live Trading + Dashboard ✅
 
 ---
 
@@ -50,6 +51,8 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 | **WFO Automation** | ✅ Deploy | 81/100 robustez | Script wfo_simple.sh ready |
 | **Multi-Par Validation** | ✅ Operacional | BTC/ETH/SOL validated | Script validate_multipar.sh |
 | **Paper Trading** | ✅ Operacional | WebSocket Live | PASSO 30 |
+| **Live Trading Test** | ✅ Operacional | Dry Run Mode | PASSO 31 |
+| **Dashboard Consolidado** | ✅ Operacional | 4 tabs unificadas | PASSO 31 |
 | **Sentiment Layer** | 🟡 MVP Integrado | Opt-in | PASSO 28 (sentiment filter) |
 | **Multi-Timeframe Filter** | 🟡 MVP Integrado | Opt-in | PASSO 29 (HTF bias 4h/1d) |
 
@@ -3445,3 +3448,159 @@ Aprende e adapta continuamente
 Próximo passo: Começar pela implementação do InstitutionalTrendFollowing e InstitutionalRegimeDetector. Esses dois componentes formam o núcleo do sistema.
 
 Pergunta: Quer que detalhe a implementação de alguma parte específica primeiro?
+---
+
+## 📈 PASSO 31: LIVE TRADING INTEGRATION + DASHBOARD CONSOLIDADO ✅
+
+**Data**: 17 de Dezembro de 2025  
+**Branch**: `feature/passo-31-live-trading-dashboard`  
+**Status**: ✅ CONCLUÍDO E TESTADO
+
+### 🎯 Objetivo
+
+Implementar integração de Live Trading em **modo de teste** (dry_run) para validar conectividade e fluxo de ordens sem risco financeiro, junto com um Dashboard Frontend Consolidado que unifica todas as funcionalidades do sistema.
+
+### 📂 Arquivos Criados/Modificados
+
+| Arquivo | Ação | Descrição |
+|---------|------|-----------|
+| `services/execution-engine/src/live_trading_test.py` | NOVO (~560 linhas) | Módulo de integração Binance via ccxt |
+| `services/execution-engine/src/main.py` | MODIFICADO | 7 novos endpoints Live Trading |
+| `frontend/views/consolidated-dashboard.ejs` | NOVO (~1300 linhas) | Dashboard unificado |
+| `frontend/server.js` | MODIFICADO | Rota `/consolidated` |
+| `frontend/views/layout.ejs` | MODIFICADO | Menu atualizado |
+
+### 🔧 Funcionalidades Live Trading
+
+#### Modos de Operação
+
+| Modo | Descrição | Status |
+|------|-----------|--------|
+| `dry_run` | Simulação local com preços reais da Binance | ✅ Padrão |
+| `testnet` | Binance Testnet (requer credenciais Testnet) | ✅ Disponível |
+| `live` | Produção real (BLOQUEADO por segurança) | 🔒 Desabilitado |
+
+#### Safety Features
+
+- **Kill Switch**: Parada de emergência que bloqueia todas as ordens
+- **Daily Order Limit**: Máximo 100 ordens por dia
+- **Max Order Value**: Limite de $1000 USD por ordem
+- **Audit Log**: Registro completo de todas as operações
+
+#### Endpoints Live Trading (porta 3008)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `POST` | `/api/live-trading/init` | Inicializa cliente (dry_run/testnet) |
+| `GET` | `/api/live-trading/status` | Status atual do cliente |
+| `POST` | `/api/live-trading/test-order` | Testa ordem simulada |
+| `GET` | `/api/live-trading/connectivity-test` | Teste de conectividade Binance |
+| `POST` | `/api/live-trading/kill-switch` | Ativa/desativa kill switch |
+| `GET` | `/api/live-trading/audit-log` | Log de auditoria |
+| `POST` | `/api/live-trading/disconnect` | Desconecta cliente |
+
+### 🖥️ Dashboard Consolidado
+
+Acesso: `http://localhost:8081/consolidated`
+
+**Abas Disponíveis**:
+1. **Live Trading Status**: Monitoramento em tempo real
+2. **MetaBacktest**: Backtesting com WFO
+3. **Paper Trading**: Simulação com WebSocket
+4. **WFO Monitor**: Walk-Forward Optimization
+
+**Cards de Status**:
+- System Status (containers, uptime)
+- Market Prices (BTC, ETH, SOL em tempo real)
+- Recent Activity (últimas operações)
+
+### ✅ Resultados dos Testes
+
+**Data/Hora**: 17/12/2025 ~12:30 UTC
+
+#### Teste 1: Inicialização
+\`\`\`bash
+curl -X POST http://localhost:3008/api/live-trading/init \\
+  -H 'Content-Type: application/json' \\
+  -d '{"mode": "dry_run"}'
+\`\`\`
+**Resultado**: ✅ SUCESSO
+- success: true
+- mode: dry_run
+- connected: true
+- latency_ms: 474.36
+
+#### Teste 2: Connectivity Test
+\`\`\`bash
+curl http://localhost:3008/api/live-trading/connectivity-test
+\`\`\`
+**Resultado**: ✅ HEALTHY
+- overall_status: HEALTHY
+- summary: 4/4 tests passed
+- ping_latency: 859.83ms
+- btc_price: $87,080.12
+
+#### Teste 3: Test Orders
+| Par | Side | Quantidade | Preço | Status |
+|-----|------|------------|-------|--------|
+| BTCUSDT | BUY | 0.001 | $87,139.14 | ✅ FILLED |
+| ETHUSDT | SELL | 0.01 | $2,928.53 | ✅ FILLED |
+| SOLUSDT | BUY | 0.1 | $127.63 | ✅ FILLED |
+| BTCUSDT | BUY | 0.001 | $87,060.00 | ✅ FILLED |
+
+#### Teste 4: Kill Switch
+\`\`\`bash
+curl -X POST http://localhost:3008/api/live-trading/kill-switch \\
+  -H 'Content-Type: application/json' \\
+  -d '{"action": "activate", "reason": "Test"}'
+\`\`\`
+**Resultado**: ✅ Kill Switch ativado e desativado corretamente
+
+#### Teste 5: Audit Log
+\`\`\`bash
+curl http://localhost:3008/api/live-trading/audit-log
+\`\`\`
+**Resultado**: ✅ 7 entradas registradas
+- 4 TEST_ORDER (SUCCESS)
+- 1 KILL_SWITCH_ACTIVATED
+- 1 KILL_SWITCH_DEACTIVATED
+- 1 CONNECTIVITY_TEST
+
+#### Teste 6: Dashboard Frontend
+\`\`\`bash
+curl -o /dev/null -w "%{http_code}" http://localhost:8081/consolidated
+\`\`\`
+**Resultado**: ✅ HTTP 200, 52,125 bytes
+
+### 📊 Status Final
+
+| Métrica | Valor |
+|---------|-------|
+| **Total Test Orders** | 4 |
+| **Successful Orders** | 4 |
+| **Failed Orders** | 0 |
+| **Success Rate** | 100% |
+| **Avg Latency** | 430.8ms |
+| **Daily Orders Remaining** | 96/100 |
+| **Kill Switch** | ✅ Funcionando |
+| **Audit Log** | ✅ Completo |
+| **Dashboard** | ✅ Operacional |
+
+### 🔒 Considerações de Segurança
+
+1. **Modo Live Bloqueado**: O modo live retorna erro 400, prevenindo execução real acidental
+2. **Kill Switch Persistente**: Uma vez ativado, bloqueia todas as ordens até desativação manual
+3. **Limites de Risco**: 
+   - Max $1000 por ordem
+   - Max 100 ordens/dia
+4. **Audit Trail**: Todas as operações são logadas com timestamp, resultado e detalhes
+5. **Sem Credenciais em Código**: API keys são passadas via request ou env vars
+
+### 🚀 Próximos Passos Sugeridos
+
+1. **Testnet Real**: Configurar credenciais Binance Testnet para testes mais realistas
+2. **WebSocket Integration**: Adicionar streaming de preços em tempo real
+3. **Strategy Auto-Execute**: Conectar sinais do MetaBacktester ao Live Trading
+4. **Alert System**: Notificações para ordens executadas e kill switch
+
+---

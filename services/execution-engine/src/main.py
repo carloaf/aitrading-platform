@@ -2203,6 +2203,244 @@ async def get_monte_carlo_report(filename: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==========================================
+# LIVE TRADING TEST MODE (PASSO 31)
+# ==========================================
+
+from live_trading_test import (
+    BinanceTestnetClient, 
+    TradingMode, 
+    OrderSide as LiveOrderSide,
+    OrderType as LiveOrderType,
+    get_live_trading_client,
+    initialize_live_trading
+)
+
+# Estado global do cliente de live trading
+live_trading_client: Optional[BinanceTestnetClient] = None
+
+
+class LiveTradingInitRequest(BaseModel):
+    """Requisição para inicializar live trading test"""
+    mode: str = "dry_run"  # dry_run, testnet, paper
+    api_key: Optional[str] = None
+    api_secret: Optional[str] = None
+
+
+class LiveTestOrderRequest(BaseModel):
+    """Requisição para testar uma ordem"""
+    symbol: str = "BTCUSDT"
+    side: str = "BUY"  # BUY ou SELL
+    order_type: str = "MARKET"  # MARKET, LIMIT, etc
+    quantity: float = 0.001
+    price: Optional[float] = None
+    stop_price: Optional[float] = None
+
+
+class KillSwitchRequest(BaseModel):
+    """Requisição para controlar kill switch"""
+    action: str = "status"  # activate, deactivate, status
+    reason: Optional[str] = None
+
+
+@app.post("/api/live-trading/init")
+async def initialize_live_trading_endpoint(request: LiveTradingInitRequest):
+    """
+    Inicializa cliente de Live Trading em modo de teste
+    
+    Modos disponíveis:
+    - dry_run: Simulação local sem conexão (default)
+    - testnet: Conecta ao Binance Testnet (requer API keys)
+    - paper: Paper trading com dados reais da Binance
+    """
+    global live_trading_client
+    
+    try:
+        # Mapear modo
+        mode_map = {
+            'dry_run': TradingMode.DRY_RUN,
+            'testnet': TradingMode.TESTNET,
+            'paper': TradingMode.PAPER
+        }
+        mode = mode_map.get(request.mode, TradingMode.DRY_RUN)
+        
+        # Inicializar cliente
+        live_trading_client = BinanceTestnetClient(
+            api_key=request.api_key,
+            api_secret=request.api_secret,
+            mode=mode
+        )
+        
+        # Conectar
+        connected = await live_trading_client.connect()
+        
+        return {
+            'success': connected,
+            'mode': mode.value,
+            'status': live_trading_client.get_status(),
+            'message': f"Live trading inicializado em modo {mode.value}" if connected else "Falha na conexão"
+        }
+        
+    except Exception as e:
+        logger.error(f"Erro ao inicializar live trading: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/live-trading/status")
+async def get_live_trading_status():
+    """Retorna status do cliente de live trading"""
+    global live_trading_client
+    
+    if live_trading_client is None:
+        return {
+            'initialized': False,
+            'message': 'Live trading não inicializado. Use POST /api/live-trading/init primeiro.'
+        }
+    
+    return {
+        'initialized': True,
+        **live_trading_client.get_status()
+    }
+
+
+@app.post("/api/live-trading/test-order")
+async def test_live_order(request: LiveTestOrderRequest):
+    """
+    Testa uma ordem sem executar de verdade
+    
+    Valida:
+    - Conectividade
+    - Parâmetros da ordem
+    - Limites de risco
+    - Executa no modo configurado (dry_run/testnet/paper)
+    """
+    global live_trading_client
+    
+    if live_trading_client is None:
+        # Auto-inicializar em modo dry_run
+        live_trading_client = BinanceTestnetClient(mode=TradingMode.DRY_RUN)
+        await live_trading_client.connect()
+    
+    try:
+        # Mapear side e type
+        side = LiveOrderSide.BUY if request.side.upper() == "BUY" else LiveOrderSide.SELL
+        order_type = LiveOrderType[request.order_type.upper()]
+        
+        # Executar teste
+        result = await live_trading_client.test_order(
+            symbol=request.symbol,
+            side=side,
+            order_type=order_type,
+            quantity=request.quantity,
+            price=request.price,
+            stop_price=request.stop_price
+        )
+        
+        return {
+            'success': result.success,
+            'order': result.to_dict(),
+            'client_status': live_trading_client.get_status()
+        }
+        
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=f"Tipo de ordem inválido: {request.order_type}")
+    except Exception as e:
+        logger.error(f"Erro ao testar ordem: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/live-trading/kill-switch")
+async def control_kill_switch(request: KillSwitchRequest):
+    """
+    Controla o kill switch de emergência
+    
+    Ações:
+    - activate: Ativa kill switch (bloqueia todas as ordens)
+    - deactivate: Desativa kill switch
+    - status: Retorna status atual
+    """
+    global live_trading_client
+    
+    if live_trading_client is None:
+        raise HTTPException(status_code=400, detail="Live trading não inicializado")
+    
+    if request.action == "activate":
+        reason = request.reason or "Manual activation via API"
+        live_trading_client.activate_kill_switch(reason)
+        return {
+            'action': 'activated',
+            'reason': reason,
+            'status': live_trading_client.get_status()
+        }
+    
+    elif request.action == "deactivate":
+        live_trading_client.deactivate_kill_switch()
+        return {
+            'action': 'deactivated',
+            'status': live_trading_client.get_status()
+        }
+    
+    else:  # status
+        return {
+            'action': 'status',
+            'kill_switch': {
+                'active': live_trading_client.kill_switch_active,
+                'reason': live_trading_client.kill_switch_reason
+            }
+        }
+
+
+@app.get("/api/live-trading/audit-log")
+async def get_audit_log(limit: int = 100):
+    """Retorna log de auditoria das últimas operações"""
+    global live_trading_client
+    
+    if live_trading_client is None:
+        return {'entries': [], 'message': 'Live trading não inicializado'}
+    
+    return {
+        'entries': live_trading_client.get_audit_log(limit),
+        'total_entries': len(live_trading_client.audit_log)
+    }
+
+
+@app.get("/api/live-trading/connectivity-test")
+async def run_connectivity_test():
+    """
+    Executa teste completo de conectividade com Binance
+    
+    Testa:
+    - Ping/latência
+    - Sincronização de tempo
+    - Ticker prices
+    - Exchange info
+    - Credenciais (se configuradas)
+    """
+    global live_trading_client
+    
+    if live_trading_client is None:
+        # Auto-inicializar para teste
+        live_trading_client = BinanceTestnetClient(mode=TradingMode.DRY_RUN)
+        await live_trading_client.connect()
+    
+    results = await live_trading_client.run_connectivity_test()
+    return results
+
+
+@app.post("/api/live-trading/disconnect")
+async def disconnect_live_trading():
+    """Desconecta cliente de live trading"""
+    global live_trading_client
+    
+    if live_trading_client is None:
+        return {'success': True, 'message': 'Já desconectado'}
+    
+    await live_trading_client.disconnect()
+    live_trading_client = None
+    
+    return {'success': True, 'message': 'Desconectado com sucesso'}
+
+
 if __name__ == "__main__":
     import uvicorn
     

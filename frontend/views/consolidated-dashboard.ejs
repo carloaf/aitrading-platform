@@ -1,0 +1,867 @@
+<%- include('layout', { body: `
+<div class="container-fluid px-4">
+    <!-- Page Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0">
+                <i class="bi bi-speedometer2 text-primary"></i> Dashboard Consolidado
+            </h1>
+            <p class="text-muted mb-0">Visão unificada do sistema de trading</p>
+        </div>
+        <div>
+            <span id="lastUpdate" class="text-muted me-3">
+                <i class="bi bi-clock"></i> Última atualização: --
+            </span>
+            <button class="btn btn-outline-primary btn-sm" onclick="refreshAllData()">
+                <i class="bi bi-arrow-clockwise"></i> Atualizar
+            </button>
+        </div>
+    </div>
+
+    <!-- System Status Row -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-heart-pulse text-danger"></i> Status do Sistema</h5>
+                    <span id="systemHealthBadge" class="badge bg-secondary">Verificando...</span>
+                </div>
+                <div class="card-body">
+                    <div class="row" id="servicesStatus">
+                        <!-- Services will be populated by JavaScript -->
+                        <div class="col text-center">
+                            <div class="spinner-border spinner-border-sm text-primary" role="status">
+                                <span class="visually-hidden">Carregando...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Metrics Row -->
+    <div class="row mb-4">
+        <!-- MetaBacktest Performance -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-graph-up-arrow text-success"></i> MetaBacktest (4 anos)</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-6 mb-3">
+                            <div class="metric-value text-success" id="metaReturn">+36.46%</div>
+                            <div class="metric-label">Retorno Total</div>
+                        </div>
+                        <div class="col-6 mb-3">
+                            <div class="metric-value text-primary" id="metaWinRate">52.4%</div>
+                            <div class="metric-label">Win Rate</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="metric-value text-warning" id="metaDrawdown">15.94%</div>
+                            <div class="metric-label">Max Drawdown</div>
+                        </div>
+                        <div class="col-6">
+                            <div class="metric-value text-info" id="metaTrades">267</div>
+                            <div class="metric-label">Total Trades</div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="d-grid">
+                        <a href="/backtesting" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-play-circle"></i> Executar Backtest
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Paper Trading Status -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-currency-exchange text-warning"></i> Paper Trading</h5>
+                    <span id="paperTradingBadge" class="badge bg-secondary">Offline</span>
+                </div>
+                <div class="card-body" id="paperTradingContent">
+                    <div class="text-center py-4">
+                        <i class="bi bi-pause-circle text-muted" style="font-size: 3rem;"></i>
+                        <p class="text-muted mt-2">Nenhuma sessão ativa</p>
+                        <button class="btn btn-warning btn-sm" onclick="showStartPaperTradingModal()">
+                            <i class="bi bi-play-fill"></i> Iniciar Sessão
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Trading Test Status -->
+        <div class="col-lg-4">
+            <div class="card shadow-sm h-100">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-lightning-charge text-danger"></i> Live Trading Test</h5>
+                    <span id="liveTradingBadge" class="badge bg-secondary">Desconectado</span>
+                </div>
+                <div class="card-body" id="liveTradingContent">
+                    <div class="text-center py-4">
+                        <i class="bi bi-plug text-muted" style="font-size: 3rem;"></i>
+                        <p class="text-muted mt-2">Não conectado</p>
+                        <button class="btn btn-danger btn-sm" onclick="initLiveTrading()">
+                            <i class="bi bi-link-45deg"></i> Conectar (Dry Run)
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WFO & Market Regime Row -->
+    <div class="row mb-4">
+        <!-- Walk-Forward Optimization -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-calendar-check text-info"></i> WFO 2025</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Trimestre</th>
+                                    <th>Return</th>
+                                    <th>Sharpe</th>
+                                    <th>Win Rate</th>
+                                    <th>Robustez</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Q1</strong></td>
+                                    <td class="text-success">+0.37%</td>
+                                    <td>1.73</td>
+                                    <td>100%</td>
+                                    <td><span class="badge bg-success">100/100</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Q2</strong></td>
+                                    <td class="text-danger">-0.58%</td>
+                                    <td>-0.21</td>
+                                    <td>42.9%</td>
+                                    <td><span class="badge bg-warning">60/100</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Q3</strong></td>
+                                    <td class="text-success">+0.57%</td>
+                                    <td>0.30</td>
+                                    <td>44.4%</td>
+                                    <td><span class="badge bg-warning">65/100</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Q4</strong></td>
+                                    <td class="text-success">+6.19%</td>
+                                    <td>3.42</td>
+                                    <td>66.7%</td>
+                                    <td><span class="badge bg-success">100/100</span></td>
+                                </tr>
+                            </tbody>
+                            <tfoot class="table-light">
+                                <tr>
+                                    <td><strong>YTD</strong></td>
+                                    <td class="text-success"><strong>+6.55%</strong></td>
+                                    <td><strong>1.31</strong></td>
+                                    <td><strong>63.5%</strong></td>
+                                    <td><span class="badge bg-success">81/100</span></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Market Regime -->
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-compass text-purple"></i> Regime de Mercado</h5>
+                    <button class="btn btn-outline-secondary btn-sm" onclick="detectRegime()">
+                        <i class="bi bi-arrow-repeat"></i> Detectar
+                    </button>
+                </div>
+                <div class="card-body" id="marketRegimeContent">
+                    <div class="row text-center">
+                        <div class="col-md-6 mb-3">
+                            <div class="p-3 rounded bg-light">
+                                <h6 class="text-muted">Regime Atual</h6>
+                                <div id="currentRegime" class="h4 mb-0 text-primary">
+                                    <i class="bi bi-question-circle"></i> Detectando...
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div class="p-3 rounded bg-light">
+                                <h6 class="text-muted">Confiança</h6>
+                                <div id="regimeConfidence" class="h4 mb-0">--%</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <h6 class="text-muted">Estratégias Recomendadas</h6>
+                        <div id="recommendedStrategies">
+                            <span class="badge bg-secondary me-1">Aguardando detecção...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Trading Test Panel -->
+    <div class="row mb-4" id="liveTradingPanel" style="display: none;">
+        <div class="col-12">
+            <div class="card shadow-sm border-danger">
+                <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-lightning-charge"></i> Live Trading Test Console</h5>
+                    <div>
+                        <button class="btn btn-outline-light btn-sm me-2" id="killSwitchBtn" onclick="toggleKillSwitch()">
+                            <i class="bi bi-shield-exclamation"></i> Kill Switch: OFF
+                        </button>
+                        <button class="btn btn-light btn-sm" onclick="disconnectLiveTrading()">
+                            <i class="bi bi-x-circle"></i> Desconectar
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <!-- Test Order Form -->
+                        <div class="col-md-4">
+                            <h6><i class="bi bi-plus-circle"></i> Testar Ordem</h6>
+                            <form id="testOrderForm" onsubmit="submitTestOrder(event)">
+                                <div class="mb-2">
+                                    <label class="form-label small">Símbolo</label>
+                                    <select class="form-select form-select-sm" id="orderSymbol">
+                                        <option value="BTCUSDT">BTCUSDT</option>
+                                        <option value="ETHUSDT">ETHUSDT</option>
+                                        <option value="SOLUSDT">SOLUSDT</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small">Side</label>
+                                    <select class="form-select form-select-sm" id="orderSide">
+                                        <option value="BUY">BUY</option>
+                                        <option value="SELL">SELL</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small">Tipo</label>
+                                    <select class="form-select form-select-sm" id="orderType">
+                                        <option value="MARKET">MARKET</option>
+                                        <option value="LIMIT">LIMIT</option>
+                                    </select>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small">Quantidade</label>
+                                    <input type="number" class="form-control form-control-sm" id="orderQty" value="0.001" step="0.001">
+                                </div>
+                                <div class="d-grid">
+                                    <button type="submit" class="btn btn-warning btn-sm">
+                                        <i class="bi bi-send"></i> Testar Ordem
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Connection Stats -->
+                        <div class="col-md-4">
+                            <h6><i class="bi bi-speedometer"></i> Estatísticas</h6>
+                            <table class="table table-sm">
+                                <tr>
+                                    <td class="text-muted">Modo</td>
+                                    <td id="ltMode">-</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Latência</td>
+                                    <td id="ltLatency">- ms</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Ordens Testadas</td>
+                                    <td id="ltTotalOrders">0</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Taxa de Sucesso</td>
+                                    <td id="ltSuccessRate">--%</td>
+                                </tr>
+                                <tr>
+                                    <td class="text-muted">Limite Diário</td>
+                                    <td id="ltDailyLimit">-/100</td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <!-- Audit Log -->
+                        <div class="col-md-4">
+                            <h6><i class="bi bi-journal-text"></i> Log de Auditoria</h6>
+                            <div id="auditLog" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; font-size: 0.75rem; font-family: monospace; background: #f8f9fa;">
+                                <div class="text-muted">Aguardando operações...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Actions Row -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0"><i class="bi bi-lightning"></i> Ações Rápidas</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <a href="/backtesting" class="btn btn-outline-primary w-100 mb-2">
+                                <i class="bi bi-graph-up"></i><br>MetaBacktest
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="/paper-trading" class="btn btn-outline-warning w-100 mb-2">
+                                <i class="bi bi-currency-exchange"></i><br>Paper Trading
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="/monte-carlo" class="btn btn-outline-info w-100 mb-2">
+                                <i class="bi bi-dice-5"></i><br>Monte Carlo
+                            </a>
+                        </div>
+                        <div class="col-md-3">
+                            <a href="/signals" class="btn btn-outline-success w-100 mb-2">
+                                <i class="bi bi-activity"></i><br>Sinais
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Start Paper Trading Modal -->
+<div class="modal fade" id="paperTradingModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-play-circle"></i> Iniciar Paper Trading</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="startPaperTradingForm">
+                    <div class="mb-3">
+                        <label class="form-label">Session ID</label>
+                        <input type="text" class="form-control" id="ptSessionId" value="session-001">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Estratégia</label>
+                        <select class="form-select" id="ptStrategy">
+                            <option value="momentum">Momentum</option>
+                            <option value="trend_following">Trend Following</option>
+                            <option value="mean_reversion">Mean Reversion</option>
+                            <option value="macd_rsi_combo">MACD + RSI Combo</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Símbolo</label>
+                        <select class="form-select" id="ptSymbol">
+                            <option value="BTCUSDT">BTCUSDT</option>
+                            <option value="ETHUSDT">ETHUSDT</option>
+                            <option value="SOLUSDT">SOLUSDT</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Capital Inicial (USD)</label>
+                        <input type="number" class="form-control" id="ptBalance" value="10000">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-warning" onclick="startPaperTrading()">
+                    <i class="bi bi-play-fill"></i> Iniciar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // API Base URL
+    const API_BASE = 'http://localhost:3008';
+    
+    // State
+    let liveTradingConnected = false;
+    let killSwitchActive = false;
+    let paperTradingSession = null;
+    
+    // ========================================
+    // INITIALIZATION
+    // ========================================
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        refreshAllData();
+        // Auto-refresh every 30 seconds
+        setInterval(refreshAllData, 30000);
+    });
+    
+    function refreshAllData() {
+        updateLastUpdateTime();
+        checkSystemHealth();
+        checkPaperTradingStatus();
+        checkLiveTradingStatus();
+        detectRegime();
+    }
+    
+    function updateLastUpdateTime() {
+        const now = new Date().toLocaleString('pt-BR');
+        document.getElementById('lastUpdate').innerHTML = '<i class="bi bi-clock"></i> Última atualização: ' + now;
+    }
+    
+    // ========================================
+    // SYSTEM HEALTH
+    // ========================================
+    
+    async function checkSystemHealth() {
+        const services = [
+            { name: 'API Gateway', url: 'http://localhost:8080/health', icon: 'bi-router' },
+            { name: 'Execution Engine', url: API_BASE + '/health', icon: 'bi-cpu' },
+            { name: 'Signal Generator', url: 'http://localhost:8000/stats', icon: 'bi-activity' },
+            { name: 'News Collector', url: 'http://localhost:3004/health', icon: 'bi-newspaper' }
+        ];
+        
+        let healthyCount = 0;
+        let html = '';
+        
+        for (const service of services) {
+            try {
+                const response = await fetch(service.url, { timeout: 3000 });
+                if (response.ok) {
+                    healthyCount++;
+                    html += createServiceCard(service.name, service.icon, 'success', 'Online');
+                } else {
+                    html += createServiceCard(service.name, service.icon, 'warning', 'Degraded');
+                }
+            } catch (e) {
+                html += createServiceCard(service.name, service.icon, 'danger', 'Offline');
+            }
+        }
+        
+        document.getElementById('servicesStatus').innerHTML = html;
+        
+        // Update overall badge
+        const badge = document.getElementById('systemHealthBadge');
+        if (healthyCount === services.length) {
+            badge.className = 'badge bg-success';
+            badge.textContent = 'Healthy';
+        } else if (healthyCount > 0) {
+            badge.className = 'badge bg-warning';
+            badge.textContent = 'Degraded';
+        } else {
+            badge.className = 'badge bg-danger';
+            badge.textContent = 'Unhealthy';
+        }
+    }
+    
+    function createServiceCard(name, icon, status, statusText) {
+        const colors = { success: '#28a745', warning: '#ffc107', danger: '#dc3545' };
+        return \`
+            <div class="col-md-3 text-center">
+                <div class="p-2 rounded border" style="border-color: \${colors[status]} !important;">
+                    <i class="bi \${icon}" style="font-size: 1.5rem; color: \${colors[status]};"></i>
+                    <div class="small mt-1">\${name}</div>
+                    <span class="badge bg-\${status}">\${statusText}</span>
+                </div>
+            </div>
+        \`;
+    }
+    
+    // ========================================
+    // PAPER TRADING
+    // ========================================
+    
+    async function checkPaperTradingStatus() {
+        try {
+            const response = await fetch(API_BASE + '/paper-trading/sessions');
+            const data = await response.json();
+            
+            if (data.sessions && data.sessions.length > 0) {
+                paperTradingSession = data.sessions[0];
+                updatePaperTradingUI(paperTradingSession);
+            } else {
+                updatePaperTradingUI(null);
+            }
+        } catch (e) {
+            console.error('Erro ao verificar paper trading:', e);
+            updatePaperTradingUI(null);
+        }
+    }
+    
+    function updatePaperTradingUI(session) {
+        const badge = document.getElementById('paperTradingBadge');
+        const content = document.getElementById('paperTradingContent');
+        
+        if (session && session.is_running) {
+            badge.className = 'badge bg-success';
+            badge.textContent = 'Ativo';
+            
+            content.innerHTML = \`
+                <div class="row text-center">
+                    <div class="col-6 mb-2">
+                        <div class="h5 mb-0 text-success">\${session.strategy_name}</div>
+                        <small class="text-muted">Estratégia</small>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <div class="h5 mb-0">\${session.symbol}</div>
+                        <small class="text-muted">Símbolo</small>
+                    </div>
+                    <div class="col-6">
+                        <div class="h5 mb-0">\${session.trades_executed || 0}</div>
+                        <small class="text-muted">Trades</small>
+                    </div>
+                    <div class="col-6">
+                        <div class="h5 mb-0">\${session.signals_generated || 0}</div>
+                        <small class="text-muted">Sinais</small>
+                    </div>
+                </div>
+                <hr>
+                <button class="btn btn-outline-danger btn-sm w-100" onclick="stopPaperTrading('\${session.session_id}')">
+                    <i class="bi bi-stop-fill"></i> Parar Sessão
+                </button>
+            \`;
+        } else {
+            badge.className = 'badge bg-secondary';
+            badge.textContent = 'Offline';
+            
+            content.innerHTML = \`
+                <div class="text-center py-4">
+                    <i class="bi bi-pause-circle text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-2">Nenhuma sessão ativa</p>
+                    <button class="btn btn-warning btn-sm" onclick="showStartPaperTradingModal()">
+                        <i class="bi bi-play-fill"></i> Iniciar Sessão
+                    </button>
+                </div>
+            \`;
+        }
+    }
+    
+    function showStartPaperTradingModal() {
+        const modal = new bootstrap.Modal(document.getElementById('paperTradingModal'));
+        modal.show();
+    }
+    
+    async function startPaperTrading() {
+        const data = {
+            session_id: document.getElementById('ptSessionId').value,
+            strategy_name: document.getElementById('ptStrategy').value,
+            strategy_parameters: {},
+            symbol: document.getElementById('ptSymbol').value,
+            timeframe: '1m',
+            initial_balance: parseFloat(document.getElementById('ptBalance').value),
+            commission_rate: 0.001,
+            slippage_rate: 0.0005
+        };
+        
+        try {
+            const response = await fetch(API_BASE + '/paper-trading/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            
+            if (result.status === 'started') {
+                bootstrap.Modal.getInstance(document.getElementById('paperTradingModal')).hide();
+                alert('Paper Trading iniciado com sucesso!');
+                checkPaperTradingStatus();
+            } else {
+                alert('Erro: ' + (result.message || 'Falha ao iniciar'));
+            }
+        } catch (e) {
+            alert('Erro de conexão: ' + e.message);
+        }
+    }
+    
+    async function stopPaperTrading(sessionId) {
+        if (!confirm('Deseja realmente parar a sessão de Paper Trading?')) return;
+        
+        try {
+            await fetch(API_BASE + '/paper-trading/' + sessionId + '/stop', { method: 'POST' });
+            checkPaperTradingStatus();
+        } catch (e) {
+            alert('Erro ao parar sessão: ' + e.message);
+        }
+    }
+    
+    // ========================================
+    // LIVE TRADING TEST
+    // ========================================
+    
+    async function checkLiveTradingStatus() {
+        try {
+            const response = await fetch(API_BASE + '/api/live-trading/status');
+            const data = await response.json();
+            
+            if (data.initialized && data.connected) {
+                liveTradingConnected = true;
+                updateLiveTradingUI(data);
+            } else {
+                liveTradingConnected = false;
+                updateLiveTradingUI(null);
+            }
+        } catch (e) {
+            liveTradingConnected = false;
+            updateLiveTradingUI(null);
+        }
+    }
+    
+    function updateLiveTradingUI(status) {
+        const badge = document.getElementById('liveTradingBadge');
+        const content = document.getElementById('liveTradingContent');
+        const panel = document.getElementById('liveTradingPanel');
+        
+        if (status && status.connected) {
+            badge.className = 'badge bg-success';
+            badge.textContent = status.mode.toUpperCase();
+            panel.style.display = 'block';
+            
+            content.innerHTML = \`
+                <div class="row text-center">
+                    <div class="col-6 mb-2">
+                        <div class="h5 mb-0">\${status.mode}</div>
+                        <small class="text-muted">Modo</small>
+                    </div>
+                    <div class="col-6 mb-2">
+                        <div class="h5 mb-0">\${status.latency_ms.toFixed(1)} ms</div>
+                        <small class="text-muted">Latência</small>
+                    </div>
+                </div>
+            \`;
+            
+            // Update stats
+            document.getElementById('ltMode').textContent = status.mode;
+            document.getElementById('ltLatency').textContent = status.latency_ms.toFixed(1) + ' ms';
+            document.getElementById('ltTotalOrders').textContent = status.statistics.total_test_orders;
+            document.getElementById('ltSuccessRate').textContent = status.statistics.success_rate.toFixed(1) + '%';
+            document.getElementById('ltDailyLimit').textContent = status.limits.daily_orders_used + '/' + status.limits.max_daily_orders;
+            
+            // Update kill switch
+            killSwitchActive = status.kill_switch.active;
+            updateKillSwitchUI();
+            
+            // Load audit log
+            loadAuditLog();
+        } else {
+            badge.className = 'badge bg-secondary';
+            badge.textContent = 'Desconectado';
+            panel.style.display = 'none';
+            
+            content.innerHTML = \`
+                <div class="text-center py-4">
+                    <i class="bi bi-plug text-muted" style="font-size: 3rem;"></i>
+                    <p class="text-muted mt-2">Não conectado</p>
+                    <button class="btn btn-danger btn-sm" onclick="initLiveTrading()">
+                        <i class="bi bi-link-45deg"></i> Conectar (Dry Run)
+                    </button>
+                </div>
+            \`;
+        }
+    }
+    
+    async function initLiveTrading() {
+        try {
+            const response = await fetch(API_BASE + '/api/live-trading/init', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'dry_run' })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                liveTradingConnected = true;
+                checkLiveTradingStatus();
+                
+                // Run connectivity test
+                runConnectivityTest();
+            } else {
+                alert('Erro ao conectar: ' + data.message);
+            }
+        } catch (e) {
+            alert('Erro de conexão: ' + e.message);
+        }
+    }
+    
+    async function disconnectLiveTrading() {
+        try {
+            await fetch(API_BASE + '/api/live-trading/disconnect', { method: 'POST' });
+            liveTradingConnected = false;
+            checkLiveTradingStatus();
+        } catch (e) {
+            console.error('Erro ao desconectar:', e);
+        }
+    }
+    
+    async function submitTestOrder(event) {
+        event.preventDefault();
+        
+        const data = {
+            symbol: document.getElementById('orderSymbol').value,
+            side: document.getElementById('orderSide').value,
+            order_type: document.getElementById('orderType').value,
+            quantity: parseFloat(document.getElementById('orderQty').value)
+        };
+        
+        try {
+            const response = await fetch(API_BASE + '/api/live-trading/test-order', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                addAuditLogEntry('✅ Order TEST: ' + data.side + ' ' + data.quantity + ' ' + data.symbol);
+            } else {
+                addAuditLogEntry('❌ Order FAILED: ' + (result.order.error_message || 'Unknown error'));
+            }
+            
+            checkLiveTradingStatus();
+        } catch (e) {
+            addAuditLogEntry('❌ Error: ' + e.message);
+        }
+    }
+    
+    async function toggleKillSwitch() {
+        const action = killSwitchActive ? 'deactivate' : 'activate';
+        
+        try {
+            const response = await fetch(API_BASE + '/api/live-trading/kill-switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: action, reason: 'Manual toggle from dashboard' })
+            });
+            
+            const data = await response.json();
+            killSwitchActive = !killSwitchActive;
+            updateKillSwitchUI();
+            
+            addAuditLogEntry(killSwitchActive ? '🚨 KILL SWITCH ACTIVATED' : '✅ Kill switch deactivated');
+        } catch (e) {
+            alert('Erro: ' + e.message);
+        }
+    }
+    
+    function updateKillSwitchUI() {
+        const btn = document.getElementById('killSwitchBtn');
+        if (killSwitchActive) {
+            btn.className = 'btn btn-warning btn-sm me-2';
+            btn.innerHTML = '<i class="bi bi-shield-fill-exclamation"></i> Kill Switch: ON';
+        } else {
+            btn.className = 'btn btn-outline-light btn-sm me-2';
+            btn.innerHTML = '<i class="bi bi-shield-exclamation"></i> Kill Switch: OFF';
+        }
+    }
+    
+    async function loadAuditLog() {
+        try {
+            const response = await fetch(API_BASE + '/api/live-trading/audit-log?limit=20');
+            const data = await response.json();
+            
+            const logDiv = document.getElementById('auditLog');
+            if (data.entries && data.entries.length > 0) {
+                logDiv.innerHTML = data.entries.reverse().map(e => {
+                    const time = new Date(e.timestamp).toLocaleTimeString('pt-BR');
+                    return \`<div>[\${time}] \${e.action} - \${e.result}</div>\`;
+                }).join('');
+            }
+        } catch (e) {
+            console.error('Erro ao carregar audit log:', e);
+        }
+    }
+    
+    function addAuditLogEntry(message) {
+        const logDiv = document.getElementById('auditLog');
+        const time = new Date().toLocaleTimeString('pt-BR');
+        logDiv.innerHTML = \`<div>[\${time}] \${message}</div>\` + logDiv.innerHTML;
+    }
+    
+    async function runConnectivityTest() {
+        try {
+            const response = await fetch(API_BASE + '/api/live-trading/connectivity-test');
+            const data = await response.json();
+            
+            addAuditLogEntry('🔍 Connectivity Test: ' + data.overall_status + ' (' + data.summary + ')');
+        } catch (e) {
+            addAuditLogEntry('❌ Connectivity test failed: ' + e.message);
+        }
+    }
+    
+    // ========================================
+    // MARKET REGIME
+    // ========================================
+    
+    async function detectRegime() {
+        try {
+            const response = await fetch(API_BASE + '/api/market-regime/detect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ symbol: 'BTCUSDT', interval: '1h', lookback_days: 30 })
+            });
+            
+            const data = await response.json();
+            
+            if (data.regime) {
+                const regimeColors = {
+                    'bull': 'success',
+                    'bear': 'danger',
+                    'sideways': 'warning',
+                    'volatile_crisis': 'dark'
+                };
+                
+                const regimeIcons = {
+                    'bull': 'bi-graph-up-arrow',
+                    'bear': 'bi-graph-down-arrow',
+                    'sideways': 'bi-arrows-expand',
+                    'volatile_crisis': 'bi-exclamation-triangle'
+                };
+                
+                const regime = data.regime.toLowerCase();
+                const color = regimeColors[regime] || 'secondary';
+                const icon = regimeIcons[regime] || 'bi-question-circle';
+                
+                document.getElementById('currentRegime').innerHTML = \`
+                    <span class="text-\${color}">
+                        <i class="bi \${icon}"></i> \${data.regime.toUpperCase()}
+                    </span>
+                \`;
+                
+                document.getElementById('regimeConfidence').textContent = (data.confidence * 100).toFixed(1) + '%';
+                
+                // Update recommended strategies
+                if (data.recommended_strategies && data.recommended_strategies.length > 0) {
+                    document.getElementById('recommendedStrategies').innerHTML = 
+                        data.recommended_strategies.map(s => 
+                            \`<span class="badge bg-primary me-1">\${s}</span>\`
+                        ).join('');
+                }
+            }
+        } catch (e) {
+            document.getElementById('currentRegime').innerHTML = '<span class="text-muted"><i class="bi bi-exclamation-circle"></i> Erro</span>';
+            console.error('Erro ao detectar regime:', e);
+        }
+    }
+</script>
+` }) %>

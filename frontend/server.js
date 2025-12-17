@@ -203,6 +203,17 @@ app.get('/backtesting', (req, res) => {
   });
 });
 
+// ==========================================
+// CONSOLIDATED DASHBOARD (PASSO 31)
+// ==========================================
+app.get('/consolidated', (req, res) => {
+  const executionEngineUrl = process.env.EXECUTION_ENGINE_PUBLIC_URL || 'http://localhost:3008';
+  res.render('consolidated-dashboard', {
+    title: 'Dashboard Consolidado',
+    executionEngineUrl
+  });
+});
+
 // Rota para Paper Trading Dashboard
 app.get('/paper-trading', (req, res) => {
   // Use localhost URL for browser access (not Docker internal URL)
