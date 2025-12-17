@@ -834,19 +834,25 @@ async def run_stress_tests(scenario: Optional[str] = None):
 
 
 class RSIDivergenceBacktestRequest(BaseModel):
-    """Request para backtest da estratégia RSI Divergence"""
+    """Request para backtest da estratégia RSI Divergence v2.1"""
     symbol: str = "BTCUSDT"
     start_date: str = "2023-01-01"
     end_date: str = "2024-01-01"
     initial_capital: float = 100000.0
     timeframe: str = "1h"  # Suporte multi-timeframe: 15m, 1h, 4h, 1d
-    # Parâmetros da estratégia
+    # Parâmetros da estratégia v2.0 OTIMIZADOS
     rsi_period: int = 14
-    lookback_periods: int = 20
-    min_adx_trend: int = 20
+    lookback_periods: int = 15          # ALTERADO: 20 → 15
+    min_adx_trend: int = 18             # ALTERADO: 20 → 18
     stop_loss_atr_mult: float = 2.0
     take_profit_atr_mult: float = 4.0
-    min_signal_strength: float = 0.5
+    min_signal_strength: float = 0.50   # ALTERADO: 0.5 → 0.50 (mesmo)
+    # NOVO v2.0: Filtros adicionais
+    rsi_overbought: int = 75            # NOVO: zona extrema de venda
+    rsi_oversold: int = 25              # NOVO: zona extrema de compra
+    volume_multiplier: float = 1.5      # NOVO: confirmação de volume
+    use_ema_filter: bool = True         # NOVO: filtro EMA 50/200
+    use_mtf_filter: bool = False        # NOVO v2.1: Multi-timeframe (desabilitado por padrão)
 
 
 @app.post("/api/backtest/rsi-divergence")
@@ -912,14 +918,21 @@ async def backtest_rsi_divergence(request: RSIDivergenceBacktestRequest):
         
         logger.info(f"📊 Dados carregados: {len(df)} candles de {df.index.min()} a {df.index.max()}")
         
-        # Criar estratégia com parâmetros
+        # Criar estratégia com parâmetros v2.1
         strategy_params = {
             'rsi_period': request.rsi_period,
             'lookback_periods': request.lookback_periods,
             'min_adx_trend': request.min_adx_trend,
             'stop_loss_atr_mult': request.stop_loss_atr_mult,
             'take_profit_atr_mult': request.take_profit_atr_mult,
-            'min_signal_strength': request.min_signal_strength
+            'min_signal_strength': request.min_signal_strength,
+            # NOVO v2.0
+            'rsi_overbought': request.rsi_overbought,
+            'rsi_oversold': request.rsi_oversold,
+            'volume_multiplier': request.volume_multiplier,
+            'use_ema_filter': request.use_ema_filter,
+            # NOVO v2.1
+            'use_mtf_filter': request.use_mtf_filter,
         }
         
         strategy = RSIDivergenceStrategy(parameters=strategy_params)
@@ -2727,6 +2740,93 @@ async def stop_continuous_scanning():
         'message': 'Scanner parado',
         'total_scans': rsi_scanner.scan_count
     }
+
+
+@app.get("/api/scanner/market-data")
+async def get_scanner_market_data(symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT"):
+    """
+    Retorna dados de mercado em tempo real para os símbolos monitorados
+    Inclui preço, RSI, variação e proximidade de alerta
+    
+    Parâmetros:
+    - symbols: Lista de símbolos separados por vírgula
+    """
+    import ccxt
+    import ta
+    import pandas as pd
+    
+    try:
+        exchange = ccxt.binance({'enableRateLimit': True})
+        symbol_list = [s.strip() for s in symbols.split(',')]
+        
+        market_data = []
+        
+        for symbol in symbol_list:
+            try:
+                # Buscar OHLCV (últimas 100 candles de 1h)
+                ccxt_symbol = symbol.replace('USDT', '/USDT')
+                ohlcv = exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=100)
+                
+                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                
+                # Calcular RSI
+                df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+                current_rsi = df['rsi'].iloc[-1]
+                
+                # Preço atual e variação 24h
+                current_price = df['close'].iloc[-1]
+                price_24h_ago = df['close'].iloc[-24] if len(df) >= 24 else df['close'].iloc[0]
+                change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
+                
+                # Calcular proximidade de alerta
+                # RSI < 30 = oversold (potencial bullish)
+                # RSI > 70 = overbought (potencial bearish)
+                proximity = 0
+                trend = 'neutral'
+                
+                if current_rsi <= 30:
+                    proximity = min(100, int((30 - current_rsi) * 5 + 50))
+                    trend = 'forming_bullish'
+                elif current_rsi >= 70:
+                    proximity = min(100, int((current_rsi - 70) * 5 + 50))
+                    trend = 'forming_bearish'
+                elif current_rsi <= 35:
+                    proximity = int((35 - current_rsi) * 8)
+                    trend = 'watching_bullish'
+                elif current_rsi >= 65:
+                    proximity = int((current_rsi - 65) * 8)
+                    trend = 'watching_bearish'
+                
+                market_data.append({
+                    'symbol': ccxt_symbol,
+                    'price': round(current_price, 2 if current_price >= 1 else 4),
+                    'change_24h': round(change_24h, 2),
+                    'rsi': round(current_rsi, 1),
+                    'proximity': proximity,
+                    'trend': trend
+                })
+                
+            except Exception as e:
+                logger.warning(f"Erro ao buscar dados de {symbol}: {e}")
+                continue
+        
+        # Ordenar por proximidade (maiores primeiro)
+        market_data.sort(key=lambda x: x['proximity'], reverse=True)
+        
+        return {
+            'success': True,
+            'timestamp': datetime.utcnow().isoformat(),
+            'data': market_data,
+            'count': len(market_data)
+        }
+        
+    except Exception as e:
+        logger.error(f"Erro ao buscar market data: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'data': []
+        }
 
 
 # ==========================================

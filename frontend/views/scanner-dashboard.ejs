@@ -143,20 +143,33 @@
                         
                         <div class="mb-3">
                             <label class="form-label fw-bold">Timeframes</label>
-                            <div class="d-flex gap-3">
+                            <div class="d-flex gap-3 flex-wrap">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" value="1h" id="chk1h" checked>
-                                    <label class="form-check-label" for="chk1h">1h</label>
+                                    <label class="form-check-label" for="chk1h">
+                                        <span class="timeframe-badge timeframe-1h">1h</span>
+                                        <small class="text-muted d-block">Recomendado ⭐</small>
+                                    </label>
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" value="4h" id="chk4h">
-                                    <label class="form-check-label" for="chk4h">4h</label>
+                                    <label class="form-check-label" for="chk4h">
+                                        <span class="timeframe-badge timeframe-4h">4h</span>
+                                        <small class="text-muted d-block">Menos sinais</small>
+                                    </label>
                                 </div>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" value="1d" id="chk1d">
-                                    <label class="form-check-label" for="chk1d">1D</label>
+                                    <label class="form-check-label" for="chk1d">
+                                        <span class="timeframe-badge timeframe-1d">1D</span>
+                                        <small class="text-muted d-block">Swing Trade</small>
+                                    </label>
                                 </div>
                             </div>
+                            <small class="text-info mt-2 d-block">
+                                <i class="bi bi-info-circle"></i> 
+                                1h tem melhor performance histórica (71% WR). 4h/1D são mais conservadores.
+                            </small>
                         </div>
                         
                         <div class="mb-3">
@@ -342,6 +355,58 @@
     
     .badge-confirmed { background-color: #28a745; }
     .badge-unconfirmed { background-color: #6c757d; }
+    
+    /* Toast custom styles */
+    .toast {
+        min-width: 300px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .toast-body {
+        font-size: 0.95rem;
+        padding: 12px 15px;
+        background-color: #ffffff;
+        color: #212529;
+    }
+    
+    .toast {
+        background-color: #ffffff;
+        border: 1px solid rgba(0,0,0,0.1);
+    }
+    
+    .toast-header.bg-success { background-color: #198754 !important; }
+    .toast-header.bg-danger { background-color: #dc3545 !important; }
+    .toast-header.bg-warning { background-color: #ffc107 !important; color: #212529 !important; }
+    .toast-header.bg-info { background-color: #0dcaf0 !important; color: #212529 !important; }
+    
+    .bg-success-subtle { background-color: #d1e7dd; }
+    .bg-danger-subtle { background-color: #f8d7da; }
+    .bg-warning-subtle { background-color: #fff3cd; }
+    .bg-info-subtle { background-color: #cff4fc; }
+    
+    /* Timeframe badges */
+    .timeframe-badge {
+        display: inline-flex;
+        align-items: center;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    
+    .timeframe-1h { background-color: #e3f2fd; color: #1565c0; }
+    .timeframe-4h { background-color: #f3e5f5; color: #7b1fa2; }
+    .timeframe-1d { background-color: #e8f5e9; color: #2e7d32; }
+    
+    /* Auto-scroll indicator */
+    .scanner-status-running {
+        animation: blink 1s infinite;
+    }
+    
+    @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
 </style>
 
 <script>
@@ -573,106 +638,148 @@
     }
     
     async function updateNearAlerts() {
-        // Simulated near alerts - in production this would come from a dedicated endpoint
-        // that tracks RSI approaching oversold/overbought with potential divergence forming
-        
         const container = document.getElementById('nearAlertsRow');
         
         try {
-            // Fetch current RSI values for monitored symbols
-            const symbols = getSelectedSymbols().slice(0, 5); // Top 5
-            let html = '';
+            // Fetch real market data from API
+            const symbols = getSelectedSymbols().map(s => s.replace('/', '')).join(',');
+            const response = await fetch(API_BASE + '/api/scanner/market-data?symbols=' + symbols);
+            const result = await response.json();
             
-            // Mock data - replace with real API call
-            const nearAlertData = [
-                { symbol: 'BTC/USDT', rsi: 32.5, trend: 'forming_bullish', proximity: 75, price: 86500 },
-                { symbol: 'ETH/USDT', rsi: 68.2, trend: 'watching', proximity: 45, price: 2920 },
-                { symbol: 'SOL/USDT', rsi: 28.1, trend: 'forming_bullish', proximity: 85, price: 126 },
-            ];
-            
-            nearAlertData.forEach(item => {
-                const proximityColor = item.proximity >= 70 ? 'danger' : (item.proximity >= 50 ? 'warning' : 'secondary');
-                const statusText = item.trend === 'forming_bullish' ? 'Possível Bullish Div.' : 
-                                  item.trend === 'forming_bearish' ? 'Possível Bearish Div.' : 'Monitorando';
-                const cardClass = item.proximity >= 70 ? 'near-alert-card forming' : 'near-alert-card';
-                
-                html += \`
-                    <div class="col-md-4 mb-3">
-                        <div class="card \${cardClass}">
-                            <div class="card-body">
-                                <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <h6 class="mb-0 fw-bold">\${item.symbol}</h6>
-                                    <span class="badge bg-\${proximityColor}">\${item.proximity}% próximo</span>
-                                </div>
-                                <div class="rsi-gauge mb-2">
-                                    <div class="rsi-marker" style="left: \${item.rsi}%;"></div>
-                                </div>
-                                <div class="d-flex justify-content-between text-muted small">
-                                    <span>RSI: \${item.rsi.toFixed(1)}</span>
-                                    <span>\${formatPrice(item.price)}</span>
-                                </div>
-                                <p class="mb-0 mt-2 text-\${proximityColor === 'danger' ? 'danger' : 'muted'}">
-                                    <i class="bi bi-\${item.proximity >= 70 ? 'exclamation-triangle-fill' : 'hourglass-split'}"></i>
-                                    \${statusText}
-                                </p>
-                            </div>
-                        </div>
+            if (!result.success || !result.data || result.data.length === 0) {
+                container.innerHTML = \`
+                    <div class="col-12 text-center text-muted py-4">
+                        <i class="bi bi-wifi-off display-4 d-block mb-2"></i>
+                        <p>Aguardando dados do mercado...</p>
                     </div>
                 \`;
-            });
+                return;
+            }
             
-            if (html === '') {
+            let html = '';
+            
+            // Mostrar apenas os que têm proximidade > 0 ou RSI extremo
+            const alertData = result.data.filter(item => 
+                item.proximity > 0 || item.rsi <= 35 || item.rsi >= 65
+            ).slice(0, 6);
+            
+            if (alertData.length === 0) {
                 html = \`
                     <div class="col-12 text-center text-muted py-4">
                         <i class="bi bi-check-circle display-4 d-block mb-2 text-success"></i>
                         <p>Nenhuma divergência em formação no momento</p>
+                        <small>RSI de todos os ativos está na faixa neutra (35-65)</small>
                     </div>
                 \`;
+            } else {
+                alertData.forEach(item => {
+                    const proximityColor = item.proximity >= 70 ? 'danger' : (item.proximity >= 40 ? 'warning' : 'secondary');
+                    let statusText = 'Monitorando';
+                    let statusIcon = 'hourglass-split';
+                    
+                    if (item.trend === 'forming_bullish') {
+                        statusText = '🟢 Possível Bullish Div.';
+                        statusIcon = 'arrow-up-circle';
+                    } else if (item.trend === 'forming_bearish') {
+                        statusText = '🔴 Possível Bearish Div.';
+                        statusIcon = 'arrow-down-circle';
+                    } else if (item.trend === 'watching_bullish') {
+                        statusText = 'RSI baixo - Atenção';
+                        statusIcon = 'eye';
+                    } else if (item.trend === 'watching_bearish') {
+                        statusText = 'RSI alto - Atenção';
+                        statusIcon = 'eye';
+                    }
+                    
+                    const cardClass = item.proximity >= 70 ? 'near-alert-card forming' : 'near-alert-card';
+                    const changeClass = item.change_24h >= 0 ? 'text-success' : 'text-danger';
+                    const changeIcon = item.change_24h >= 0 ? 'caret-up-fill' : 'caret-down-fill';
+                    
+                    html += \`
+                        <div class="col-md-4 mb-3">
+                            <div class="card \${cardClass}">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <h6 class="mb-0 fw-bold">\${item.symbol}</h6>
+                                        \${item.proximity > 0 ? \`<span class="badge bg-\${proximityColor}">\${item.proximity}% próximo</span>\` : ''}
+                                    </div>
+                                    <div class="rsi-gauge mb-2">
+                                        <div class="rsi-marker" style="left: \${item.rsi}%;"></div>
+                                    </div>
+                                    <div class="d-flex justify-content-between small">
+                                        <span class="\${item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : 'text-muted')}">
+                                            RSI: \${item.rsi.toFixed(1)}
+                                        </span>
+                                        <span>\${formatPrice(item.price)}</span>
+                                        <span class="\${changeClass}">
+                                            <i class="bi bi-\${changeIcon}"></i> \${Math.abs(item.change_24h).toFixed(1)}%
+                                        </span>
+                                    </div>
+                                    <p class="mb-0 mt-2 text-\${proximityColor === 'danger' ? 'danger fw-bold' : (proximityColor === 'warning' ? 'warning' : 'muted')}">
+                                        <i class="bi bi-\${statusIcon}"></i>
+                                        \${statusText}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    \`;
+                });
             }
             
             container.innerHTML = html;
             
         } catch (error) {
             console.error('Error updating near alerts:', error);
+            container.innerHTML = \`
+                <div class="col-12 text-center text-danger py-4">
+                    <i class="bi bi-exclamation-triangle display-4 d-block mb-2"></i>
+                    <p>Erro ao carregar dados: \${error.message}</p>
+                </div>
+            \`;
         }
     }
     
     async function fetchMarketData() {
         const container = document.getElementById('marketOverview');
         
-        const marketData = [
-            { symbol: 'BTC/USDT', price: 86750, change: 2.3, rsi: 45.2 },
-            { symbol: 'ETH/USDT', price: 2925, change: -0.8, rsi: 52.1 },
-            { symbol: 'SOL/USDT', price: 127.5, change: 5.1, rsi: 61.3 },
-            { symbol: 'BNB/USDT', price: 245.3, change: 1.2, rsi: 48.7 },
-            { symbol: 'XRP/USDT', price: 0.623, change: -1.5, rsi: 38.9 },
-        ];
-        
-        let html = '';
-        marketData.forEach(coin => {
-            const changeClass = coin.change >= 0 ? 'text-success' : 'text-danger';
-            const changeIcon = coin.change >= 0 ? 'bi-caret-up-fill' : 'bi-caret-down-fill';
-            const rsiClass = coin.rsi < 30 ? 'text-success' : (coin.rsi > 70 ? 'text-danger' : 'text-muted');
+        try {
+            const symbols = getSelectedSymbols().map(s => s.replace('/', '')).slice(0, 6).join(',');
+            const response = await fetch(API_BASE + '/api/scanner/market-data?symbols=' + symbols);
+            const result = await response.json();
             
-            html += \`
-                <div class="col-md-2 col-6 mb-3">
-                    <div class="card market-card h-100">
-                        <div class="card-body text-center p-2">
-                            <h6 class="mb-1">\${coin.symbol.replace('/USDT', '')}</h6>
-                            <h5 class="mb-1">\${formatPrice(coin.price)}</h5>
-                            <span class="\${changeClass}">
-                                <i class="bi \${changeIcon}"></i> \${Math.abs(coin.change).toFixed(2)}%
-                            </span>
-                            <br>
-                            <small class="\${rsiClass}">RSI: \${coin.rsi.toFixed(1)}</small>
+            if (!result.success || !result.data) {
+                throw new Error('Falha ao buscar dados');
+            }
+            
+            let html = '';
+            result.data.forEach(coin => {
+                const changeClass = coin.change_24h >= 0 ? 'text-success' : 'text-danger';
+                const changeIcon = coin.change_24h >= 0 ? 'bi-caret-up-fill' : 'bi-caret-down-fill';
+                const rsiClass = coin.rsi < 30 ? 'text-success fw-bold' : (coin.rsi > 70 ? 'text-danger fw-bold' : 'text-muted');
+                
+                html += \`
+                    <div class="col-md-2 col-6 mb-3">
+                        <div class="card market-card h-100">
+                            <div class="card-body text-center p-2">
+                                <h6 class="mb-1">\${coin.symbol.replace('/USDT', '')}</h6>
+                                <h5 class="mb-1">\${formatPrice(coin.price)}</h5>
+                                <span class="\${changeClass}">
+                                    <i class="bi \${changeIcon}"></i> \${Math.abs(coin.change_24h).toFixed(2)}%
+                                </span>
+                                <br>
+                                <small class="\${rsiClass}">RSI: \${coin.rsi.toFixed(1)}</small>
+                            </div>
                         </div>
                     </div>
-                </div>
-            \`;
-        });
-        
-        container.innerHTML = html;
-        document.getElementById('marketUpdateTime').textContent = new Date().toLocaleTimeString();
+                \`;
+            });
+            
+            container.innerHTML = html;
+            document.getElementById('marketUpdateTime').textContent = new Date().toLocaleTimeString();
+            
+        } catch (error) {
+            console.error('Error fetching market data:', error);
+        }
     }
     
     function addToHistory(signals) {

@@ -7,12 +7,13 @@ Esta estratégia detecta 4 padrões de divergência RSI:
 3. Reversão Positiva (Hidden Bullish) - Preço faz mínimas mais altas, RSI faz mínimas mais baixas
 4. Reversão Negativa (Hidden Bearish) - Preço faz máximas mais baixas, RSI faz máximas mais altas
 
-OTIMIZAÇÕES v2.0 (17/Dez/2025):
+OTIMIZAÇÕES v2.1 (17/Dez/2025):
 - Filtro EMA 50/200 para alinhamento com tendência
 - Volume > 1.5x média obrigatório
 - RSI 25/75 em vez de 30/70 (zonas mais extremas)
 - Smart Exit com MACD crossover (sem trailing fixo)
 - Integração com regime de mercado
+- NOVO: Multi-Timeframe Analysis (1h, 4h, 1d)
 
 DISCLAIMER: Esta estratégia é para fins educacionais.
 Past performance não garante resultados futuros.
@@ -21,8 +22,8 @@ Past performance não garante resultados futuros.
 import pandas as pd
 import numpy as np
 import ta
-from typing import Dict, Any, List, Optional
-from dataclasses import dataclass
+from typing import Dict, Any, List, Optional, Tuple
+from dataclasses import dataclass, field
 from .base_strategy import BaseStrategy
 import logging
 
@@ -43,11 +44,27 @@ class DivergencePattern:
     description: str
     trend_aligned: bool = False  # NOVO: Alinhado com EMA 50/200
     volume_confirmed: bool = False  # NOVO: Volume > 1.5x média
+    timeframe: str = '1h'  # NOVO v2.1: Timeframe do sinal
+    htf_confirmed: bool = False  # NOVO v2.1: Confirmado por higher timeframe
+    mtf_confirmed: bool = False  # NOVO v2.1: Confirmado por multi-timeframe (4h, 1d)
+    mtf_details: Optional[Dict[str, Any]] = field(default=None)  # NOVO v2.1: Detalhes do MTF check
+
+
+@dataclass
+class MultiTimeframeSignal:
+    """NOVO v2.1: Representa sinais de múltiplos timeframes"""
+    primary_signal: int  # -1, 0, 1
+    primary_strength: float
+    htf_bias: str  # 'bullish', 'bearish', 'neutral'
+    htf_rsi: float
+    htf_trend: str  # 'up', 'down', 'sideways'
+    confluence_score: float  # 0.0 a 1.0
+    timeframes_aligned: int  # Quantos TFs concordam
 
 
 class RSIDivergenceStrategy(BaseStrategy):
     """
-    Estratégia de detecção de divergências RSI v2.0
+    Estratégia de detecção de divergências RSI v2.1
     
     MELHORIAS IMPLEMENTADAS:
     1. Filtro EMA 50/200 - só aceita sinais alinhados com tendência macro
@@ -55,6 +72,7 @@ class RSIDivergenceStrategy(BaseStrategy):
     3. RSI 25/75 - zonas mais extremas para menos falsos positivos
     4. Smart Exit com MACD - saída baseada em reversão de momentum
     5. Integração com regime de mercado via MetaBacktester
+    6. NOVO v2.1: Multi-Timeframe Analysis (1h como base, 4h e 1d como filtro)
     """
     
     def __init__(self, parameters: Dict[str, Any] = None):
@@ -98,12 +116,169 @@ class RSIDivergenceStrategy(BaseStrategy):
             # Filtro de regime de mercado - NOVO
             'use_regime_filter': True,     # NOVO: Integrar com MetaBacktester
             'preferred_regimes': ['SIDEWAYS', 'BEAR'],  # NOVO: Melhores regimes
+            
+            # NOVO v2.1: Multi-Timeframe Analysis
+            'use_mtf_filter': False,       # Usar filtro multi-timeframe (desabilitado por padrão em backtest)
+            'mtf_timeframes': ['4h', '1d'],  # Timeframes para confirmação (além do base)
+            'mtf_min_confluence': 2,       # Mínimo de TFs alinhados (inclui base)
+            'mtf_rsi_neutral_zone': (40, 60),  # Zona neutra do RSI em HTF
+            'mtf_weight_4h': 0.3,          # Peso do 4h na confirmação
+            'mtf_weight_1d': 0.5,          # Peso do 1d na confirmação
         }
         
         if parameters:
             default_params.update(parameters)
         
-        super().__init__("RSI Divergence Strategy v2.0", default_params)
+        super().__init__("RSI Divergence Strategy v2.1", default_params)
+        
+        # Cache para dados de timeframes superiores
+        self._htf_cache: Dict[str, pd.DataFrame] = {}
+    
+    def set_htf_data(self, timeframe: str, df: pd.DataFrame):
+        """
+        NOVO v2.1: Define dados de um timeframe superior para análise MTF
+        
+        Args:
+            timeframe: '4h' ou '1d'
+            df: DataFrame com OHLCV do timeframe
+        """
+        if df is not None and len(df) > 0:
+            # Calcular indicadores no HTF
+            df_calc = self.calculate_indicators(df.copy())
+            self._htf_cache[timeframe] = df_calc
+            logger.info(f"HTF data cached for {timeframe}: {len(df)} candles")
+    
+    def get_htf_bias(self, timestamp: pd.Timestamp = None) -> MultiTimeframeSignal:
+        """
+        NOVO v2.1: Obtém o viés dos timeframes superiores
+        
+        Returns:
+            MultiTimeframeSignal com informações de confluência
+        """
+        htf_signals = []
+        
+        for tf in self.parameters.get('mtf_timeframes', ['4h', '1d']):
+            if tf not in self._htf_cache or self._htf_cache[tf] is None:
+                continue
+            
+            htf_df = self._htf_cache[tf]
+            if len(htf_df) == 0:
+                continue
+            
+            # Pegar último candle do HTF (ou o mais próximo do timestamp)
+            if timestamp is not None:
+                # Encontrar candle HTF correspondente
+                htf_df_filtered = htf_df[htf_df['timestamp'] <= timestamp]
+                if len(htf_df_filtered) == 0:
+                    continue
+                last_candle = htf_df_filtered.iloc[-1]
+            else:
+                last_candle = htf_df.iloc[-1]
+            
+            rsi = last_candle.get('rsi', 50)
+            ema_50 = last_candle.get('ema_50', last_candle['close'])
+            ema_200 = last_candle.get('ema_200', last_candle['close'])
+            price = last_candle['close']
+            
+            # Determinar viés
+            neutral_low, neutral_high = self.parameters.get('mtf_rsi_neutral_zone', (40, 60))
+            
+            if rsi < neutral_low:
+                rsi_bias = 'oversold'  # Potencial reversão de alta
+            elif rsi > neutral_high:
+                rsi_bias = 'overbought'  # Potencial reversão de baixa
+            else:
+                rsi_bias = 'neutral'
+            
+            # Tendência por EMA
+            if ema_50 > ema_200 and price > ema_50:
+                trend = 'up'
+            elif ema_50 < ema_200 and price < ema_50:
+                trend = 'down'
+            else:
+                trend = 'sideways'
+            
+            htf_signals.append({
+                'timeframe': tf,
+                'rsi': rsi,
+                'rsi_bias': rsi_bias,
+                'trend': trend,
+                'weight': self.parameters.get(f'mtf_weight_{tf}', 0.3)
+            })
+        
+        if not htf_signals:
+            return MultiTimeframeSignal(
+                primary_signal=0,
+                primary_strength=0.0,
+                htf_bias='neutral',
+                htf_rsi=50.0,
+                htf_trend='sideways',
+                confluence_score=0.5,
+                timeframes_aligned=1
+            )
+        
+        # Calcular confluência
+        bullish_score = 0.0
+        bearish_score = 0.0
+        total_weight = 0.0
+        avg_rsi = 0.0
+        
+        for sig in htf_signals:
+            weight = sig['weight']
+            total_weight += weight
+            avg_rsi += sig['rsi'] * weight
+            
+            # RSI oversold + tendência down = potencial reversão bullish
+            if sig['rsi_bias'] == 'oversold':
+                bullish_score += weight * 0.6
+            elif sig['rsi_bias'] == 'overbought':
+                bearish_score += weight * 0.6
+            
+            # Tendência adiciona ao score oposto (contrarian)
+            if sig['trend'] == 'down':
+                bullish_score += weight * 0.4  # Potencial reversão
+            elif sig['trend'] == 'up':
+                bearish_score += weight * 0.4  # Potencial reversão
+        
+        if total_weight > 0:
+            avg_rsi /= total_weight
+            bullish_score /= total_weight
+            bearish_score /= total_weight
+        
+        # Determinar viés final
+        if bullish_score > bearish_score + 0.1:
+            htf_bias = 'bullish'
+            confluence_score = bullish_score
+        elif bearish_score > bullish_score + 0.1:
+            htf_bias = 'bearish'
+            confluence_score = bearish_score
+        else:
+            htf_bias = 'neutral'
+            confluence_score = 0.5
+        
+        # Contar TFs alinhados
+        aligned = sum(1 for s in htf_signals if 
+                     (htf_bias == 'bullish' and s['rsi_bias'] == 'oversold') or
+                     (htf_bias == 'bearish' and s['rsi_bias'] == 'overbought'))
+        
+        # Determinar tendência predominante
+        trends = [s['trend'] for s in htf_signals]
+        if trends.count('up') > trends.count('down'):
+            htf_trend = 'up'
+        elif trends.count('down') > trends.count('up'):
+            htf_trend = 'down'
+        else:
+            htf_trend = 'sideways'
+        
+        return MultiTimeframeSignal(
+            primary_signal=1 if htf_bias == 'bullish' else (-1 if htf_bias == 'bearish' else 0),
+            primary_strength=confluence_score,
+            htf_bias=htf_bias,
+            htf_rsi=avg_rsi,
+            htf_trend=htf_trend,
+            confluence_score=confluence_score,
+            timeframes_aligned=aligned + 1  # +1 para o timeframe base
+        )
     
     def calculate_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -559,16 +734,168 @@ class RSIDivergenceStrategy(BaseStrategy):
         
         return df
     
+    def _check_mtf_alignment(self, symbol: str, signal: int, timestamp: pd.Timestamp = None) -> Tuple[bool, Dict[str, Any]]:
+        """
+        NOVO v2.1: Verifica alinhamento com timeframes superiores (4h, 1d)
+        
+        Para confirmar um sinal de 1h, verificamos:
+        - EMA 50/200 nos timeframes superiores
+        - RSI não em zona contrária
+        - Tendência geral deve estar alinhada
+        
+        Usa cache _htf_cache quando disponível (backtest), ou busca da API (live)
+        
+        Args:
+            symbol: Par de trading (ex: 'BTC/USDT')
+            signal: 1 (buy) ou -1 (sell)
+            timestamp: Timestamp do sinal (opcional, usa mais recente se None)
+            
+        Returns:
+            Tuple[bool, Dict]: (está_alinhado, detalhes)
+        """
+        if not self.parameters.get('use_mtf_filter', False):
+            return True, {'mtf_skipped': True}
+        
+        mtf_timeframes = self.parameters.get('mtf_timeframes', ['4h', '1d'])
+        min_alignment = self.parameters.get('mtf_min_confluence', 2)
+        
+        mtf_details = {
+            'timeframes_checked': mtf_timeframes,
+            'alignments': {},
+            'total_aligned': 0,
+            'min_required': min_alignment
+        }
+        
+        try:
+            for tf in mtf_timeframes:
+                try:
+                    tf_df = None
+                    
+                    # Primeiro tentar usar o cache (backtest mode)
+                    if hasattr(self, '_htf_cache') and tf in self._htf_cache:
+                        tf_df = self._htf_cache[tf]
+                        logger.debug(f"MTF {tf}: usando dados do cache")
+                    else:
+                        # Sem cache - buscar da API (live mode)
+                        try:
+                            import ccxt
+                            exchange = ccxt.binance({'enableRateLimit': True})
+                            ohlcv = exchange.fetch_ohlcv(symbol, tf, limit=250)
+                            
+                            if len(ohlcv) < 200:
+                                logger.warning(f"MTF {tf}: dados insuficientes ({len(ohlcv)} candles)")
+                                continue
+                            
+                            # Converter para DataFrame
+                            tf_df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                            tf_df['timestamp'] = pd.to_datetime(tf_df['timestamp'], unit='ms')
+                            
+                            # Calcular indicadores
+                            tf_df['ema_50'] = ta.trend.ema_indicator(tf_df['close'], window=50)
+                            tf_df['ema_200'] = ta.trend.ema_indicator(tf_df['close'], window=200)
+                            tf_df['rsi'] = ta.momentum.rsi(tf_df['close'], window=14)
+                            
+                        except Exception as e:
+                            logger.warning(f"MTF {tf}: não foi possível buscar dados: {e}")
+                            continue
+                    
+                    if tf_df is None or len(tf_df) == 0:
+                        continue
+                    
+                    # Pegar candle relevante (por timestamp ou último)
+                    if timestamp is not None and 'timestamp' in tf_df.columns:
+                        tf_df_filtered = tf_df[tf_df['timestamp'] <= timestamp]
+                        if len(tf_df_filtered) == 0:
+                            last = tf_df.iloc[-1]
+                        else:
+                            last = tf_df_filtered.iloc[-1]
+                    else:
+                        last = tf_df.iloc[-1]
+                    
+                    # Verificar tendência
+                    ema50 = last.get('ema_50', last['close'])
+                    ema200 = last.get('ema_200', last['close'])
+                    rsi = last.get('rsi', 50)
+                    price = last['close']
+                    
+                    # Tratar NaN
+                    if pd.isna(ema50) or pd.isna(ema200):
+                        logger.debug(f"MTF {tf}: EMA não disponível ainda")
+                        continue
+                    
+                    is_bullish = ema50 > ema200
+                    price_above_ema50 = price > ema50
+                    
+                    # Determinar alinhamento
+                    aligned = False
+                    reason = ""
+                    
+                    if signal == 1:  # Buy signal
+                        # Para buy: queremos tendência bullish OU RSI oversold no TF superior
+                        if is_bullish and price_above_ema50:
+                            aligned = True
+                            reason = f"Bullish trend (EMA50 > EMA200, price above EMA50)"
+                        elif rsi < 40:  # RSI oversold no TF superior
+                            aligned = True
+                            reason = f"RSI oversold ({rsi:.1f})"
+                        elif is_bullish:  # Bullish mesmo em pullback
+                            aligned = True
+                            reason = f"Bullish trend (pullback)"
+                        else:
+                            reason = f"Bearish trend (EMA50 < EMA200)"
+                    else:  # Sell signal (-1)
+                        # Para sell: queremos tendência bearish OU RSI overbought no TF superior
+                        if not is_bullish and not price_above_ema50:
+                            aligned = True
+                            reason = f"Bearish trend (EMA50 < EMA200, price below EMA50)"
+                        elif rsi > 60:  # RSI overbought no TF superior
+                            aligned = True
+                            reason = f"RSI overbought ({rsi:.1f})"
+                        elif not is_bullish:  # Bearish mesmo em bounce
+                            aligned = True
+                            reason = f"Bearish trend (bounce)"
+                        else:
+                            reason = f"Bullish trend (EMA50 > EMA200)"
+                    
+                    mtf_details['alignments'][tf] = {
+                        'aligned': aligned,
+                        'reason': reason,
+                        'ema50': float(ema50),
+                        'ema200': float(ema200),
+                        'rsi': float(rsi) if not pd.isna(rsi) else 50.0,
+                        'price': float(price),
+                        'is_bullish': is_bullish
+                    }
+                    
+                    if aligned:
+                        mtf_details['total_aligned'] += 1
+                        
+                except Exception as e:
+                    logger.warning(f"MTF {tf} check failed: {e}")
+                    mtf_details['alignments'][tf] = {'error': str(e)}
+            
+            # Verificar se atingiu mínimo
+            is_aligned = mtf_details['total_aligned'] >= min_alignment
+            
+            logger.info(f"MTF Check: {mtf_details['total_aligned']}/{len(mtf_timeframes)} timeframes aligned (min: {min_alignment})")
+            
+            return is_aligned, mtf_details
+            
+        except Exception as e:
+            logger.error(f"MTF check failed: {e}")
+            return True, {'error': str(e), 'mtf_skipped': True}
+    
     def _apply_filters(self, df: pd.DataFrame, idx: int, divergence: DivergencePattern) -> bool:
         """
         Aplica filtros adicionais para validar o sinal
         
-        FILTROS v2.0:
-        1. Filtro EMA 50/200 - Alinhamento com tendência macro (NOVO)
+        FILTROS v2.1:
+        1. Filtro EMA 50/200 - Alinhamento com tendência macro
         2. Volume > 1.5x média obrigatório (FORTALECIDO)
         3. ADX para confirmar tendência (mantido)
         4. Evitar sinais consecutivos (mantido)
         5. RSI não em zona neutra (mantido)
+        6. NOVO: Multi-timeframe confirmation (4h, 1d)
         """
         
         # 1. NOVO: Filtro de tendência EMA 50/200
@@ -645,19 +972,40 @@ class RSIDivergenceStrategy(BaseStrategy):
             # Zona neutra expandida (40-60) para ser mais rigoroso
             return False
         
+        # 6. NOVO v2.1: Multi-timeframe confirmation
+        # Usa cache _htf_cache quando disponível (backtest), ou busca API (live)
+        if self.parameters.get('use_mtf_filter', False):
+            # Verificar se temos dados MTF (cache ou vai buscar live)
+            symbol = df.attrs.get('symbol', 'BTC/USDT') if hasattr(df, 'attrs') else 'BTC/USDT'
+            timestamp = df['timestamp'].iloc[idx] if 'timestamp' in df.columns else None
+            
+            mtf_aligned, mtf_details = self._check_mtf_alignment(symbol, divergence.signal, timestamp)
+            
+            if not mtf_aligned:
+                logger.debug(f"Filtro MTF: Rejeitado - apenas {mtf_details.get('total_aligned', 0)} TFs alinhados")
+                return False
+            
+            # Marcar no divergence pattern
+            divergence.mtf_confirmed = True
+            divergence.mtf_details = mtf_details
+        
         return True
     
     def get_entry_conditions(self) -> List[str]:
-        return [
+        mtf_info = f"NOVO v2.1: MTF Confirmation ({', '.join(self.parameters.get('mtf_timeframes', ['4h', '1d']))})" if self.parameters.get('use_mtf_filter', False) else ""
+        conditions = [
             "Divergência de Alta: Preço faz mínimas mais baixas, RSI faz mínimas mais altas",
             "Divergência de Baixa: Preço faz máximas mais altas, RSI faz máximas mais baixas",
             "Divergência Oculta de Alta: Continuação em tendência de alta",
             "Divergência Oculta de Baixa: Continuação em tendência de baixa",
-            f"NOVO: Filtro EMA 50/200 - Alinhamento com tendência macro",
-            f"NOVO: Volume > {self.parameters['volume_multiplier']}x média (obrigatório)",
+            f"Filtro EMA 50/200 - Alinhamento com tendência macro",
+            f"Volume > {self.parameters['volume_multiplier']}x média (obrigatório)",
             f"RSI extremo: < {self.parameters['rsi_oversold']} (buy) ou > {self.parameters['rsi_overbought']} (sell)",
             f"ADX > {self.parameters['min_adx_trend']} (tendência forte)"
         ]
+        if mtf_info:
+            conditions.append(mtf_info)
+        return conditions
     
     def get_exit_conditions(self) -> List[str]:
         return [
