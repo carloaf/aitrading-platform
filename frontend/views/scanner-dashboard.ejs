@@ -201,10 +201,45 @@
         <div class="col-lg-8">
             <div class="card shadow-sm h-100">
                 <div class="card-header bg-white">
-                    <h5 class="mb-0">
-                        <i class="bi bi-lightning-charge text-warning"></i> Proximidade de Alerta
-                        <small class="text-muted ms-2">(Sinais potenciais formando)</small>
-                    </h5>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">
+                            <i class="bi bi-lightning-charge text-warning"></i> Proximidade de Alerta
+                        </h5>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#proximityHelp">
+                            <i class="bi bi-question-circle"></i> Como funciona?
+                        </button>
+                    </div>
+                </div>
+                <div class="collapse" id="proximityHelp">
+                    <div class="card-body border-bottom bg-light">
+                        <h6 class="fw-bold mb-3"><i class="bi bi-info-circle text-primary"></i> Entendendo a Proximidade de Alerta</h6>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <p class="mb-2"><strong>O que é?</strong></p>
+                                <p class="small text-muted mb-3">
+                                    A proximidade indica o quão perto um ativo está de formar uma <strong>divergência RSI</strong>. 
+                                    Quanto maior a porcentagem, maior a chance de um sinal ser gerado em breve.
+                                </p>
+                                <p class="mb-2"><strong>Níveis de Proximidade:</strong></p>
+                                <ul class="list-unstyled small">
+                                    <li><span class="badge bg-danger me-2">≥70%</span> <strong>Iminente</strong> - Divergência prestes a se formar</li>
+                                    <li><span class="badge bg-warning text-dark me-2">40-69%</span> <strong>Em formação</strong> - Padrão se desenvolvendo</li>
+                                    <li><span class="badge bg-secondary me-2">&lt;40%</span> <strong>Monitorando</strong> - Condições sendo avaliadas</li>
+                                </ul>
+                            </div>
+                            <div class="col-md-6">
+                                <p class="mb-2"><strong>Indicadores de Status:</strong></p>
+                                <ul class="list-unstyled small">
+                                    <li class="mb-1">🟢 <strong>Possível Bullish Div.</strong> - RSI subindo enquanto preço cai (sinal de compra potencial)</li>
+                                    <li class="mb-1">🔴 <strong>Possível Bearish Div.</strong> - RSI caindo enquanto preço sobe (sinal de venda potencial)</li>
+                                    <li class="mb-1"><i class="bi bi-eye"></i> <strong>RSI baixo/alto - Atenção</strong> - Zona extrema, aguardando confirmação</li>
+                                </ul>
+                                <div class="alert alert-info py-2 mb-0 small">
+                                    <i class="bi bi-lightbulb"></i> <strong>Dica:</strong> Ativos com RSI &lt;35 ou &gt;65 estão em zonas extremas e têm maior probabilidade de gerar sinais.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body" id="nearAlertsContainer">
                     <div class="row" id="nearAlertsRow">
@@ -303,26 +338,6 @@
         position: relative;
     }
     
-    .near-alert-card {
-        border-left: 4px solid #ffc107;
-        transition: all 0.3s ease;
-    }
-    
-    .near-alert-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-    }
-    
-    .near-alert-card.forming {
-        animation: pulse 2s infinite;
-    }
-    
-    @keyframes pulse {
-        0% { border-left-color: #ffc107; }
-        50% { border-left-color: #ff9800; }
-        100% { border-left-color: #ffc107; }
-    }
-    
     .rsi-gauge {
         width: 100%;
         height: 20px;
@@ -407,6 +422,33 @@
         0%, 100% { opacity: 1; }
         50% { opacity: 0.5; }
     }
+    
+    /* Pulse animation for urgent alerts */
+    .pulse-animation {
+        animation: pulse 1.5s infinite;
+    }
+    
+    @keyframes pulse {
+        0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+        50% { transform: scale(1.05); box-shadow: 0 0 0 5px rgba(220, 53, 69, 0); }
+        100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+    }
+    
+    /* Enhanced near alert card styling */
+    .near-alert-card {
+        transition: all 0.3s ease;
+        border-left: 3px solid #dee2e6;
+    }
+    
+    .near-alert-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    
+    .near-alert-card.forming {
+        border-left: 3px solid #dc3545;
+        background: linear-gradient(135deg, rgba(220, 53, 69, 0.05) 0%, rgba(255,255,255,1) 100%);
+    }
 </style>
 
 <script>
@@ -417,9 +459,11 @@
     let nearAlerts = {};
     
     const API_BASE = 'http://localhost:3008';
+    const STORAGE_KEY = 'scannerConfig';
     
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
+        loadSavedConfig();  // Load saved config first
         initializeScanner();
         fetchMarketData();
         updateNearAlerts();
@@ -427,7 +471,96 @@
         // Auto-refresh market data every 30 seconds
         setInterval(fetchMarketData, 30000);
         setInterval(updateNearAlerts, 15000);
+        
+        // Add auto-save event listeners to all config inputs
+        setupAutoSave();
     });
+    
+    // Setup auto-save for all configuration inputs
+    function setupAutoSave() {
+        // Auto-save when symbols checkboxes change
+        document.querySelectorAll('#scannerConfigForm input[type="checkbox"]').forEach(cb => {
+            cb.addEventListener('change', function() {
+                saveConfig();
+                console.log('Config auto-saved after checkbox change');
+            });
+        });
+        
+        // Auto-save when range sliders change
+        document.querySelectorAll('#scannerConfigForm input[type="range"]').forEach(range => {
+            range.addEventListener('change', function() {
+                saveConfig();
+                console.log('Config auto-saved after range change');
+            });
+        });
+    }
+    
+    // Save configuration to localStorage
+    function saveConfig() {
+        const config = {
+            symbols: [],
+            timeframes: [],
+            minStrength: document.getElementById('minStrength').value,
+            scanInterval: document.getElementById('scanInterval').value
+        };
+        
+        // Get selected symbols
+        document.querySelectorAll('#scannerConfigForm input[type="checkbox"][id^="chk"]').forEach(cb => {
+            if (cb.value.includes('/')) {
+                config.symbols.push({ id: cb.id, checked: cb.checked });
+            } else {
+                config.timeframes.push({ id: cb.id, value: cb.value, checked: cb.checked });
+            }
+        });
+        
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+        console.log('Config saved:', config);
+    }
+    
+    // Load configuration from localStorage
+    function loadSavedConfig() {
+        const savedConfig = localStorage.getItem(STORAGE_KEY);
+        if (!savedConfig) {
+            console.log('No saved config found, using defaults');
+            return;
+        }
+        
+        try {
+            const config = JSON.parse(savedConfig);
+            console.log('Loading saved config:', config);
+            
+            // Restore symbols checkboxes
+            if (config.symbols && config.symbols.length > 0) {
+                config.symbols.forEach(item => {
+                    const cb = document.getElementById(item.id);
+                    if (cb) cb.checked = item.checked;
+                });
+            }
+            
+            // Restore timeframes checkboxes
+            if (config.timeframes && config.timeframes.length > 0) {
+                config.timeframes.forEach(item => {
+                    const cb = document.getElementById(item.id);
+                    if (cb) cb.checked = item.checked;
+                });
+            }
+            
+            // Restore minStrength
+            if (config.minStrength) {
+                document.getElementById('minStrength').value = config.minStrength;
+                document.getElementById('strengthValue').textContent = config.minStrength;
+            }
+            
+            // Restore scanInterval
+            if (config.scanInterval) {
+                document.getElementById('scanInterval').value = config.scanInterval;
+                document.getElementById('intervalValue').textContent = config.scanInterval;
+            }
+            
+        } catch (e) {
+            console.error('Error loading saved config:', e);
+        }
+    }
     
     async function initializeScanner() {
         try {
@@ -674,21 +807,42 @@
             } else {
                 alertData.forEach(item => {
                     const proximityColor = item.proximity >= 70 ? 'danger' : (item.proximity >= 40 ? 'warning' : 'secondary');
-                    let statusText = 'Monitorando';
-                    let statusIcon = 'hourglass-split';
+                    
+                    // Definir status e descrição com base na proximidade e RSI
+                    let statusText = '';
+                    let statusIcon = '';
+                    let statusDescription = '';
                     
                     if (item.trend === 'forming_bullish') {
                         statusText = '🟢 Possível Bullish Div.';
                         statusIcon = 'arrow-up-circle';
+                        statusDescription = 'RSI subindo enquanto preço pode estar caindo';
                     } else if (item.trend === 'forming_bearish') {
                         statusText = '🔴 Possível Bearish Div.';
                         statusIcon = 'arrow-down-circle';
-                    } else if (item.trend === 'watching_bullish') {
-                        statusText = 'RSI baixo - Atenção';
+                        statusDescription = 'RSI caindo enquanto preço pode estar subindo';
+                    } else if (item.trend === 'watching_bullish' || item.rsi <= 35) {
+                        statusText = '👀 RSI Baixo - Atenção';
                         statusIcon = 'eye';
-                    } else if (item.trend === 'watching_bearish') {
-                        statusText = 'RSI alto - Atenção';
+                        statusDescription = 'Zona de sobrevenda, potencial reversão de alta';
+                    } else if (item.trend === 'watching_bearish' || item.rsi >= 65) {
+                        statusText = '👀 RSI Alto - Atenção';
                         statusIcon = 'eye';
+                        statusDescription = 'Zona de sobrecompra, potencial reversão de baixa';
+                    } else {
+                        statusText = '📊 Monitorando';
+                        statusIcon = 'hourglass-split';
+                        statusDescription = 'Avaliando condições de mercado';
+                    }
+                    
+                    // Calcular nível de urgência
+                    let urgencyBadge = '';
+                    if (item.proximity >= 70) {
+                        urgencyBadge = '<span class="badge bg-danger pulse-animation">IMINENTE</span>';
+                    } else if (item.proximity >= 40) {
+                        urgencyBadge = '<span class="badge bg-warning text-dark">FORMANDO</span>';
+                    } else if (item.proximity > 0) {
+                        urgencyBadge = '<span class="badge bg-secondary">OBSERVANDO</span>';
                     }
                     
                     const cardClass = item.proximity >= 70 ? 'near-alert-card forming' : 'near-alert-card';
@@ -697,28 +851,47 @@
                     
                     html += \`
                         <div class="col-md-4 mb-3">
-                            <div class="card \${cardClass}">
+                            <div class="card \${cardClass} h-100">
                                 <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center mb-2">
-                                        <h6 class="mb-0 fw-bold">\${item.symbol}</h6>
-                                        \${item.proximity > 0 ? \`<span class="badge bg-\${proximityColor}">\${item.proximity}% próximo</span>\` : ''}
+                                    <div class="d-flex justify-content-between align-items-start mb-2">
+                                        <div>
+                                            <h6 class="mb-0 fw-bold">\${item.symbol}</h6>
+                                            <small class="text-muted">\${formatPrice(item.price)}</small>
+                                        </div>
+                                        <div class="text-end">
+                                            \${urgencyBadge}
+                                            \${item.proximity > 0 ? \`<div class="small text-\${proximityColor} fw-bold mt-1">\${item.proximity}% próximo</div>\` : ''}
+                                        </div>
                                     </div>
-                                    <div class="rsi-gauge mb-2">
-                                        <div class="rsi-marker" style="left: \${item.rsi}%;"></div>
+                                    
+                                    <div class="mb-2">
+                                        <div class="d-flex justify-content-between align-items-center small mb-1">
+                                            <span class="text-muted">RSI</span>
+                                            <span class="\${item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : 'text-muted')}">\${item.rsi.toFixed(1)}</span>
+                                        </div>
+                                        <div class="rsi-gauge">
+                                            <div class="rsi-marker" style="left: \${item.rsi}%;"></div>
+                                        </div>
+                                        <div class="d-flex justify-content-between small text-muted mt-1">
+                                            <span>30</span>
+                                            <span>50</span>
+                                            <span>70</span>
+                                        </div>
                                     </div>
-                                    <div class="d-flex justify-content-between small">
-                                        <span class="\${item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : 'text-muted')}">
-                                            RSI: \${item.rsi.toFixed(1)}
+                                    
+                                    <div class="d-flex justify-content-between align-items-center small mb-2">
+                                        <span>24h:</span>
+                                        <span class="\${changeClass} fw-bold">
+                                            <i class="bi bi-\${changeIcon}"></i> \${Math.abs(item.change_24h).toFixed(2)}%
                                         </span>
-                                        <span>\${formatPrice(item.price)}</span>
-                                        <span class="\${changeClass}">
-                                            <i class="bi bi-\${changeIcon}"></i> \${Math.abs(item.change_24h).toFixed(1)}%
-                                        </span>
                                     </div>
-                                    <p class="mb-0 mt-2 text-\${proximityColor === 'danger' ? 'danger fw-bold' : (proximityColor === 'warning' ? 'warning' : 'muted')}">
-                                        <i class="bi bi-\${statusIcon}"></i>
-                                        \${statusText}
-                                    </p>
+                                    
+                                    <div class="border-top pt-2 mt-2">
+                                        <p class="mb-1 small fw-bold text-\${proximityColor === 'danger' ? 'danger' : (proximityColor === 'warning' ? 'warning' : 'secondary')}">
+                                            <i class="bi bi-\${statusIcon}"></i> \${statusText}
+                                        </p>
+                                        <p class="mb-0 small text-muted">\${statusDescription}</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -833,6 +1006,9 @@
     }
     
     function applyConfig() {
+        // Save configuration to localStorage
+        saveConfig();
+        
         initializeScanner();
         
         // Update scan interval if continuous is running
@@ -841,6 +1017,8 @@
             const interval = parseInt(document.getElementById('scanInterval').value) * 1000;
             scanInterval = setInterval(runScan, interval);
         }
+        
+        showToast('Configuração Salva', 'Suas preferências foram salvas e serão mantidas ao recarregar a página', 'success');
     }
     
     function getSelectedSymbols() {

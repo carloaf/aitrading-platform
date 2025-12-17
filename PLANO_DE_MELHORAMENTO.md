@@ -56,7 +56,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 | **Dashboard Consolidado** | ✅ Operacional | 4 tabs unificadas | PASSO 31 |
 | **Scanner RSI Divergence** | ✅ Operacional | Multi-symbol real-time | PASSO 32 |
 | **Sentiment Layer** | 🟡 MVP Integrado | Opt-in | PASSO 28 (sentiment filter) |
-| **Multi-Timeframe Filter** | 🟡 MVP Integrado | Opt-in | PASSO 29 (HTF bias 4h/1d) |
+| **Multi-Timeframe Filter** | ✅ Implementado | Opt-in | PASSO 29 (HTF bias 4h/1d + RSI v2.1) |
 
 ### ✅ PASSOS CONCLUÍDOS
 
@@ -3033,6 +3033,29 @@ curl -X POST http://localhost:3008/api/meta-backtest/run \
   }
 }
 ```
+
+**RSI Divergence v2.1 - MTF Integration** (17/Dez/2025):
+
+Além do MetaBacktester, o filtro MTF também foi implementado diretamente na estratégia RSI Divergence v2.1:
+
+```python
+# Parâmetros RSI Divergence v2.1
+{
+    'use_mtf_filter': False,      # Habilitado para live, desabilitado em backtest
+    'mtf_timeframes': ['4h', '1d'],
+    'mtf_min_confluence': 2,      # Mínimo de TFs alinhados
+}
+```
+
+**Lógica de Alinhamento**:
+- **BUY Signal**: Aceito se 4h/1d mostram tendência bullish (EMA50 > EMA200) OU RSI oversold (<40)
+- **SELL Signal**: Aceito se 4h/1d mostram tendência bearish OU RSI overbought (>60)
+- Requer mínimo de 2 timeframes alinhados para confirmar o sinal
+
+**Teste de Validação** (BTC 2024):
+- Sem MTF: 7 padrões detectados, 7 trades
+- Com MTF: 1 padrão passou (filtrou 6 não-alinhados)
+- Trade aprovado: +2.92% retorno (alta qualidade)
 
 ---
 
