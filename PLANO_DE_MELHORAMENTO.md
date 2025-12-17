@@ -32,7 +32,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 - PASSO 27: Advanced WFO Features (Em Progresso)
 - [PASSO 28](#passo-28-sentiment-analysis-integration-opt-in): Sentiment Analysis Integration ✅
 - [PASSO 29](#passo-29-multi-timeframe-confirmation-opt-in): Multi-Timeframe Analysis ✅
-- PASSO 30: Paper Trading Live
+- [PASSO 30](#passo-30-paper-trading-live): Paper Trading Live ✅
 
 ---
 
@@ -49,7 +49,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 | **Kelly Sizing** | ✅ Ativo | +18% vs Fixed Risk | 2023: +20.50% return |
 | **WFO Automation** | ✅ Deploy | 81/100 robustez | Script wfo_simple.sh ready |
 | **Multi-Par Validation** | ✅ Operacional | BTC/ETH/SOL validated | Script validate_multipar.sh |
-| **Paper Trading** | ⏳ Planejado | - | PASSO 30 |
+| **Paper Trading** | ✅ Operacional | WebSocket Live | PASSO 30 |
 | **Sentiment Layer** | 🟡 MVP Integrado | Opt-in | PASSO 28 (sentiment filter) |
 | **Multi-Timeframe Filter** | 🟡 MVP Integrado | Opt-in | PASSO 29 (HTF bias 4h/1d) |
 
@@ -3028,6 +3028,103 @@ curl -X POST http://localhost:3008/api/meta-backtest/run \
   }
 }
 ```
+
+---
+
+#### 5. **Paper Trading Live** (PASSO 30) ✅ IMPLEMENTADO
+
+Sistema de Paper Trading em tempo real com conexão WebSocket à Binance para simulação de trading sem risco financeiro.
+
+**Componentes**:
+- ✅ `order_manager.py`: Gerencia ordens, posições e P&L virtual
+- ✅ `websocket_client.py`: Conexão WebSocket aos streams da Binance (ticker, klines)
+- ✅ `strategy_executor.py`: Executa estratégias em tempo real
+
+**Endpoints Disponíveis** (porta 3008):
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `POST` | `/paper-trading/start` | Inicia sessão de paper trading |
+| `POST` | `/paper-trading/{session_id}/stop` | Para sessão |
+| `GET` | `/paper-trading/{session_id}/status` | Status da sessão |
+| `GET` | `/paper-trading/{session_id}/account` | Resumo da conta |
+| `GET` | `/paper-trading/{session_id}/positions` | Posições abertas |
+| `GET` | `/paper-trading/{session_id}/orders` | Ordens ativas |
+| `GET` | `/paper-trading/{session_id}/trades` | Histórico de trades |
+| `POST` | `/paper-trading/{session_id}/order` | Criar ordem manual |
+| `DELETE` | `/paper-trading/{session_id}/order/{order_id}` | Cancelar ordem |
+| `GET` | `/paper-trading/sessions` | Listar sessões ativas |
+
+**Estratégias Disponíveis**:
+- `momentum` - Momentum Strategy
+- `macd_rsi_combo` - MACD + RSI Combo
+- `trend_following` - Trend Following
+- `mean_reversion` - Mean Reversion
+- `volatility_breakout` - Volatility Breakout
+- `bollinger_bands` - Bollinger Bands
+- `volume_profile` - Volume Profile
+- `multi_timeframe` - Multi Timeframe
+- `dynamic_position_sizing` - Dynamic Position Sizing
+- `liquidity_grab` - Liquidity Grab (BLUE_PRINT)
+
+**Exemplo de Uso**:
+```bash
+# 1. Iniciar sessão de Paper Trading
+curl -X POST http://localhost:3008/paper-trading/start \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "session_id": "btc-momentum-001",
+    "strategy_name": "momentum",
+    "strategy_parameters": {},
+    "symbol": "BTCUSDT",
+    "timeframe": "1m",
+    "initial_balance": 10000.0,
+    "commission_rate": 0.001,
+    "slippage_rate": 0.0005
+  }'
+
+# 2. Verificar status da sessão
+curl http://localhost:3008/paper-trading/btc-momentum-001/status
+
+# 3. Ver resumo da conta
+curl http://localhost:3008/paper-trading/btc-momentum-001/account
+
+# 4. Listar todas as sessões ativas
+curl http://localhost:3008/paper-trading/sessions
+
+# 5. Parar sessão
+curl -X POST http://localhost:3008/paper-trading/btc-momentum-001/stop
+```
+
+**Response do Status**:
+```json
+{
+  "is_running": true,
+  "strategy_name": "Momentum Strategy",
+  "symbol": "BTCUSDT",
+  "timeframe": "1m",
+  "position_open": false,
+  "last_signal": 0,
+  "uptime_seconds": 120.5,
+  "signals_generated": 5,
+  "trades_executed": 2,
+  "candles_collected": 120,
+  "account_summary": {
+    "balance": 10050.0,
+    "equity": 10080.0,
+    "initial_balance": 10000.0,
+    "total_pnl": 80.0,
+    "total_pnl_percent": 0.8,
+    "unrealized_pnl": 30.0,
+    "realized_pnl": 50.0,
+    "open_positions": 1,
+    "active_orders": 0,
+    "total_trades": 2
+  }
+}
+```
+
+**Persistência**: Sessões são registradas no TimescaleDB na tabela `paper_trading_sessions` para histórico e análise posterior.
 
 ---
         
