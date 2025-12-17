@@ -1,7 +1,7 @@
 Plano de Trading, Investimento Universal e integração com Blue Print - Criptomoedas
 PLANO DE TRADING UNIVERSAL - CRIPTOMOEDAS
 Versão: 2.5 | Institutional Grade | Antifragilidade Total
-**Última Atualização**: 16 de Dezembro de 2025
+**Última Atualização**: 17 de Dezembro de 2025
 
 ---
 
@@ -34,6 +34,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 - [PASSO 29](#passo-29-multi-timeframe-confirmation-opt-in): Multi-Timeframe Analysis ✅
 - [PASSO 30](#passo-30-paper-trading-live): Paper Trading Live ✅
 - [PASSO 31](#passo-31-live-trading-integration--dashboard-consolidado-): Live Trading + Dashboard ✅
+- [PASSO 32](#passo-32-multi-symbol-rsi-divergence-scanner--dashboard-): Multi-Symbol Scanner + Dashboard ✅
 
 ---
 
@@ -53,6 +54,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 | **Paper Trading** | ✅ Operacional | WebSocket Live | PASSO 30 |
 | **Live Trading Test** | ✅ Operacional | Dry Run Mode | PASSO 31 |
 | **Dashboard Consolidado** | ✅ Operacional | 4 tabs unificadas | PASSO 31 |
+| **Scanner RSI Divergence** | ✅ Operacional | Multi-symbol real-time | PASSO 32 |
 | **Sentiment Layer** | 🟡 MVP Integrado | Opt-in | PASSO 28 (sentiment filter) |
 | **Multi-Timeframe Filter** | 🟡 MVP Integrado | Opt-in | PASSO 29 (HTF bias 4h/1d) |
 
@@ -3602,5 +3604,210 @@ curl -o /dev/null -w "%{http_code}" http://localhost:8081/consolidated
 2. **WebSocket Integration**: Adicionar streaming de preços em tempo real
 3. **Strategy Auto-Execute**: Conectar sinais do MetaBacktester ao Live Trading
 4. **Alert System**: Notificações para ordens executadas e kill switch
+
+---
+
+## 🔍 PASSO 32: MULTI-SYMBOL RSI DIVERGENCE SCANNER + DASHBOARD ✅
+
+**Data**: 17 de Dezembro de 2025  
+**Branch**: `feature/passo-32-multi-symbol-scanner`  
+**Status**: ✅ CONCLUÍDO E OPERACIONAL  
+**Commit**: `cc98832`
+
+### 🎯 Objetivo
+
+Implementar um scanner em tempo real que analisa múltiplas criptomoedas simultaneamente usando a estratégia RSI Divergence (a mais consolidada do sistema com 66.45% win rate), com Dashboard visual para monitoramento de alertas e proximidade de entrada.
+
+### 📋 Motivação
+
+1. **RSI Divergence é a estratégia mais robusta**:
+   - Win Rate médio: 66.45% (BTC 71%, ETH 64%, SOL 64%)
+   - Especialista em SIDEWAYS/BEAR
+   - Max DD baixo: 1.89% no BTC
+   - Profit factor: 1.87x (TP/SL ratio)
+
+2. **Necessidade de escalar**: Monitorar 6+ criptos em tempo real
+3. **Visibilidade**: Dashboard com alertas visuais para tomada de decisão
+
+### 📂 Arquivos Criados/Modificados
+
+| Arquivo | Ação | Descrição |
+|---------|------|-----------|
+| `services/execution-engine/src/multi_symbol_scanner.py` | NOVO (~707 linhas) | Scanner multi-symbol RSI Divergence |
+| `services/execution-engine/src/main.py` | MODIFICADO (+481 linhas) | 10 novos endpoints Scanner + Paper Trading multi-symbol |
+| `frontend/views/scanner-dashboard.ejs` | NOVO (~820 linhas) | Dashboard visual com alertas |
+| `frontend/server.js` | MODIFICADO | Rota `/scanner` |
+| `frontend/views/layout.ejs` | MODIFICADO | Link Scanner RSI no menu |
+| `.github/prompts/aiprompt.prompt.md` | MODIFICADO (+87 linhas) | Workflow de branches obrigatório |
+
+### 🔧 Funcionalidades do Scanner
+
+#### Símbolos Monitorados (Padrão)
+- BTCUSDT, ETHUSDT, SOLUSDT
+- BNBUSDT, XRPUSDT, ADAUSDT
+
+#### Timeframes Suportados
+- 1h (recomendado - melhor performance histórica)
+- 4h (menos sinais, maior confiabilidade)
+
+#### Tipos de Divergência Detectados
+
+| Tipo | Descrição | Sinal |
+|------|-----------|-------|
+| **Bullish Divergence** | Preço faz LOW mais baixo, RSI faz LOW mais alto | 🟢 LONG |
+| **Bearish Divergence** | Preço faz HIGH mais alto, RSI faz HIGH mais baixo | 🔴 SHORT |
+| **Hidden Bullish** | Preço faz LOW mais alto, RSI faz LOW mais baixo (continuação) | 🟢 LONG |
+| **Hidden Bearish** | Preço faz HIGH mais baixo, RSI faz HIGH mais alto (continuação) | 🔴 SHORT |
+
+#### Métricas Calculadas por Sinal
+
+- **Força do Sinal** (0.0 - 1.0): Baseado em divergência de RSI e confirmação de tendência
+- **RSI Atual**: Valor em tempo real
+- **Preço de Entrada Sugerido**: Baseado no momento da detecção
+- **Stop Loss**: ATR-based (2.0x ATR)
+- **Take Profit**: ATR-based (4.0x ATR)
+
+### 📡 Endpoints Scanner (porta 3008)
+
+| Método | Endpoint | Descrição |
+|--------|----------|-----------|
+| `POST` | `/api/scanner/init` | Inicializa scanner com símbolos e parâmetros |
+| `POST` | `/api/scanner/scan` | Executa scan imediato em todos os símbolos |
+| `GET` | `/api/scanner/quick-scan` | Scan rápido via query string |
+| `GET` | `/api/scanner/status` | Status atual do scanner |
+| `GET` | `/api/scanner/signals` | Sinais ativos (últimas 24h) |
+| `POST` | `/api/scanner/start-continuous` | Inicia scan em background |
+| `POST` | `/api/scanner/stop` | Para o scanner |
+
+#### Exemplo de Uso
+
+```bash
+# Inicializar scanner
+curl -X POST http://localhost:3008/api/scanner/init \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+    "timeframes": ["1h", "4h"],
+    "min_signal_strength": 0.3
+  }'
+
+# Quick scan
+curl "http://localhost:3008/api/scanner/quick-scan?symbols=BTCUSDT,ETHUSDT&timeframe=1h"
+
+# Obter sinais ativos
+curl http://localhost:3008/api/scanner/signals
+```
+
+### 🖥️ Scanner Dashboard
+
+**Acesso**: `http://localhost:8081/scanner`
+
+#### Features do Dashboard
+
+1. **Painel de Alertas em Tempo Real**
+   - Cards coloridos por tipo de divergência (verde=bullish, vermelho=bearish)
+   - Badge de força do sinal
+   - Timestamp do sinal
+   - Preço de entrada, SL e TP
+
+2. **Indicador de Proximidade de Alerta**
+   - RSI < 35: "Potencial BULLISH" (área oversold)
+   - RSI > 65: "Potencial BEARISH" (área overbought)
+   - Animação pulsante para atenção visual
+
+3. **Tabela de Símbolos Monitorados**
+   - Símbolo, Preço atual, RSI, Último sinal, Status
+   - Atualização automática a cada 5 segundos
+
+4. **Gráfico de Sinais por Símbolo**
+   - Chart.js doughnut
+   - Distribuição de sinais detectados
+
+5. **Controles**
+   - Botão Iniciar/Parar Scanner
+   - Botão Scan Manual
+   - Status do Scanner (Running/Stopped)
+
+6. **Sistema de Notificações Toast**
+   - Popup visual quando novo sinal é detectado
+   - Som de alerta (opcional)
+
+### ✅ Resultados dos Testes
+
+**Data/Hora**: 17/12/2025 ~15:00 UTC
+
+#### Teste 1: Inicialização
+```bash
+curl -X POST http://localhost:3008/api/scanner/init \
+  -H 'Content-Type: application/json' \
+  -d '{"symbols": ["BTCUSDT", "ETHUSDT"], "timeframes": ["1h"]}'
+```
+**Resultado**: ✅ SUCESSO
+- success: true
+- symbols_initialized: ["BTCUSDT", "ETHUSDT"]
+- timeframes: ["1h"]
+
+#### Teste 2: Quick Scan
+```bash
+curl "http://localhost:3008/api/scanner/quick-scan?symbols=BTCUSDT&timeframe=1h"
+```
+**Resultado**: ✅ SUCESSO (0 sinais - normal, divergências são raras)
+- success: true
+- symbols_scanned: 1
+- signals_found: 0
+
+#### Teste 3: Dashboard Frontend
+```bash
+curl -o /dev/null -w "%{http_code}" http://localhost:8081/scanner
+```
+**Resultado**: ✅ HTTP 200
+
+#### Teste 4: Menu de Navegação
+- Link "Scanner RSI" visível no menu principal ✅
+
+### 📊 Performance Histórica RSI Divergence (Referência)
+
+| Par | Padrões (4 anos) | Trades | Win Rate | Retorno | Max DD |
+|-----|------------------|--------|----------|---------|--------|
+| **BTCUSDT** | 8 | 7 | **71.43%** | +26.27% | **1.89%** |
+| **ETHUSDT** | 14 | 14 | 64.29% | +38.54% | 12.41% |
+| **SOLUSDT** | 22 | 22 | 63.64% | **+219.14%** | 12.92% |
+| **MÉDIA** | 14.7 | 14.3 | **66.45%** | +94.65% | 9.07% |
+
+### 📝 Documentação Workflow de Branches
+
+Adicionado ao `aiprompt.prompt.md`:
+
+```markdown
+## 🔄 WORKFLOW DE BRANCHES (OBRIGATÓRIO)
+
+### Regras de Desenvolvimento:
+1. **NUNCA desenvolver diretamente na branch `main`**
+2. **Todo desenvolvimento deve ser feito na branch `dev`**
+3. **Features grandes**: criar branch `feature/passo-XX-descricao` a partir de `dev`
+4. **Após concluir**: merge para `dev` → merge para `main` → push para remotes
+
+### Fluxo Padrão de Commits:
+```bash
+# 1. Desenvolver em dev ou feature branch
+# 2. Commit com prefixo descritivo
+git add -A && git commit -m "PASSO XX: descrição"
+
+# 3. Push para dev
+git push origin dev
+
+# 4. Sincronizar main
+git checkout main && git merge dev && git push origin main
+
+# 5. Voltar para dev
+git checkout dev
+```
+
+### 🚀 Próximos Passos Sugeridos
+
+1. **Alert System**: Integrar com Telegram/Discord para notificações push
+2. **Auto-Trade**: Conectar sinais do Scanner ao Live Trading (modo dry_run)
+3. **Historical Analysis**: Gráfico de sinais passados vs performance
+4. **Multi-Timeframe Confluence**: Sinais confirmados em 1h + 4h = maior confiança
 
 ---
