@@ -2441,6 +2441,487 @@ async def disconnect_live_trading():
     return {'success': True, 'message': 'Desconectado com sucesso'}
 
 
+# ==========================================
+# MULTI-SYMBOL RSI DIVERGENCE SCANNER (PASSO 32)
+# ==========================================
+
+from multi_symbol_scanner import (
+    MultiSymbolScanner,
+    ScannerConfig,
+    DivergenceSignal,
+    SignalType,
+    quick_scan
+)
+
+# Estado global do scanner
+rsi_scanner: Optional[MultiSymbolScanner] = None
+
+
+class ScannerConfigRequest(BaseModel):
+    """Configuração do scanner de múltiplos símbolos"""
+    symbols: Optional[List[str]] = None  # Ex: ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
+    timeframes: Optional[List[str]] = None  # Ex: ["1h", "4h"]
+    rsi_period: int = 14
+    min_signal_strength: float = 0.3
+    lookback_periods: int = 10
+    stop_loss_atr_mult: float = 2.0
+    take_profit_atr_mult: float = 4.0
+
+
+class ScanRequest(BaseModel):
+    """Requisição de scan imediato"""
+    symbols: Optional[List[str]] = None
+    timeframes: Optional[List[str]] = None
+
+
+@app.post("/api/scanner/init")
+async def init_rsi_scanner(request: ScannerConfigRequest):
+    """
+    Inicializa o scanner de múltiplos símbolos para RSI Divergence
+    
+    Exemplo:
+    ```json
+    {
+      "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"],
+      "timeframes": ["1h", "4h"],
+      "min_signal_strength": 0.3
+    }
+    ```
+    """
+    global rsi_scanner
+    
+    try:
+        config = ScannerConfig()
+        
+        if request.symbols:
+            config.symbols = request.symbols
+        if request.timeframes:
+            config.timeframes = request.timeframes
+        
+        config.rsi_period = request.rsi_period
+        config.min_signal_strength = request.min_signal_strength
+        config.lookback_periods = request.lookback_periods
+        config.stop_loss_atr_mult = request.stop_loss_atr_mult
+        config.take_profit_atr_mult = request.take_profit_atr_mult
+        
+        rsi_scanner = MultiSymbolScanner(config)
+        
+        return {
+            'success': True,
+            'message': f'Scanner inicializado com {len(config.symbols)} símbolos',
+            'config': {
+                'symbols': config.symbols,
+                'timeframes': config.timeframes,
+                'rsi_period': config.rsi_period,
+                'min_signal_strength': config.min_signal_strength,
+                'stop_loss_atr_mult': config.stop_loss_atr_mult,
+                'take_profit_atr_mult': config.take_profit_atr_mult
+            }
+        }
+        
+    except Exception as e:
+        logger.error(f"Erro ao inicializar scanner: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/scanner/scan")
+async def run_scan(request: ScanRequest = None):
+    """
+    Executa um scan imediato em todos os símbolos configurados
+    
+    Retorna lista de sinais de divergência RSI detectados, ordenados por força.
+    
+    Exemplo de resposta:
+    ```json
+    {
+      "scan_count": 1,
+      "symbols_scanned": 10,
+      "signals_found": 2,
+      "signals": [
+        {
+          "symbol": "ETH/USDT",
+          "type": "bullish_divergence",
+          "direction": "BUY",
+          "strength": 0.75,
+          "price": 2930.50,
+          "entry": 2930.50,
+          "stop_loss": 2880.30,
+          "take_profit": 3030.90,
+          "risk_reward": 2.0
+        }
+      ]
+    }
+    ```
+    """
+    global rsi_scanner
+    
+    try:
+        # Usar scanner existente ou criar temporário
+        if rsi_scanner is None:
+            config = ScannerConfig()
+            if request and request.symbols:
+                config.symbols = request.symbols
+            if request and request.timeframes:
+                config.timeframes = request.timeframes
+            rsi_scanner = MultiSymbolScanner(config)
+        
+        # Executar scan
+        result = await rsi_scanner.scan_once()
+        
+        return {
+            'success': True,
+            'scan_count': result['scan_count'],
+            'last_scan_time': result['last_scan_time'],
+            'symbols_scanned': result['symbols_monitored'],
+            'timeframes': result['timeframes'],
+            'signals_found': result['active_signals'],
+            'signals': result['signals']
+        }
+        
+    except Exception as e:
+        logger.error(f"Erro no scan: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/scanner/quick-scan")
+async def quick_scan_endpoint(
+    symbols: str = "BTC/USDT,ETH/USDT,SOL/USDT",
+    timeframes: str = "1h"
+):
+    """
+    Scan rápido para símbolos específicos
+    
+    Parâmetros via query string:
+    - symbols: Lista separada por vírgula (ex: BTC/USDT,ETH/USDT)
+    - timeframes: Lista separada por vírgula (ex: 1h,4h)
+    
+    Exemplo:
+    GET /api/scanner/quick-scan?symbols=BTC/USDT,ETH/USDT&timeframes=1h,4h
+    """
+    try:
+        symbol_list = [s.strip() for s in symbols.split(',')]
+        tf_list = [t.strip() for t in timeframes.split(',')]
+        
+        result = await quick_scan(symbol_list, tf_list)
+        
+        return {
+            'success': True,
+            'symbols': symbol_list,
+            'timeframes': tf_list,
+            'signals_found': result['active_signals'],
+            'signals': result['signals']
+        }
+        
+    except Exception as e:
+        logger.error(f"Erro no quick scan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/scanner/status")
+async def get_scanner_status():
+    """
+    Retorna status atual do scanner
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None:
+        return {
+            'initialized': False,
+            'message': 'Scanner não inicializado. Use POST /api/scanner/init'
+        }
+    
+    return {
+        'initialized': True,
+        'is_running': rsi_scanner.is_running,
+        'scan_count': rsi_scanner.scan_count,
+        'last_scan_time': rsi_scanner.last_scan_time.isoformat() if rsi_scanner.last_scan_time else None,
+        'symbols': rsi_scanner.config.symbols,
+        'timeframes': rsi_scanner.config.timeframes,
+        'active_signals': len(rsi_scanner.active_signals)
+    }
+
+
+@app.get("/api/scanner/signals")
+async def get_active_signals():
+    """
+    Retorna sinais ativos do último scan
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None:
+        return {'signals': [], 'message': 'Scanner não inicializado'}
+    
+    return {
+        'signals': [
+            {
+                "symbol": s.symbol,
+                "type": s.signal_type.value,
+                "direction": "BUY" if s.direction == 1 else "SELL",
+                "strength": round(s.strength, 3),
+                "strength_level": s.strength_level.value,
+                "price": s.current_price,
+                "rsi": round(s.rsi_value, 1),
+                "timeframe": s.timeframe,
+                "entry": s.entry_price,
+                "stop_loss": round(s.stop_loss, 2),
+                "take_profit": round(s.take_profit, 2),
+                "risk_reward": round(s.risk_reward, 2),
+                "confirmations": {
+                    "volume": s.volume_confirmed,
+                    "macd": s.macd_confirmed,
+                    "trend": s.trend_aligned
+                },
+                "timestamp": s.timestamp.isoformat()
+            }
+            for s in rsi_scanner.active_signals
+        ],
+        'total': len(rsi_scanner.active_signals),
+        'last_scan': rsi_scanner.last_scan_time.isoformat() if rsi_scanner.last_scan_time else None
+    }
+
+
+@app.post("/api/scanner/start-continuous")
+async def start_continuous_scanning(background_tasks: BackgroundTasks, interval_seconds: int = 60):
+    """
+    Inicia scanning contínuo em background
+    
+    O scanner irá verificar todos os símbolos configurados a cada X segundos.
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None:
+        rsi_scanner = MultiSymbolScanner(ScannerConfig())
+    
+    if rsi_scanner.is_running:
+        return {'success': False, 'message': 'Scanner já está rodando'}
+    
+    rsi_scanner.config.scan_interval = interval_seconds
+    
+    # Iniciar em background
+    background_tasks.add_task(rsi_scanner.start)
+    
+    return {
+        'success': True,
+        'message': f'Scanner iniciado com intervalo de {interval_seconds}s',
+        'symbols': rsi_scanner.config.symbols,
+        'timeframes': rsi_scanner.config.timeframes
+    }
+
+
+@app.post("/api/scanner/stop")
+async def stop_continuous_scanning():
+    """
+    Para o scanning contínuo
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None or not rsi_scanner.is_running:
+        return {'success': True, 'message': 'Scanner não está rodando'}
+    
+    rsi_scanner.stop()
+    
+    return {
+        'success': True,
+        'message': 'Scanner parado',
+        'total_scans': rsi_scanner.scan_count
+    }
+
+
+# ==========================================
+# MULTI-SYMBOL PAPER TRADING
+# ==========================================
+
+class MultiSymbolPaperTradingRequest(BaseModel):
+    """Requisição para iniciar paper trading em múltiplos símbolos"""
+    session_prefix: str = "rsi-div"
+    symbols: List[str] = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+    strategy_name: str = "rsi_divergence"
+    timeframe: str = "1h"
+    initial_balance_per_symbol: float = 10000.0
+    auto_trade_signals: bool = False  # Se True, executa ordens automaticamente
+    min_signal_strength: float = 0.5
+
+
+@app.post("/api/paper-trading/multi-symbol/start")
+async def start_multi_symbol_paper_trading(request: MultiSymbolPaperTradingRequest):
+    """
+    Inicia sessões de Paper Trading para múltiplos símbolos simultaneamente
+    
+    Cada símbolo terá sua própria sessão de paper trading, permitindo
+    testar a estratégia RSI Divergence em várias criptos ao mesmo tempo.
+    
+    Exemplo:
+    ```json
+    {
+      "session_prefix": "rsi-test",
+      "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT"],
+      "strategy_name": "rsi_divergence",
+      "timeframe": "1h",
+      "initial_balance_per_symbol": 10000.0,
+      "auto_trade_signals": false,
+      "min_signal_strength": 0.5
+    }
+    ```
+    """
+    global executors, order_managers
+    
+    sessions_created = []
+    errors = []
+    
+    for symbol in request.symbols:
+        session_id = f"{request.session_prefix}-{symbol.lower()}"
+        
+        try:
+            # Criar order manager
+            order_manager = OrderManager(
+                initial_balance=request.initial_balance_per_symbol,
+                commission_rate=0.001,
+                slippage_rate=0.0005
+            )
+            
+            # Criar executor
+            executor = StrategyExecutor(
+                order_manager=order_manager,
+                strategy_name=request.strategy_name,
+                strategy_parameters={
+                    "min_signal_strength": request.min_signal_strength,
+                    "lookback_periods": 10,
+                    "stop_loss_atr_mult": 2.0,
+                    "take_profit_atr_mult": 4.0
+                },
+                symbol=symbol,
+                timeframe=request.timeframe
+            )
+            
+            # Iniciar executor
+            await executor.start()
+            
+            # Armazenar
+            executors[session_id] = executor
+            order_managers[session_id] = order_manager
+            
+            sessions_created.append({
+                "session_id": session_id,
+                "symbol": symbol,
+                "balance": request.initial_balance_per_symbol,
+                "status": "running"
+            })
+            
+        except Exception as e:
+            errors.append({
+                "symbol": symbol,
+                "error": str(e)
+            })
+    
+    return {
+        "success": len(errors) == 0,
+        "sessions_created": len(sessions_created),
+        "sessions": sessions_created,
+        "errors": errors,
+        "config": {
+            "strategy": request.strategy_name,
+            "timeframe": request.timeframe,
+            "auto_trade": request.auto_trade_signals,
+            "min_strength": request.min_signal_strength
+        }
+    }
+
+
+@app.get("/api/paper-trading/multi-symbol/status")
+async def get_multi_symbol_status(prefix: str = ""):
+    """
+    Retorna status de todas as sessões de paper trading multi-symbol
+    
+    Parâmetros:
+    - prefix: Filtrar por prefixo do session_id (ex: "rsi-test")
+    """
+    global executors, order_managers
+    
+    sessions = []
+    
+    for session_id, executor in executors.items():
+        if prefix and not session_id.startswith(prefix):
+            continue
+        
+        order_manager = order_managers.get(session_id)
+        
+        session_info = {
+            "session_id": session_id,
+            "symbol": executor.symbol if hasattr(executor, 'symbol') else "N/A",
+            "is_running": executor.is_running if hasattr(executor, 'is_running') else False,
+            "strategy": executor.strategy_name if hasattr(executor, 'strategy_name') else "N/A"
+        }
+        
+        if order_manager:
+            account = order_manager.get_account_summary()
+            session_info.update({
+                "balance": account.get("balance", 0),
+                "equity": account.get("equity", 0),
+                "total_pnl": account.get("total_pnl", 0),
+                "total_pnl_percent": account.get("total_pnl_percent", 0),
+                "open_positions": account.get("open_positions", 0),
+                "total_trades": account.get("total_trades", 0)
+            })
+        
+        sessions.append(session_info)
+    
+    # Calcular totais
+    total_balance = sum(s.get("balance", 0) for s in sessions)
+    total_equity = sum(s.get("equity", 0) for s in sessions)
+    total_pnl = sum(s.get("total_pnl", 0) for s in sessions)
+    total_trades = sum(s.get("total_trades", 0) for s in sessions)
+    
+    return {
+        "sessions": sessions,
+        "total_sessions": len(sessions),
+        "summary": {
+            "total_balance": round(total_balance, 2),
+            "total_equity": round(total_equity, 2),
+            "total_pnl": round(total_pnl, 2),
+            "total_pnl_percent": round((total_pnl / total_balance * 100) if total_balance > 0 else 0, 2),
+            "total_trades": total_trades
+        }
+    }
+
+
+@app.post("/api/paper-trading/multi-symbol/stop-all")
+async def stop_all_multi_symbol_sessions(prefix: str = ""):
+    """
+    Para todas as sessões de paper trading multi-symbol
+    """
+    global executors, order_managers
+    
+    stopped = []
+    
+    session_ids = list(executors.keys())
+    
+    for session_id in session_ids:
+        if prefix and not session_id.startswith(prefix):
+            continue
+        
+        try:
+            executor = executors.get(session_id)
+            if executor and hasattr(executor, 'stop'):
+                await executor.stop()
+            
+            del executors[session_id]
+            if session_id in order_managers:
+                del order_managers[session_id]
+            
+            stopped.append(session_id)
+            
+        except Exception as e:
+            logger.error(f"Erro ao parar {session_id}: {e}")
+    
+    return {
+        "success": True,
+        "stopped_sessions": len(stopped),
+        "sessions": stopped
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     
