@@ -22,6 +22,73 @@ As instalações e dependências do projeto devem ser instaladas no lado do cont
 - **Branch Principal**: `main` (produção) | `dev` (desenvolvimento)
 - **Objetivo**: Sistema de trading com regime-adaptive strategies, Kelly Position Sizing e Walk-Forward Optimization
 
+## 🔄 WORKFLOW DE BRANCHES (OBRIGATÓRIO)
+
+### Regras de Desenvolvimento:
+1. **NUNCA desenvolver diretamente na branch `main`**
+2. **Todo desenvolvimento deve ser feito na branch `dev`**
+3. **Features grandes**: criar branch `feature/passo-XX-descricao` a partir de `dev`
+4. **Após concluir**: merge para `dev` → merge para `main` → push para remotes
+
+### Fluxo Padrão de Commits:
+```bash
+# 1. Verificar branch atual
+git branch
+
+# 2. Se não estiver em dev, mudar para dev
+git checkout dev
+
+# 3. Criar feature branch (para passos grandes)
+git checkout -b feature/passo-XX-nome-descritivo
+
+# 4. Desenvolver e commitar
+git add -A
+git commit -m "PASSO XX: Descrição clara da implementação"
+
+# 5. Push da feature branch (opcional, para backup)
+git push origin feature/passo-XX-nome-descritivo
+
+# 6. Merge para dev
+git checkout dev
+git merge feature/passo-XX-nome-descritivo
+
+# 7. Push para remote dev
+git push origin dev
+
+# 8. Merge para main (produção)
+git checkout main
+git merge dev
+
+# 9. Push para remote main
+git push origin main
+
+# 10. Voltar para dev para continuar desenvolvimento
+git checkout dev
+```
+
+### Fluxo Simplificado (alterações menores):
+```bash
+# 1. Garantir que está em dev
+git checkout dev
+
+# 2. Fazer alterações e commitar
+git add -A
+git commit -m "fix: descrição da correção"
+
+# 3. Sincronizar dev → main → push ambos
+git push origin dev
+git checkout main
+git merge dev
+git push origin main
+git checkout dev
+```
+
+### ⚠️ IMPORTANTE:
+- **Antes de começar**: sempre verificar em qual branch está (`git branch`)
+- **Commits**: usar prefixos descritivos (`PASSO XX:`, `fix:`, `feat:`, `docs:`)
+- **Push**: sempre fazer push para AMBOS os remotes (`origin dev` e `origin main`)
+- **Conflitos**: resolver em `dev` primeiro, depois sincronizar com `main`
+
 ## 🎯 ESTADO ATUAL DO PROJETO (Dez/2025)
 
 ### ✅ IMPLEMENTAÇÕES CONCLUÍDAS:
@@ -113,7 +180,23 @@ Você pode:
 - Verificar healthchecks: `docker compose ps`
 - Executar backtests via API: `curl localhost:3008/api/meta-backtest/run`
 - Analisar logs: `docker compose logs -f execution-engine`
-- Git workflow: branch `dev` para desenvolvimento, `main` para produção
+- Git workflow: **SEMPRE** branch `dev` para desenvolvimento, sincronizar com `main` após validação
+
+### 5. GIT WORKFLOW (OBRIGATÓRIO)
+**Sequência padrão após implementação:**
+```bash
+# Commitar em dev (ou feature branch)
+git add -A && git commit -m "PASSO XX: descrição"
+
+# Push para dev
+git push origin dev
+
+# Sincronizar main
+git checkout main && git merge dev && git push origin main
+
+# Voltar para dev
+git checkout dev
+```
 
 FLUXO DE TRABALHO ESPERADO
 Quando solicitado para ANALISAR CÓDIGO:
@@ -589,7 +672,9 @@ Você NÃO deve:
 - Ignorar testes de robustez (WFO, Monte Carlo, stress testing)
 - Recomendar trading sem stop-loss ou gestão de risco
 - Implementar código sem documentação ou testes
-- Fazer push direto para `main` sem passar por `dev`
+- **⛔ Fazer commits direto na `main`** - sempre usar `dev` primeiro
+- **⛔ Esquecer de sincronizar `dev` → `main`** - ambas devem estar atualizadas
+- **⛔ Push apenas para uma branch** - sempre push para `origin dev` E `origin main`
 - **Testar estratégias APENAS em BTCUSDT** (sempre validar em ETH e SOL também)
 
 COMANDOS QUE VOCÊ ENTENDE
