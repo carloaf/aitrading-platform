@@ -815,6 +815,8 @@
     const STORAGE_KEY = 'scannerConfig';
     const STATE_KEY = 'scannerState';  // Para persistir estado de execução
     const AUTOTRADE_STATE_KEY = 'autotradeState';  // Para persistir estado do AutoTrade
+    const NEAR_ALERTS_KEY = 'nearAlertsCache';  // Cache para Proximidade de Alerta
+    const MARKET_DATA_KEY = 'marketDataCache';  // Cache para Market Overview
     
     // Debug: log API base
     console.log('[Scanner] API_BASE:', API_BASE);
@@ -825,8 +827,16 @@
         loadSavedConfig();  // Load saved config first
         loadSavedState();   // Load execution state (continuous scan, etc)
         initializeScanner();
-        fetchMarketData();
-        updateNearAlerts();
+        
+        // Restaurar cache primeiro (instantâneo), depois atualiza em background
+        restoreNearAlertsCache();
+        restoreMarketDataCache();
+        
+        // Atualiza dados em background (não bloqueia UI)
+        setTimeout(() => {
+            fetchMarketData();
+            updateNearAlerts();
+        }, 500);
         
         // Auto-refresh market data every 30 seconds
         setInterval(fetchMarketData, 30000);
@@ -873,6 +883,98 @@
             }
         } catch (e) {
             console.error('Error loading saved state:', e);
+        }
+    }
+    
+    // ========================================
+    // CACHE PARA PROXIMIDADE DE ALERTA
+    // ========================================
+    
+    // Salvar cache de Near Alerts
+    function saveNearAlertsCache(data) {
+        try {
+            const cache = {
+                data: data,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(NEAR_ALERTS_KEY, JSON.stringify(cache));
+            console.log('[Cache] Near Alerts salvo:', data.length, 'itens');
+        } catch (e) {
+            console.warn('[Cache] Erro ao salvar Near Alerts:', e);
+        }
+    }
+    
+    // Restaurar cache de Near Alerts (instantâneo)
+    function restoreNearAlertsCache() {
+        const container = document.getElementById('nearAlertsRow');
+        const cached = localStorage.getItem(NEAR_ALERTS_KEY);
+        
+        if (!cached) {
+            console.log('[Cache] Nenhum cache de Near Alerts encontrado');
+            return;
+        }
+        
+        try {
+            const { data, timestamp } = JSON.parse(cached);
+            const ageMinutes = (Date.now() - timestamp) / 60000;
+            
+            // Cache válido por 5 minutos
+            if (ageMinutes > 5) {
+                console.log('[Cache] Near Alerts expirado (' + ageMinutes.toFixed(1) + ' min)');
+                return;
+            }
+            
+            console.log('[Cache] Restaurando Near Alerts (idade: ' + ageMinutes.toFixed(1) + ' min)');
+            
+            // Renderizar imediatamente com dados do cache
+            renderNearAlerts(data, true);
+            
+        } catch (e) {
+            console.warn('[Cache] Erro ao restaurar Near Alerts:', e);
+        }
+    }
+    
+    // Salvar cache de Market Data
+    function saveMarketDataCache(data) {
+        try {
+            const cache = {
+                data: data,
+                timestamp: Date.now()
+            };
+            localStorage.setItem(MARKET_DATA_KEY, JSON.stringify(cache));
+            console.log('[Cache] Market Data salvo:', data.length, 'itens');
+        } catch (e) {
+            console.warn('[Cache] Erro ao salvar Market Data:', e);
+        }
+    }
+    
+    // Restaurar cache de Market Data (instantâneo)
+    function restoreMarketDataCache() {
+        const container = document.getElementById('marketOverview');
+        const cached = localStorage.getItem(MARKET_DATA_KEY);
+        
+        if (!cached) {
+            console.log('[Cache] Nenhum cache de Market Data encontrado');
+            return;
+        }
+        
+        try {
+            const { data, timestamp } = JSON.parse(cached);
+            const ageMinutes = (Date.now() - timestamp) / 60000;
+            
+            // Cache válido por 5 minutos
+            if (ageMinutes > 5) {
+                console.log('[Cache] Market Data expirado (' + ageMinutes.toFixed(1) + ' min)');
+                return;
+            }
+            
+            console.log('[Cache] Restaurando Market Data (idade: ' + ageMinutes.toFixed(1) + ' min)');
+            
+            // Renderizar imediatamente com dados do cache
+            renderMarketOverview(data, true);
+            
+        } catch (e) {
+            console.warn('[Cache] Erro ao restaurar Market Data:', e);
         }
     }
     
@@ -1254,6 +1356,127 @@
         container.innerHTML = html;
     }
     
+    // Função separada para renderizar Near Alerts (usada por cache e API)
+    function renderNearAlerts(data, fromCache = false) {
+        const container = document.getElementById('nearAlertsRow');
+        if (!container) return;
+        
+        let html = '';
+        
+        // Mostrar apenas os que têm proximidade > 0 ou RSI extremo
+        const alertData = data.filter(item => 
+            item.proximity > 0 || item.rsi <= 35 || item.rsi >= 65
+        ).slice(0, 6);
+        
+        // Indicador de cache
+        const cacheIndicator = fromCache ? '<span class="badge bg-secondary ms-2" title="Dados do cache"><i class="bi bi-clock-history"></i></span>' : '';
+        
+        if (alertData.length === 0) {
+            html = \`
+                <div class="col-12 text-center text-muted py-4">
+                    <i class="bi bi-check-circle display-4 d-block mb-2 text-success"></i>
+                    <p>Nenhuma divergência em formação no momento \${cacheIndicator}</p>
+                    <small>RSI de todos os ativos está na faixa neutra (35-65)</small>
+                </div>
+            \`;
+        } else {
+            alertData.forEach(item => {
+                const proximityColor = item.proximity >= 70 ? 'danger' : (item.proximity >= 40 ? 'warning' : 'secondary');
+                
+                // Definir status e descrição com base na proximidade e RSI
+                let statusText = '';
+                let statusIcon = '';
+                let statusDescription = '';
+                
+                if (item.trend === 'forming_bullish') {
+                    statusText = '🟢 Possível Bullish Div.';
+                    statusIcon = 'arrow-up-circle';
+                    statusDescription = 'RSI subindo enquanto preço pode estar caindo';
+                } else if (item.trend === 'forming_bearish') {
+                    statusText = '🔴 Possível Bearish Div.';
+                    statusIcon = 'arrow-down-circle';
+                    statusDescription = 'RSI caindo enquanto preço pode estar subindo';
+                } else if (item.trend === 'watching_bullish' || item.rsi <= 35) {
+                    statusText = '👀 RSI Baixo - Atenção';
+                    statusIcon = 'eye';
+                    statusDescription = 'Zona de sobrevenda, potencial reversão de alta';
+                } else if (item.trend === 'watching_bearish' || item.rsi >= 65) {
+                    statusText = '👀 RSI Alto - Atenção';
+                    statusIcon = 'eye';
+                    statusDescription = 'Zona de sobrecompra, potencial reversão de baixa';
+                } else {
+                    statusText = '📊 Monitorando';
+                    statusIcon = 'hourglass-split';
+                    statusDescription = 'Avaliando condições de mercado';
+                }
+                
+                // Calcular nível de urgência
+                let urgencyBadge = '';
+                if (item.proximity >= 70) {
+                    urgencyBadge = '<span class="badge bg-danger pulse-animation">IMINENTE</span>';
+                } else if (item.proximity >= 40) {
+                    urgencyBadge = '<span class="badge bg-warning text-dark">FORMANDO</span>';
+                } else if (item.proximity > 0) {
+                    urgencyBadge = '<span class="badge bg-secondary">OBSERVANDO</span>';
+                }
+                
+                const cardClass = item.proximity >= 70 ? 'near-alert-card forming' : 'near-alert-card';
+                const changeClass = item.change_24h >= 0 ? 'text-success' : 'text-danger';
+                const changeIcon = item.change_24h >= 0 ? 'caret-up-fill' : 'caret-down-fill';
+                
+                html += \`
+                    <div class="col-md-4 mb-3">
+                        <div class="card \${cardClass} h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                    <div>
+                                        <h6 class="mb-0 fw-bold">\${item.symbol}</h6>
+                                        <small class="text-muted">\${formatPrice(item.price)}</small>
+                                    </div>
+                                    <div class="text-end">
+                                        \${urgencyBadge}
+                                        \${item.proximity > 0 ? \`<div class="small text-\${proximityColor} fw-bold mt-1">\${item.proximity}% próximo</div>\` : ''}
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-2">
+                                    <div class="d-flex justify-content-between align-items-center small mb-1">
+                                        <span class="text-muted">RSI</span>
+                                        <span class="\${item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : 'text-muted')}">\${item.rsi.toFixed(1)}</span>
+                                    </div>
+                                    <div class="rsi-gauge">
+                                        <div class="rsi-marker" style="left: \${item.rsi}%;"></div>
+                                    </div>
+                                    <div class="d-flex justify-content-between small text-muted mt-1">
+                                        <span>30</span>
+                                        <span>50</span>
+                                        <span>70</span>
+                                    </div>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between align-items-center small mb-2">
+                                    <span>24h:</span>
+                                    <span class="\${changeClass} fw-bold">
+                                        <i class="bi bi-\${changeIcon}"></i> \${Math.abs(item.change_24h).toFixed(2)}%
+                                    </span>
+                                </div>
+                                
+                                <div class="border-top pt-2 mt-2">
+                                    <p class="mb-1 small fw-bold text-\${proximityColor === 'danger' ? 'danger' : (proximityColor === 'warning' ? 'warning' : 'secondary')}">
+                                        <i class="bi bi-\${statusIcon}"></i> \${statusText}
+                                    </p>
+                                    <p class="mb-0 small text-muted">\${statusDescription}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                \`;
+            });
+        }
+        
+        container.innerHTML = html;
+    }
+    
     async function updateNearAlerts() {
         const container = document.getElementById('nearAlertsRow');
         
@@ -1264,6 +1487,11 @@
             const result = await response.json();
             
             if (!result.success || !result.data || result.data.length === 0) {
+                // Não sobrescrever se já tem dados do cache
+                if (container.innerHTML.includes('col-md-4')) {
+                    console.log('[NearAlerts] API falhou mas tem cache, mantendo');
+                    return;
+                }
                 container.innerHTML = \`
                     <div class="col-12 text-center text-muted py-4">
                         <i class="bi bi-wifi-off display-4 d-block mb-2"></i>
@@ -1273,120 +1501,19 @@
                 return;
             }
             
-            let html = '';
+            // Salvar no cache para próximo refresh
+            saveNearAlertsCache(result.data);
             
-            // Mostrar apenas os que têm proximidade > 0 ou RSI extremo
-            const alertData = result.data.filter(item => 
-                item.proximity > 0 || item.rsi <= 35 || item.rsi >= 65
-            ).slice(0, 6);
-            
-            if (alertData.length === 0) {
-                html = \`
-                    <div class="col-12 text-center text-muted py-4">
-                        <i class="bi bi-check-circle display-4 d-block mb-2 text-success"></i>
-                        <p>Nenhuma divergência em formação no momento</p>
-                        <small>RSI de todos os ativos está na faixa neutra (35-65)</small>
-                    </div>
-                \`;
-            } else {
-                alertData.forEach(item => {
-                    const proximityColor = item.proximity >= 70 ? 'danger' : (item.proximity >= 40 ? 'warning' : 'secondary');
-                    
-                    // Definir status e descrição com base na proximidade e RSI
-                    let statusText = '';
-                    let statusIcon = '';
-                    let statusDescription = '';
-                    
-                    if (item.trend === 'forming_bullish') {
-                        statusText = '🟢 Possível Bullish Div.';
-                        statusIcon = 'arrow-up-circle';
-                        statusDescription = 'RSI subindo enquanto preço pode estar caindo';
-                    } else if (item.trend === 'forming_bearish') {
-                        statusText = '🔴 Possível Bearish Div.';
-                        statusIcon = 'arrow-down-circle';
-                        statusDescription = 'RSI caindo enquanto preço pode estar subindo';
-                    } else if (item.trend === 'watching_bullish' || item.rsi <= 35) {
-                        statusText = '👀 RSI Baixo - Atenção';
-                        statusIcon = 'eye';
-                        statusDescription = 'Zona de sobrevenda, potencial reversão de alta';
-                    } else if (item.trend === 'watching_bearish' || item.rsi >= 65) {
-                        statusText = '👀 RSI Alto - Atenção';
-                        statusIcon = 'eye';
-                        statusDescription = 'Zona de sobrecompra, potencial reversão de baixa';
-                    } else {
-                        statusText = '📊 Monitorando';
-                        statusIcon = 'hourglass-split';
-                        statusDescription = 'Avaliando condições de mercado';
-                    }
-                    
-                    // Calcular nível de urgência
-                    let urgencyBadge = '';
-                    if (item.proximity >= 70) {
-                        urgencyBadge = '<span class="badge bg-danger pulse-animation">IMINENTE</span>';
-                    } else if (item.proximity >= 40) {
-                        urgencyBadge = '<span class="badge bg-warning text-dark">FORMANDO</span>';
-                    } else if (item.proximity > 0) {
-                        urgencyBadge = '<span class="badge bg-secondary">OBSERVANDO</span>';
-                    }
-                    
-                    const cardClass = item.proximity >= 70 ? 'near-alert-card forming' : 'near-alert-card';
-                    const changeClass = item.change_24h >= 0 ? 'text-success' : 'text-danger';
-                    const changeIcon = item.change_24h >= 0 ? 'caret-up-fill' : 'caret-down-fill';
-                    
-                    html += \`
-                        <div class="col-md-4 mb-3">
-                            <div class="card \${cardClass} h-100">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-start mb-2">
-                                        <div>
-                                            <h6 class="mb-0 fw-bold">\${item.symbol}</h6>
-                                            <small class="text-muted">\${formatPrice(item.price)}</small>
-                                        </div>
-                                        <div class="text-end">
-                                            \${urgencyBadge}
-                                            \${item.proximity > 0 ? \`<div class="small text-\${proximityColor} fw-bold mt-1">\${item.proximity}% próximo</div>\` : ''}
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mb-2">
-                                        <div class="d-flex justify-content-between align-items-center small mb-1">
-                                            <span class="text-muted">RSI</span>
-                                            <span class="\${item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : 'text-muted')}">\${item.rsi.toFixed(1)}</span>
-                                        </div>
-                                        <div class="rsi-gauge">
-                                            <div class="rsi-marker" style="left: \${item.rsi}%;"></div>
-                                        </div>
-                                        <div class="d-flex justify-content-between small text-muted mt-1">
-                                            <span>30</span>
-                                            <span>50</span>
-                                            <span>70</span>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="d-flex justify-content-between align-items-center small mb-2">
-                                        <span>24h:</span>
-                                        <span class="\${changeClass} fw-bold">
-                                            <i class="bi bi-\${changeIcon}"></i> \${Math.abs(item.change_24h).toFixed(2)}%
-                                        </span>
-                                    </div>
-                                    
-                                    <div class="border-top pt-2 mt-2">
-                                        <p class="mb-1 small fw-bold text-\${proximityColor === 'danger' ? 'danger' : (proximityColor === 'warning' ? 'warning' : 'secondary')}">
-                                            <i class="bi bi-\${statusIcon}"></i> \${statusText}
-                                        </p>
-                                        <p class="mb-0 small text-muted">\${statusDescription}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    \`;
-                });
-            }
-            
-            container.innerHTML = html;
+            // Renderizar dados frescos
+            renderNearAlerts(result.data, false);
             
         } catch (error) {
             console.error('Error updating near alerts:', error);
+            // Não sobrescrever se já tem dados do cache
+            if (container.innerHTML.includes('col-md-4')) {
+                console.log('[NearAlerts] Erro mas tem cache, mantendo');
+                return;
+            }
             container.innerHTML = \`
                 <div class="col-12 text-center text-danger py-4">
                     <i class="bi bi-exclamation-triangle display-4 d-block mb-2"></i>
@@ -1398,6 +1525,48 @@
     
     // Cache para dados de mercado (evitar atualizações desnecessárias)
     let lastMarketData = {};
+    
+    // Função separada para renderizar Market Overview (usada por cache e API)
+    function renderMarketOverview(data, fromCache = false) {
+        const container = document.getElementById('marketOverview');
+        if (!container) return;
+        
+        let html = '';
+        data.forEach(coin => {
+            const symbolId = coin.symbol.replace('/', '').replace('USDT', '');
+            const changeClass = coin.change_24h >= 0 ? 'text-success' : 'text-danger';
+            const changeIcon = coin.change_24h >= 0 ? 'bi-caret-up-fill' : 'bi-caret-down-fill';
+            const rsiClass = coin.rsi < 30 ? 'text-success fw-bold' : (coin.rsi > 70 ? 'text-danger fw-bold' : 'text-muted');
+            const cacheClass = fromCache ? 'border-secondary' : '';
+            
+            html += \`
+                <div class="col-md-2 col-6 mb-3" data-symbol="\${coin.symbol}">
+                    <div class="card market-card h-100 \${cacheClass}">
+                        <div class="card-body text-center p-2">
+                            <h6 class="mb-1">\${symbolId}</h6>
+                            <h5 class="mb-1" id="price-\${symbolId}">\${formatPrice(coin.price)}</h5>
+                            <span id="change-\${symbolId}" class="\${changeClass}">
+                                <i class="bi \${changeIcon}"></i> \${Math.abs(coin.change_24h).toFixed(2)}%
+                            </span>
+                            <br>
+                            <small id="rsi-\${symbolId}" class="\${rsiClass}">RSI: \${coin.rsi.toFixed(1)}</small>
+                        </div>
+                    </div>
+                </div>
+            \`;
+            
+            // Cache initial data
+            lastMarketData[coin.symbol] = {
+                price: coin.price,
+                change_24h: coin.change_24h,
+                rsi: coin.rsi
+            };
+        });
+        
+        container.innerHTML = html;
+        document.getElementById('marketUpdateTime').textContent = fromCache ? 'cache' : new Date().toLocaleTimeString();
+        console.log('[Market] Rendered -', data.length, 'symbols', fromCache ? '(from cache)' : '(fresh)');
+    }
     
     async function fetchMarketData() {
         const container = document.getElementById('marketOverview');
@@ -1411,6 +1580,9 @@
                 throw new Error('Falha ao buscar dados');
             }
             
+            // Salvar no cache para próximo refresh
+            saveMarketDataCache(result.data);
+            
             // Verificar se container está vazio (primeira carga) ou estrutura mudou
             const currentSymbols = result.data.map(c => c.symbol).join(',');
             const cachedSymbols = Object.keys(lastMarketData).join(',');
@@ -1418,39 +1590,7 @@
             
             if (needsFullRebuild) {
                 // Primeira carga ou símbolos mudaram - rebuild completo
-                let html = '';
-                result.data.forEach(coin => {
-                    const symbolId = coin.symbol.replace('/', '').replace('USDT', '');
-                    const changeClass = coin.change_24h >= 0 ? 'text-success' : 'text-danger';
-                    const changeIcon = coin.change_24h >= 0 ? 'bi-caret-up-fill' : 'bi-caret-down-fill';
-                    const rsiClass = coin.rsi < 30 ? 'text-success fw-bold' : (coin.rsi > 70 ? 'text-danger fw-bold' : 'text-muted');
-                    
-                    html += \`
-                        <div class="col-md-2 col-6 mb-3" data-symbol="\${coin.symbol}">
-                            <div class="card market-card h-100">
-                                <div class="card-body text-center p-2">
-                                    <h6 class="mb-1">\${symbolId}</h6>
-                                    <h5 class="mb-1" id="price-\${symbolId}">\${formatPrice(coin.price)}</h5>
-                                    <span id="change-\${symbolId}" class="\${changeClass}">
-                                        <i class="bi \${changeIcon}"></i> \${Math.abs(coin.change_24h).toFixed(2)}%
-                                    </span>
-                                    <br>
-                                    <small id="rsi-\${symbolId}" class="\${rsiClass}">RSI: \${coin.rsi.toFixed(1)}</small>
-                                </div>
-                            </div>
-                        </div>
-                    \`;
-                    
-                    // Cache initial data
-                    lastMarketData[coin.symbol] = {
-                        price: coin.price,
-                        change_24h: coin.change_24h,
-                        rsi: coin.rsi
-                    };
-                });
-                
-                container.innerHTML = html;
-                console.log('[Market] Full rebuild - symbols:', currentSymbols);
+                renderMarketOverview(result.data, false);
             } else {
                 // Atualização incremental - só mudar valores que mudaram
                 let updatedCount = 0;
