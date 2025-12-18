@@ -2761,75 +2761,113 @@ async def get_scanner_market_data(symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSD
     
     Parâmetros:
     - symbols: Lista de símbolos separados por vírgula
+    
+    OTIMIZAÇÃO: Cache de 30 segundos para evitar rate limiting da Binance
     """
-    import ccxt
+    import ccxt.async_support as ccxt_async
     import ta
     import pandas as pd
+    import asyncio
+    
+    # Cache em memória (30 segundos TTL)
+    cache_key = f"market_data_{symbols}"
+    cache_ttl = 30  # segundos
+    
+    # Verificar cache global
+    if not hasattr(get_scanner_market_data, '_cache'):
+        get_scanner_market_data._cache = {}
+    
+    cache = get_scanner_market_data._cache
+    now = datetime.utcnow().timestamp()
+    
+    if cache_key in cache:
+        cached_data, cached_time = cache[cache_key]
+        if now - cached_time < cache_ttl:
+            logger.info(f"[MarketData] Cache hit (age: {now - cached_time:.1f}s)")
+            return cached_data
     
     try:
-        exchange = ccxt.binance({'enableRateLimit': True})
-        symbol_list = [s.strip() for s in symbols.split(',')]
+        exchange = ccxt_async.binance({
+            'enableRateLimit': True,  # Usar rate limit do ccxt
+            'options': {'defaultType': 'spot'}
+        })
+        symbol_list = [s.strip() for s in symbols.split(',')][:6]  # Limitar a 6 símbolos
         
-        market_data = []
+        # Semáforo para limitar chamadas paralelas (máximo 3 simultâneas)
+        semaphore = asyncio.Semaphore(3)
         
-        for symbol in symbol_list:
-            try:
-                # Buscar OHLCV (últimas 100 candles de 1h)
-                ccxt_symbol = symbol.replace('USDT', '/USDT')
-                ohlcv = exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=100)
-                
-                df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                
-                # Calcular RSI
-                df['rsi'] = ta.momentum.rsi(df['close'], window=14)
-                current_rsi = df['rsi'].iloc[-1]
-                
-                # Preço atual e variação 24h
-                current_price = df['close'].iloc[-1]
-                price_24h_ago = df['close'].iloc[-24] if len(df) >= 24 else df['close'].iloc[0]
-                change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
-                
-                # Calcular proximidade de alerta
-                # RSI < 30 = oversold (potencial bullish)
-                # RSI > 70 = overbought (potencial bearish)
-                proximity = 0
-                trend = 'neutral'
-                
-                if current_rsi <= 30:
-                    proximity = min(100, int((30 - current_rsi) * 5 + 50))
-                    trend = 'forming_bullish'
-                elif current_rsi >= 70:
-                    proximity = min(100, int((current_rsi - 70) * 5 + 50))
-                    trend = 'forming_bearish'
-                elif current_rsi <= 35:
-                    proximity = int((35 - current_rsi) * 8)
-                    trend = 'watching_bullish'
-                elif current_rsi >= 65:
-                    proximity = int((current_rsi - 65) * 8)
-                    trend = 'watching_bearish'
-                
-                market_data.append({
-                    'symbol': ccxt_symbol,
-                    'price': round(current_price, 2 if current_price >= 1 else 4),
-                    'change_24h': round(change_24h, 2),
-                    'rsi': round(current_rsi, 1),
-                    'proximity': proximity,
-                    'trend': trend
-                })
-                
-            except Exception as e:
-                logger.warning(f"Erro ao buscar dados de {symbol}: {e}")
-                continue
+        async def fetch_symbol_data(symbol):
+            async with semaphore:
+                try:
+                    ccxt_symbol = symbol.replace('USDT', '/USDT')
+                    ohlcv = await exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=30)  # Reduzido para 30
+                    
+                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    
+                    # Calcular RSI
+                    df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+                    current_rsi = df['rsi'].iloc[-1]
+                    
+                    # Preço atual e variação 24h
+                    current_price = df['close'].iloc[-1]
+                    price_24h_ago = df['close'].iloc[-24] if len(df) >= 24 else df['close'].iloc[0]
+                    change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
+                    
+                    # Calcular proximidade de alerta
+                    proximity = 0
+                    trend = 'neutral'
+                    
+                    if current_rsi <= 30:
+                        proximity = min(100, int((30 - current_rsi) * 5 + 50))
+                        trend = 'forming_bullish'
+                    elif current_rsi >= 70:
+                        proximity = min(100, int((current_rsi - 70) * 5 + 50))
+                        trend = 'forming_bearish'
+                    elif current_rsi <= 35:
+                        proximity = int((35 - current_rsi) * 8)
+                        trend = 'watching_bullish'
+                    elif current_rsi >= 65:
+                        proximity = int((current_rsi - 65) * 8)
+                        trend = 'watching_bearish'
+                    
+                    return {
+                        'symbol': ccxt_symbol,
+                        'price': round(current_price, 2 if current_price >= 1 else 4),
+                        'change_24h': round(change_24h, 2),
+                        'rsi': round(current_rsi, 1),
+                        'proximity': proximity,
+                        'trend': trend
+                    }
+                    
+                except Exception as e:
+                    logger.warning(f"Erro ao buscar dados de {symbol}: {e}")
+                    return None
+        
+        # Buscar todos os símbolos em paralelo
+        tasks = [fetch_symbol_data(symbol) for symbol in symbol_list]
+        results = await asyncio.gather(*tasks)
+        
+        # Fechar conexão
+        await exchange.close()
+        
+        # Filtrar resultados válidos
+        market_data = [r for r in results if r is not None]
         
         # Ordenar por proximidade (maiores primeiro)
         market_data.sort(key=lambda x: x['proximity'], reverse=True)
         
-        return {
+        response = {
             'success': True,
             'timestamp': datetime.utcnow().isoformat(),
             'data': market_data,
             'count': len(market_data)
         }
+        
+        # Salvar no cache
+        cache[cache_key] = (response, now)
+        logger.info(f"[MarketData] Fetched {len(market_data)} symbols in parallel, cached for {cache_ttl}s")
+        
+        return response
         
     except Exception as e:
         logger.error(f"Erro ao buscar market data: {e}")
