@@ -92,85 +92,236 @@
                 <div class="card-body">
                     <form id="scannerConfigForm">
                         <div class="mb-3">
-                            <label class="form-label fw-bold">Símbolos a Monitorar</label>
-                            <div class="row">
-                                <div class="col-4">
-                                    <small class="text-muted d-block mb-1">Major Cryptos</small>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="BTC/USDT" id="chkBTC" checked>
-                                        <label class="form-check-label" for="chkBTC">BTC/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="ETH/USDT" id="chkETH" checked>
-                                        <label class="form-check-label" for="chkETH">ETH/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="SOL/USDT" id="chkSOL" checked>
-                                        <label class="form-check-label" for="chkSOL">SOL/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="BNB/USDT" id="chkBNB" checked>
-                                        <label class="form-check-label" for="chkBNB">BNB/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="XRP/USDT" id="chkXRP" checked>
-                                        <label class="form-check-label" for="chkXRP">XRP/USDT</label>
-                                    </div>
-                                </div>
-                                <div class="col-4">
-                                    <small class="text-muted d-block mb-1">Altcoins Top</small>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="ADA/USDT" id="chkADA">
-                                        <label class="form-check-label" for="chkADA">ADA/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="DOGE/USDT" id="chkDOGE">
-                                        <label class="form-check-label" for="chkDOGE">DOGE/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="AVAX/USDT" id="chkAVAX">
-                                        <label class="form-check-label" for="chkAVAX">AVAX/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="DOT/USDT" id="chkDOT">
-                                        <label class="form-check-label" for="chkDOT">DOT/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="MATIC/USDT" id="chkMATIC">
-                                        <label class="form-check-label" for="chkMATIC">MATIC/USDT</label>
-                                    </div>
-                                </div>
-                                <div class="col-4">
-                                    <small class="text-muted d-block mb-1">DeFi & L2</small>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="LINK/USDT" id="chkLINK">
-                                        <label class="form-check-label" for="chkLINK">LINK/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="UNI/USDT" id="chkUNI">
-                                        <label class="form-check-label" for="chkUNI">UNI/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="LTC/USDT" id="chkLTC">
-                                        <label class="form-check-label" for="chkLTC">LTC/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="ARB/USDT" id="chkARB">
-                                        <label class="form-check-label" for="chkARB">ARB/USDT</label>
-                                    </div>
-                                    <div class="form-check form-check-sm">
-                                        <input class="form-check-input" type="checkbox" value="OP/USDT" id="chkOP">
-                                        <label class="form-check-label" for="chkOP">OP/USDT</label>
-                                    </div>
-                                </div>
+                            <label class="form-label fw-bold">
+                                Símbolos a Monitorar 
+                                <span class="badge bg-primary ms-1" id="symbolCountBadge">100</span>
+                            </label>
+                            
+                            <!-- Symbol Selection Buttons -->
+                            <div class="mb-2 d-flex gap-1 flex-wrap">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="selectAllSymbols()">
+                                    <i class="bi bi-check-all"></i> Todos (100)
+                                </button>
+                                <button type="button" class="btn btn-outline-warning btn-sm" onclick="selectTopSymbols()">
+                                    <i class="bi bi-star-fill"></i> Top 10
+                                </button>
+                                <button type="button" class="btn btn-outline-success btn-sm" onclick="selectTop30()">
+                                    <i class="bi bi-graph-up"></i> Top 30
+                                </button>
+                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="clearAllSymbols()">
+                                    <i class="bi bi-x-lg"></i> Limpar
+                                </button>
                             </div>
-                            <div class="mt-2">
-                                <button type="button" class="btn btn-outline-secondary btn-sm me-1" onclick="selectAllSymbols()">
-                                    <i class="bi bi-check-all"></i> Todos
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary btn-sm" onclick="selectTopSymbols()">
-                                    <i class="bi bi-star"></i> Top 5
-                                </button>
+                            
+                            <!-- Scrollable Symbol Container -->
+                            <div class="symbol-container border rounded p-2" style="max-height: 400px; overflow-y: auto;">
+                                
+                                <!-- 🔵 BLUE CHIPS (10) -->
+                                <div class="symbol-category mb-2">
+                                    <div class="category-header bg-primary text-white px-2 py-1 rounded-top d-flex justify-content-between align-items-center" onclick="toggleCategory('bluechip')">
+                                        <span><i class="bi bi-gem"></i> Blue Chips (10)</span>
+                                        <input type="checkbox" class="form-check-input category-select" id="catBluechip" onclick="event.stopPropagation(); selectCategory('bluechip')" checked>
+                                    </div>
+                                    <div class="category-symbols p-2 bg-light rounded-bottom" id="cat-bluechip">
+                                        <div class="row row-cols-3 g-1">
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="BTC/USDT" id="chkBTC" checked><label class="form-check-label small" for="chkBTC">BTC</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="ETH/USDT" id="chkETH" checked><label class="form-check-label small" for="chkETH">ETH</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="BNB/USDT" id="chkBNB" checked><label class="form-check-label small" for="chkBNB">BNB</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="SOL/USDT" id="chkSOL" checked><label class="form-check-label small" for="chkSOL">SOL</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="XRP/USDT" id="chkXRP" checked><label class="form-check-label small" for="chkXRP">XRP</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="ADA/USDT" id="chkADA" checked><label class="form-check-label small" for="chkADA">ADA</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="DOGE/USDT" id="chkDOGE" checked><label class="form-check-label small" for="chkDOGE">DOGE</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="TRX/USDT" id="chkTRX" checked><label class="form-check-label small" for="chkTRX">TRX</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="AVAX/USDT" id="chkAVAX" checked><label class="form-check-label small" for="chkAVAX">AVAX</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check bluechip" type="checkbox" value="TON/USDT" id="chkTON" checked><label class="form-check-label small" for="chkTON">TON</label></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 🟢 LARGE CAP (20) -->
+                                <div class="symbol-category mb-2">
+                                    <div class="category-header bg-success text-white px-2 py-1 rounded-top d-flex justify-content-between align-items-center" onclick="toggleCategory('largecap')">
+                                        <span><i class="bi bi-building"></i> Large Cap (20)</span>
+                                        <input type="checkbox" class="form-check-input category-select" id="catLargecap" onclick="event.stopPropagation(); selectCategory('largecap')">
+                                    </div>
+                                    <div class="category-symbols p-2 bg-light rounded-bottom" id="cat-largecap">
+                                        <div class="row row-cols-3 g-1">
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="LINK/USDT" id="chkLINK"><label class="form-check-label small" for="chkLINK">LINK</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="DOT/USDT" id="chkDOT"><label class="form-check-label small" for="chkDOT">DOT</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="MATIC/USDT" id="chkMATIC"><label class="form-check-label small" for="chkMATIC">MATIC</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="SHIB/USDT" id="chkSHIB"><label class="form-check-label small" for="chkSHIB">SHIB</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="LTC/USDT" id="chkLTC"><label class="form-check-label small" for="chkLTC">LTC</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="BCH/USDT" id="chkBCH"><label class="form-check-label small" for="chkBCH">BCH</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="UNI/USDT" id="chkUNI"><label class="form-check-label small" for="chkUNI">UNI</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="ATOM/USDT" id="chkATOM"><label class="form-check-label small" for="chkATOM">ATOM</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="XLM/USDT" id="chkXLM"><label class="form-check-label small" for="chkXLM">XLM</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="ETC/USDT" id="chkETC"><label class="form-check-label small" for="chkETC">ETC</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="NEAR/USDT" id="chkNEAR"><label class="form-check-label small" for="chkNEAR">NEAR</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="ICP/USDT" id="chkICP"><label class="form-check-label small" for="chkICP">ICP</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="APT/USDT" id="chkAPT"><label class="form-check-label small" for="chkAPT">APT</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="FIL/USDT" id="chkFIL"><label class="form-check-label small" for="chkFIL">FIL</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="VET/USDT" id="chkVET"><label class="form-check-label small" for="chkVET">VET</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="HBAR/USDT" id="chkHBAR"><label class="form-check-label small" for="chkHBAR">HBAR</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="INJ/USDT" id="chkINJ"><label class="form-check-label small" for="chkINJ">INJ</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="SUI/USDT" id="chkSUI"><label class="form-check-label small" for="chkSUI">SUI</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="IMX/USDT" id="chkIMX"><label class="form-check-label small" for="chkIMX">IMX</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check largecap" type="checkbox" value="RENDER/USDT" id="chkRENDER"><label class="form-check-label small" for="chkRENDER">RENDER</label></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 🟡 LAYER 2 & SCALING (15) -->
+                                <div class="symbol-category mb-2">
+                                    <div class="category-header bg-warning text-dark px-2 py-1 rounded-top d-flex justify-content-between align-items-center" onclick="toggleCategory('layer2')">
+                                        <span><i class="bi bi-layers"></i> Layer 2 & Scaling (15)</span>
+                                        <input type="checkbox" class="form-check-input category-select" id="catLayer2" onclick="event.stopPropagation(); selectCategory('layer2')">
+                                    </div>
+                                    <div class="category-symbols p-2 bg-light rounded-bottom" id="cat-layer2">
+                                        <div class="row row-cols-3 g-1">
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="ARB/USDT" id="chkARB"><label class="form-check-label small" for="chkARB">ARB</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="OP/USDT" id="chkOP"><label class="form-check-label small" for="chkOP">OP</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="STX/USDT" id="chkSTX"><label class="form-check-label small" for="chkSTX">STX</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="MANTA/USDT" id="chkMANTA"><label class="form-check-label small" for="chkMANTA">MANTA</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="METIS/USDT" id="chkMETIS"><label class="form-check-label small" for="chkMETIS">METIS</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="ZK/USDT" id="chkZK"><label class="form-check-label small" for="chkZK">ZK</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="STRK/USDT" id="chkSTRK"><label class="form-check-label small" for="chkSTRK">STRK</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="LOOM/USDT" id="chkLOOM"><label class="form-check-label small" for="chkLOOM">LOOM</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="SKL/USDT" id="chkSKL"><label class="form-check-label small" for="chkSKL">SKL</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="CELO/USDT" id="chkCELO"><label class="form-check-label small" for="chkCELO">CELO</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="ZETA/USDT" id="chkZETA"><label class="form-check-label small" for="chkZETA">ZETA</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="CYBER/USDT" id="chkCYBER"><label class="form-check-label small" for="chkCYBER">CYBER</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="GLM/USDT" id="chkGLM"><label class="form-check-label small" for="chkGLM">GLM</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="CELR/USDT" id="chkCELR"><label class="form-check-label small" for="chkCELR">CELR</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check layer2" type="checkbox" value="CTSI/USDT" id="chkCTSI"><label class="form-check-label small" for="chkCTSI">CTSI</label></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 🟣 DEFI (15) -->
+                                <div class="symbol-category mb-2">
+                                    <div class="category-header bg-info text-white px-2 py-1 rounded-top d-flex justify-content-between align-items-center" onclick="toggleCategory('defi')">
+                                        <span><i class="bi bi-bank"></i> DeFi (15)</span>
+                                        <input type="checkbox" class="form-check-input category-select" id="catDefi" onclick="event.stopPropagation(); selectCategory('defi')">
+                                    </div>
+                                    <div class="category-symbols p-2 bg-light rounded-bottom" id="cat-defi">
+                                        <div class="row row-cols-3 g-1">
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="AAVE/USDT" id="chkAAVE"><label class="form-check-label small" for="chkAAVE">AAVE</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="MKR/USDT" id="chkMKR"><label class="form-check-label small" for="chkMKR">MKR</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="CRV/USDT" id="chkCRV"><label class="form-check-label small" for="chkCRV">CRV</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="SNX/USDT" id="chkSNX"><label class="form-check-label small" for="chkSNX">SNX</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="COMP/USDT" id="chkCOMP"><label class="form-check-label small" for="chkCOMP">COMP</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="LDO/USDT" id="chkLDO"><label class="form-check-label small" for="chkLDO">LDO</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="SUSHI/USDT" id="chkSUSHI"><label class="form-check-label small" for="chkSUSHI">SUSHI</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="1INCH/USDT" id="chk1INCH"><label class="form-check-label small" for="chk1INCH">1INCH</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="DYDX/USDT" id="chkDYDX"><label class="form-check-label small" for="chkDYDX">DYDX</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="GMX/USDT" id="chkGMX"><label class="form-check-label small" for="chkGMX">GMX</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="PENDLE/USDT" id="chkPENDLE"><label class="form-check-label small" for="chkPENDLE">PENDLE</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="JUP/USDT" id="chkJUP"><label class="form-check-label small" for="chkJUP">JUP</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="RUNE/USDT" id="chkRUNE"><label class="form-check-label small" for="chkRUNE">RUNE</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="YFI/USDT" id="chkYFI"><label class="form-check-label small" for="chkYFI">YFI</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check defi" type="checkbox" value="BAL/USDT" id="chkBAL"><label class="form-check-label small" for="chkBAL">BAL</label></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 🎮 GAMING & METAVERSE (10) -->
+                                <div class="symbol-category mb-2">
+                                    <div class="category-header text-white px-2 py-1 rounded-top d-flex justify-content-between align-items-center" style="background-color: #9c27b0;" onclick="toggleCategory('gaming')">
+                                        <span><i class="bi bi-controller"></i> Gaming & Metaverse (10)</span>
+                                        <input type="checkbox" class="form-check-input category-select" id="catGaming" onclick="event.stopPropagation(); selectCategory('gaming')">
+                                    </div>
+                                    <div class="category-symbols p-2 bg-light rounded-bottom" id="cat-gaming">
+                                        <div class="row row-cols-3 g-1">
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="AXS/USDT" id="chkAXS"><label class="form-check-label small" for="chkAXS">AXS</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="SAND/USDT" id="chkSAND"><label class="form-check-label small" for="chkSAND">SAND</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="MANA/USDT" id="chkMANA"><label class="form-check-label small" for="chkMANA">MANA</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="GALA/USDT" id="chkGALA"><label class="form-check-label small" for="chkGALA">GALA</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="ENJ/USDT" id="chkENJ"><label class="form-check-label small" for="chkENJ">ENJ</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="PIXEL/USDT" id="chkPIXEL"><label class="form-check-label small" for="chkPIXEL">PIXEL</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="RONIN/USDT" id="chkRONIN"><label class="form-check-label small" for="chkRONIN">RONIN</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="ALICE/USDT" id="chkALICE"><label class="form-check-label small" for="chkALICE">ALICE</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="MAGIC/USDT" id="chkMAGIC"><label class="form-check-label small" for="chkMAGIC">MAGIC</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check gaming" type="checkbox" value="YGG/USDT" id="chkYGG"><label class="form-check-label small" for="chkYGG">YGG</label></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 🤖 AI & DATA (10) -->
+                                <div class="symbol-category mb-2">
+                                    <div class="category-header text-white px-2 py-1 rounded-top d-flex justify-content-between align-items-center" style="background-color: #ff5722;" onclick="toggleCategory('ai')">
+                                        <span><i class="bi bi-robot"></i> AI & Data (10)</span>
+                                        <input type="checkbox" class="form-check-input category-select" id="catAi" onclick="event.stopPropagation(); selectCategory('ai')">
+                                    </div>
+                                    <div class="category-symbols p-2 bg-light rounded-bottom" id="cat-ai">
+                                        <div class="row row-cols-3 g-1">
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="FET/USDT" id="chkFET"><label class="form-check-label small" for="chkFET">FET</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="AGIX/USDT" id="chkAGIX"><label class="form-check-label small" for="chkAGIX">AGIX</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="OCEAN/USDT" id="chkOCEAN"><label class="form-check-label small" for="chkOCEAN">OCEAN</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="TAO/USDT" id="chkTAO"><label class="form-check-label small" for="chkTAO">TAO</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="WLD/USDT" id="chkWLD"><label class="form-check-label small" for="chkWLD">WLD</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="ARKM/USDT" id="chkARKM"><label class="form-check-label small" for="chkARKM">ARKM</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="GRT/USDT" id="chkGRT"><label class="form-check-label small" for="chkGRT">GRT</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="NMR/USDT" id="chkNMR"><label class="form-check-label small" for="chkNMR">NMR</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="IOTX/USDT" id="chkIOTX"><label class="form-check-label small" for="chkIOTX">IOTX</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check ai" type="checkbox" value="RNDR/USDT" id="chkRNDR"><label class="form-check-label small" for="chkRNDR">RNDR</label></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 🐕 MEME COINS (10) -->
+                                <div class="symbol-category mb-2">
+                                    <div class="category-header text-white px-2 py-1 rounded-top d-flex justify-content-between align-items-center" style="background-color: #e91e63;" onclick="toggleCategory('meme')">
+                                        <span><i class="bi bi-emoji-laughing"></i> Meme Coins (10)</span>
+                                        <input type="checkbox" class="form-check-input category-select" id="catMeme" onclick="event.stopPropagation(); selectCategory('meme')">
+                                    </div>
+                                    <div class="category-symbols p-2 bg-light rounded-bottom" id="cat-meme">
+                                        <div class="row row-cols-3 g-1">
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="PEPE/USDT" id="chkPEPE"><label class="form-check-label small" for="chkPEPE">PEPE</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="FLOKI/USDT" id="chkFLOKI"><label class="form-check-label small" for="chkFLOKI">FLOKI</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="BONK/USDT" id="chkBONK"><label class="form-check-label small" for="chkBONK">BONK</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="WIF/USDT" id="chkWIF"><label class="form-check-label small" for="chkWIF">WIF</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="MEME/USDT" id="chkMEME"><label class="form-check-label small" for="chkMEME">MEME</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="TURBO/USDT" id="chkTURBO"><label class="form-check-label small" for="chkTURBO">TURBO</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="1000SATS/USDT" id="chk1000SATS"><label class="form-check-label small" for="chk1000SATS">1000SATS</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="PEOPLE/USDT" id="chkPEOPLE"><label class="form-check-label small" for="chkPEOPLE">PEOPLE</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="MYRO/USDT" id="chkMYRO"><label class="form-check-label small" for="chkMYRO">MYRO</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check meme" type="checkbox" value="BRETT/USDT" id="chkBRETT"><label class="form-check-label small" for="chkBRETT">BRETT</label></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- 🔧 INFRASTRUCTURE (10) -->
+                                <div class="symbol-category mb-2">
+                                    <div class="category-header bg-secondary text-white px-2 py-1 rounded-top d-flex justify-content-between align-items-center" onclick="toggleCategory('infra')">
+                                        <span><i class="bi bi-hdd-network"></i> Infrastructure (10)</span>
+                                        <input type="checkbox" class="form-check-input category-select" id="catInfra" onclick="event.stopPropagation(); selectCategory('infra')">
+                                    </div>
+                                    <div class="category-symbols p-2 bg-light rounded-bottom" id="cat-infra">
+                                        <div class="row row-cols-3 g-1">
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="THETA/USDT" id="chkTHETA"><label class="form-check-label small" for="chkTHETA">THETA</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="AR/USDT" id="chkAR"><label class="form-check-label small" for="chkAR">AR</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="KAS/USDT" id="chkKAS"><label class="form-check-label small" for="chkKAS">KAS</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="SEI/USDT" id="chkSEI"><label class="form-check-label small" for="chkSEI">SEI</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="TIA/USDT" id="chkTIA"><label class="form-check-label small" for="chkTIA">TIA</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="ROSE/USDT" id="chkROSE"><label class="form-check-label small" for="chkROSE">ROSE</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="FTM/USDT" id="chkFTM"><label class="form-check-label small" for="chkFTM">FTM</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="ALGO/USDT" id="chkALGO"><label class="form-check-label small" for="chkALGO">ALGO</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="EGLD/USDT" id="chkEGLD"><label class="form-check-label small" for="chkEGLD">EGLD</label></div></div>
+                                            <div class="col"><div class="form-check form-check-sm"><input class="form-check-input symbol-check infra" type="checkbox" value="FLOW/USDT" id="chkFLOW"><label class="form-check-label small" for="chkFLOW">FLOW</label></div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                            </div>
+                            
+                            <!-- Symbol Count Info -->
+                            <div class="mt-2 d-flex justify-content-between align-items-center">
+                                <small class="text-muted">
+                                    <span id="selectedCount">10</span> de 100 selecionados
+                                </small>
+                                <small class="text-info">
+                                    <i class="bi bi-info-circle"></i> Top 30 recomendado para melhor cobertura
+                                </small>
                             </div>
                         </div>
                         
@@ -207,11 +358,21 @@
                         
                         <div class="mb-3">
                             <label for="minStrength" class="form-label fw-bold">
-                                Força Mínima do Sinal: <span id="strengthValue">0.3</span>
+                                Força Mínima do Sinal: <span id="strengthValue">0.35</span>
                             </label>
-                            <input type="range" class="form-range" id="minStrength" min="0.1" max="0.9" step="0.05" value="0.3"
+                            <input type="range" class="form-range" id="minStrength" min="0.1" max="0.9" step="0.05" value="0.35"
                                 onchange="document.getElementById('strengthValue').textContent = this.value">
-                            <small class="text-muted">Menor = mais sinais (menos qualidade), Maior = menos sinais (mais qualidade)</small>
+                            <small class="text-muted">Recomendado: 0.35 (validado no Backtest Visual)</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="useEmaFilter" checked>
+                                <label class="form-check-label fw-bold" for="useEmaFilter">
+                                    <i class="bi bi-graph-up text-success"></i> Filtro EMA 50/200
+                                </label>
+                            </div>
+                            <small class="text-muted">Alinha sinais com tendência macro (recomendado ON)</small>
                         </div>
                         
                         <div class="mb-3">
@@ -250,25 +411,33 @@
                             <div class="col-md-6">
                                 <p class="mb-2"><strong>O que é?</strong></p>
                                 <p class="small text-muted mb-3">
-                                    A proximidade indica o quão perto um ativo está de formar uma <strong>divergência RSI</strong>. 
-                                    Quanto maior a porcentagem, maior a chance de um sinal ser gerado em breve.
+                                    A proximidade indica que o <strong>RSI está em zona extrema</strong> (oversold &lt;30 ou overbought &gt;70).
+                                    Isso é uma <strong>pré-condição</strong> para uma divergência, mas não significa que ela já existe!
                                 </p>
+                                <div class="alert alert-warning py-2 mb-3 small">
+                                    <i class="bi bi-exclamation-triangle"></i> <strong>Importante:</strong> Proximidade ≠ Divergência Confirmada! 
+                                    Uma divergência RSI só é confirmada quando o preço faz novos mínimos/máximos enquanto o RSI faz o oposto.
+                                </div>
                                 <p class="mb-2"><strong>Níveis de Proximidade:</strong></p>
                                 <ul class="list-unstyled small">
-                                    <li><span class="badge bg-danger me-2">≥70%</span> <strong>Iminente</strong> - Divergência prestes a se formar</li>
-                                    <li><span class="badge bg-warning text-dark me-2">40-69%</span> <strong>Em formação</strong> - Padrão se desenvolvendo</li>
-                                    <li><span class="badge bg-secondary me-2">&lt;40%</span> <strong>Monitorando</strong> - Condições sendo avaliadas</li>
+                                    <li><span class="badge bg-danger me-2">≥70%</span> <strong>Iminente</strong> - RSI muito extremo, alta chance de sinal</li>
+                                    <li><span class="badge bg-warning text-dark me-2">40-69%</span> <strong>Atenção</strong> - RSI em zona extrema</li>
+                                    <li><span class="badge bg-secondary me-2">&lt;40%</span> <strong>Monitorando</strong> - RSI se aproximando de zona extrema</li>
                                 </ul>
                             </div>
                             <div class="col-md-6">
-                                <p class="mb-2"><strong>Indicadores de Status:</strong></p>
+                                <p class="mb-2"><strong>Diferença entre Proximidade e Sinal:</strong></p>
                                 <ul class="list-unstyled small">
-                                    <li class="mb-1">🟢 <strong>Possível Bullish Div.</strong> - RSI subindo enquanto preço cai (sinal de compra potencial)</li>
-                                    <li class="mb-1">🔴 <strong>Possível Bearish Div.</strong> - RSI caindo enquanto preço sobe (sinal de venda potencial)</li>
-                                    <li class="mb-1"><i class="bi bi-eye"></i> <strong>RSI baixo/alto - Atenção</strong> - Zona extrema, aguardando confirmação</li>
+                                    <li class="mb-2"><i class="bi bi-lightning-charge text-warning"></i> <strong>Proximidade 100%</strong> = RSI em zona extrema (ex: RSI=25)</li>
+                                    <li class="mb-2"><i class="bi bi-check-circle text-success"></i> <strong>Sinal Ativo</strong> = Divergência confirmada (preço↓ + RSI↑)</li>
                                 </ul>
+                                <p class="mb-2"><strong>Por que um pode existir sem o outro?</strong></p>
+                                <p class="small text-muted">
+                                    Um ativo pode ter RSI=25 (100% proximidade) mas o preço não está fazendo novos mínimos 
+                                    enquanto o RSI sobe - então não há divergência, apenas RSI extremo.
+                                </p>
                                 <div class="alert alert-info py-2 mb-0 small">
-                                    <i class="bi bi-lightbulb"></i> <strong>Dica:</strong> Ativos com RSI &lt;35 ou &gt;65 estão em zonas extremas e têm maior probabilidade de gerar sinais.
+                                    <i class="bi bi-lightbulb"></i> <strong>Dica:</strong> Fique atento quando proximidade é alta - um sinal pode surgir em breve!
                                 </div>
                             </div>
                         </div>
@@ -280,6 +449,137 @@
                         <div class="col-12 text-center text-muted py-4">
                             <i class="bi bi-hourglass-split display-4 d-block mb-2"></i>
                             <p>Monitorando formação de divergências...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AutoTrade Panel -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm" id="autotradeCard">
+                <div class="card-header d-flex justify-content-between align-items-center" id="autotradeHeader" style="background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); color: white;">
+                    <h5 class="mb-0">
+                        <i class="bi bi-robot"></i> AutoTrade - Scanner → Paper Trading
+                        <span id="autotradeStatusBadge" class="badge bg-secondary ms-2">Inativo</span>
+                    </h5>
+                    <div>
+                        <span id="autotradeModeLabel" class="me-3">
+                            <i class="bi bi-shield-check"></i> Modo: <span class="badge bg-warning text-dark">DRY RUN</span>
+                        </span>
+                        <button class="btn btn-success btn-sm me-2" onclick="toggleAutotrade()" id="btnAutotrade">
+                            <i class="bi bi-play-fill"></i> Iniciar AutoTrade
+                        </button>
+                        <button class="btn btn-outline-light btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#autotradeSettings">
+                            <i class="bi bi-gear"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- AutoTrade Settings (Collapsible) -->
+                <div class="collapse" id="autotradeSettings">
+                    <div class="card-body bg-dark text-white">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label"><i class="bi bi-toggle-on"></i> Modo de Execução</label>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="autotradeDryRun" checked>
+                                        <label class="form-check-label" for="autotradeDryRun">
+                                            <span id="dryRunLabel">🔴 DRY RUN (Simulação)</span>
+                                        </label>
+                                    </div>
+                                    <small class="text-muted">
+                                        DRY RUN = Simula trades sem executar. LIVE = Executa trades reais.
+                                    </small>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="autotradeMinStrength" class="form-label">
+                                        <i class="bi bi-sliders"></i> Força Mínima: <span id="autotradeStrengthVal">0.5</span>
+                                    </label>
+                                    <input type="range" class="form-range" id="autotradeMinStrength" 
+                                           min="0.3" max="0.8" step="0.05" value="0.5"
+                                           onchange="document.getElementById('autotradeStrengthVal').textContent = this.value">
+                                    <small class="text-muted">Só executa sinais acima deste valor</small>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="autotradeCapital" class="form-label">
+                                        <i class="bi bi-wallet2"></i> Capital Inicial
+                                    </label>
+                                    <div class="input-group input-group-sm">
+                                        <span class="input-group-text bg-secondary text-white">$</span>
+                                        <input type="number" class="form-control bg-dark text-white" id="autotradeCapital" value="10000">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- AutoTrade Stats -->
+                <div class="card-body">
+                    <div class="row text-center">
+                        <div class="col-md-2">
+                            <div class="border rounded p-2">
+                                <div class="h4 mb-0" id="atSignalsProcessed">0</div>
+                                <small class="text-muted">Sinais Processados</small>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="border rounded p-2">
+                                <div class="h4 mb-0 text-success" id="atTradesExecuted">0</div>
+                                <small class="text-muted">Trades Executados</small>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <div class="border rounded p-2">
+                                <div class="h4 mb-0" id="atSymbolsActive">--</div>
+                                <small class="text-muted">Símbolos Ativos</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="border rounded p-2">
+                                <div class="h6 mb-0" id="atLastSignal">--</div>
+                                <small class="text-muted">Último Sinal</small>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="border rounded p-2">
+                                <div class="h6 mb-0" id="atLastTrade">--</div>
+                                <small class="text-muted">Último Trade</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Recent AutoTrade Signals Log -->
+                    <div class="mt-3">
+                        <h6><i class="bi bi-list-check"></i> Log de Sinais AutoTrade</h6>
+                        <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+                            <table class="table table-sm table-striped mb-0">
+                                <thead class="table-dark sticky-top">
+                                    <tr>
+                                        <th>Hora</th>
+                                        <th>Símbolo</th>
+                                        <th>Direção</th>
+                                        <th>Força</th>
+                                        <th>Status</th>
+                                        <th>Motivo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="autotradeLogBody">
+                                    <tr>
+                                        <td colspan="6" class="text-center text-muted py-3">
+                                            <i class="bi bi-inbox"></i> Nenhum sinal processado ainda
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
@@ -397,6 +697,22 @@
         transform: scale(1.02);
     }
     
+    /* Price flash animation when value changes */
+    .price-flash {
+        animation: priceFlash 0.5s ease-out;
+    }
+    
+    @keyframes priceFlash {
+        0% { 
+            background-color: rgba(255, 193, 7, 0.5); 
+            transform: scale(1.05);
+        }
+        100% { 
+            background-color: transparent; 
+            transform: scale(1);
+        }
+    }
+    
     .confirmation-badge {
         font-size: 0.7rem;
     }
@@ -491,12 +807,23 @@
     let signalHistory = [];
     let nearAlerts = {};
     
-    const API_BASE = 'http://localhost:3008';
+    // API base URL - execution-engine runs on port 3008
+    // Use o mesmo hostname que o browser está acessando (para evitar problemas de CORS)
+    const API_BASE = window.location.hostname === 'localhost' 
+        ? 'http://localhost:3008' 
+        : \`http://\${window.location.hostname}:3008\`;
     const STORAGE_KEY = 'scannerConfig';
+    const STATE_KEY = 'scannerState';  // Para persistir estado de execução
+    const AUTOTRADE_STATE_KEY = 'autotradeState';  // Para persistir estado do AutoTrade
+    
+    // Debug: log API base
+    console.log('[Scanner] API_BASE:', API_BASE);
+    console.log('[Scanner] window.location.hostname:', window.location.hostname);
     
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
         loadSavedConfig();  // Load saved config first
+        loadSavedState();   // Load execution state (continuous scan, etc)
         initializeScanner();
         fetchMarketData();
         updateNearAlerts();
@@ -508,6 +835,46 @@
         // Add auto-save event listeners to all config inputs
         setupAutoSave();
     });
+    
+    // Save execution state to localStorage
+    function saveState() {
+        const state = {
+            isContinuousRunning: isContinuousRunning,
+            scanIntervalValue: document.getElementById('scanInterval')?.value || 60
+        };
+        localStorage.setItem(STATE_KEY, JSON.stringify(state));
+    }
+    
+    // Load execution state from localStorage
+    function loadSavedState() {
+        const savedState = localStorage.getItem(STATE_KEY);
+        if (!savedState) return;
+        
+        try {
+            const state = JSON.parse(savedState);
+            // Restore saved interval value before toggling
+            if (state.scanIntervalValue) {
+                const intervalInput = document.getElementById('scanInterval');
+                if (intervalInput) {
+                    intervalInput.value = state.scanIntervalValue;
+                    document.getElementById('intervalValue').textContent = state.scanIntervalValue;
+                }
+            }
+            
+            // Restore continuous scan if it was running
+            if (state.isContinuousRunning) {
+                console.log('Restoring continuous scan from saved state...');
+                // Small delay to let page load first
+                setTimeout(() => {
+                    if (!isContinuousRunning) {
+                        toggleContinuousScan();
+                    }
+                }, 1500);
+            }
+        } catch (e) {
+            console.error('Error loading saved state:', e);
+        }
+    }
     
     // Setup auto-save for all configuration inputs
     function setupAutoSave() {
@@ -526,6 +893,36 @@
                 console.log('Config auto-saved after range change');
             });
         });
+        
+        // Auto-save AutoTrade settings
+        const autotradeDryRun = document.getElementById('autotradeDryRun');
+        if (autotradeDryRun) {
+            autotradeDryRun.addEventListener('change', function() {
+                saveConfig();
+                // Update label
+                const label = document.getElementById('dryRunLabel');
+                if (label) {
+                    label.textContent = this.checked ? '🔴 DRY RUN (Simulação)' : '🟢 LIVE (Execução Real)';
+                }
+                console.log('AutoTrade DryRun saved:', this.checked);
+            });
+        }
+        
+        const autotradeMinStrength = document.getElementById('autotradeMinStrength');
+        if (autotradeMinStrength) {
+            autotradeMinStrength.addEventListener('change', function() {
+                saveConfig();
+                console.log('AutoTrade MinStrength saved:', this.value);
+            });
+        }
+        
+        const autotradeCapital = document.getElementById('autotradeCapital');
+        if (autotradeCapital) {
+            autotradeCapital.addEventListener('change', function() {
+                saveConfig();
+                console.log('AutoTrade Capital saved:', this.value);
+            });
+        }
     }
     
     // Save configuration to localStorage
@@ -534,20 +931,29 @@
             symbols: [],
             timeframes: [],
             minStrength: document.getElementById('minStrength').value,
-            scanInterval: document.getElementById('scanInterval').value
+            scanInterval: document.getElementById('scanInterval').value,
+            useEmaFilter: document.getElementById('useEmaFilter').checked,  // NOVO v2.1
+            // AutoTrade settings
+            autotradeDryRun: document.getElementById('autotradeDryRun')?.checked ?? true,
+            autotradeMinStrength: document.getElementById('autotradeMinStrength')?.value || '0.5',
+            autotradeCapital: document.getElementById('autotradeCapital')?.value || '10000'
         };
         
-        // Get selected symbols
-        document.querySelectorAll('#scannerConfigForm input[type="checkbox"][id^="chk"]').forEach(cb => {
-            if (cb.value.includes('/')) {
-                config.symbols.push({ id: cb.id, checked: cb.checked });
-            } else {
+        // Get selected symbols (using new class-based selector)
+        document.querySelectorAll('.symbol-check').forEach(cb => {
+            config.symbols.push({ id: cb.id, checked: cb.checked });
+        });
+        
+        // Get timeframes
+        ['1h', '4h', '1d'].forEach(tf => {
+            const cb = document.getElementById('chk' + tf);
+            if (cb) {
                 config.timeframes.push({ id: cb.id, value: cb.value, checked: cb.checked });
             }
         });
         
         localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
-        console.log('Config saved:', config);
+        console.log('Config saved:', config.symbols.filter(s => s.checked).length + ' symbols selected');
     }
     
     // Load configuration from localStorage
@@ -555,15 +961,19 @@
         const savedConfig = localStorage.getItem(STORAGE_KEY);
         if (!savedConfig) {
             console.log('No saved config found, using defaults');
+            updateSymbolCount();
             return;
         }
         
         try {
             const config = JSON.parse(savedConfig);
-            console.log('Loading saved config:', config);
+            console.log('Loading saved config:', config.symbols?.filter(s => s.checked).length + ' symbols');
             
             // Restore symbols checkboxes
             if (config.symbols && config.symbols.length > 0) {
+                // First, uncheck all symbols
+                document.querySelectorAll('.symbol-check').forEach(cb => cb.checked = false);
+                // Then restore saved state
                 config.symbols.forEach(item => {
                     const cb = document.getElementById(item.id);
                     if (cb) cb.checked = item.checked;
@@ -584,12 +994,45 @@
                 document.getElementById('strengthValue').textContent = config.minStrength;
             }
             
+            // Restore useEmaFilter (NOVO v2.1)
+            if (config.useEmaFilter !== undefined) {
+                document.getElementById('useEmaFilter').checked = config.useEmaFilter;
+            }
+            
             // Restore scanInterval
             if (config.scanInterval) {
                 document.getElementById('scanInterval').value = config.scanInterval;
                 document.getElementById('intervalValue').textContent = config.scanInterval;
             }
             
+            // Restore AutoTrade settings
+            if (config.autotradeDryRun !== undefined) {
+                const dryRunCb = document.getElementById('autotradeDryRun');
+                if (dryRunCb) {
+                    dryRunCb.checked = config.autotradeDryRun;
+                    // Update label
+                    const label = document.getElementById('dryRunLabel');
+                    if (label) {
+                        label.textContent = config.autotradeDryRun ? '🔴 DRY RUN (Simulação)' : '🟢 LIVE (Execução Real)';
+                    }
+                }
+            }
+            if (config.autotradeMinStrength) {
+                const strengthInput = document.getElementById('autotradeMinStrength');
+                if (strengthInput) {
+                    strengthInput.value = config.autotradeMinStrength;
+                    document.getElementById('autotradeStrengthVal').textContent = config.autotradeMinStrength;
+                }
+            }
+            if (config.autotradeCapital) {
+                const capitalInput = document.getElementById('autotradeCapital');
+                if (capitalInput) {
+                    capitalInput.value = config.autotradeCapital;
+                }
+            }
+            
+            // Update symbol count after loading
+            updateSymbolCount();
         } catch (e) {
             console.error('Error loading saved config:', e);
         }
@@ -606,7 +1049,8 @@
                 body: JSON.stringify({
                     symbols: symbols,
                     timeframes: timeframes,
-                    min_signal_strength: parseFloat(document.getElementById('minStrength').value)
+                    min_signal_strength: parseFloat(document.getElementById('minStrength').value),
+                    use_ema_filter: document.getElementById('useEmaFilter').checked  // NOVO v2.1
                 })
             });
             
@@ -648,6 +1092,11 @@
                     addToHistory(data.signals);
                     playAlertSound();
                     showSignalAlerts(data.signals);
+                    
+                    // Send signals to AutoTrade if active (100% local processing)
+                    for (const signal of data.signals) {
+                        processSignalLocally(signal);
+                    }
                 }
                 
                 showToast('Scan Completo', 
@@ -678,6 +1127,7 @@
             statusBadge.classList.remove('bg-success');
             statusBadge.classList.add('bg-secondary');
             showToast('Scanner Parado', 'Monitoramento contínuo desativado', 'info');
+            saveState();  // Persist state
         } else {
             // Start
             const interval = parseInt(document.getElementById('scanInterval').value) * 1000;
@@ -691,6 +1141,7 @@
             statusBadge.classList.remove('bg-secondary');
             statusBadge.classList.add('bg-success');
             showToast('Scanner Iniciado', 'Escaneando a cada ' + (interval/1000) + ' segundos', 'success');
+            saveState();  // Persist state
         }
     }
     
@@ -945,6 +1396,9 @@
         }
     }
     
+    // Cache para dados de mercado (evitar atualizações desnecessárias)
+    let lastMarketData = {};
+    
     async function fetchMarketData() {
         const container = document.getElementById('marketOverview');
         
@@ -957,30 +1411,100 @@
                 throw new Error('Falha ao buscar dados');
             }
             
-            let html = '';
-            result.data.forEach(coin => {
-                const changeClass = coin.change_24h >= 0 ? 'text-success' : 'text-danger';
-                const changeIcon = coin.change_24h >= 0 ? 'bi-caret-up-fill' : 'bi-caret-down-fill';
-                const rsiClass = coin.rsi < 30 ? 'text-success fw-bold' : (coin.rsi > 70 ? 'text-danger fw-bold' : 'text-muted');
-                
-                html += \`
-                    <div class="col-md-2 col-6 mb-3">
-                        <div class="card market-card h-100">
-                            <div class="card-body text-center p-2">
-                                <h6 class="mb-1">\${coin.symbol.replace('/USDT', '')}</h6>
-                                <h5 class="mb-1">\${formatPrice(coin.price)}</h5>
-                                <span class="\${changeClass}">
-                                    <i class="bi \${changeIcon}"></i> \${Math.abs(coin.change_24h).toFixed(2)}%
-                                </span>
-                                <br>
-                                <small class="\${rsiClass}">RSI: \${coin.rsi.toFixed(1)}</small>
+            // Verificar se container está vazio (primeira carga) ou estrutura mudou
+            const currentSymbols = result.data.map(c => c.symbol).join(',');
+            const cachedSymbols = Object.keys(lastMarketData).join(',');
+            const needsFullRebuild = container.children.length === 0 || currentSymbols !== cachedSymbols;
+            
+            if (needsFullRebuild) {
+                // Primeira carga ou símbolos mudaram - rebuild completo
+                let html = '';
+                result.data.forEach(coin => {
+                    const symbolId = coin.symbol.replace('/', '').replace('USDT', '');
+                    const changeClass = coin.change_24h >= 0 ? 'text-success' : 'text-danger';
+                    const changeIcon = coin.change_24h >= 0 ? 'bi-caret-up-fill' : 'bi-caret-down-fill';
+                    const rsiClass = coin.rsi < 30 ? 'text-success fw-bold' : (coin.rsi > 70 ? 'text-danger fw-bold' : 'text-muted');
+                    
+                    html += \`
+                        <div class="col-md-2 col-6 mb-3" data-symbol="\${coin.symbol}">
+                            <div class="card market-card h-100">
+                                <div class="card-body text-center p-2">
+                                    <h6 class="mb-1">\${symbolId}</h6>
+                                    <h5 class="mb-1" id="price-\${symbolId}">\${formatPrice(coin.price)}</h5>
+                                    <span id="change-\${symbolId}" class="\${changeClass}">
+                                        <i class="bi \${changeIcon}"></i> \${Math.abs(coin.change_24h).toFixed(2)}%
+                                    </span>
+                                    <br>
+                                    <small id="rsi-\${symbolId}" class="\${rsiClass}">RSI: \${coin.rsi.toFixed(1)}</small>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                \`;
-            });
+                    \`;
+                    
+                    // Cache initial data
+                    lastMarketData[coin.symbol] = {
+                        price: coin.price,
+                        change_24h: coin.change_24h,
+                        rsi: coin.rsi
+                    };
+                });
+                
+                container.innerHTML = html;
+                console.log('[Market] Full rebuild - symbols:', currentSymbols);
+            } else {
+                // Atualização incremental - só mudar valores que mudaram
+                let updatedCount = 0;
+                
+                result.data.forEach(coin => {
+                    const symbolId = coin.symbol.replace('/', '').replace('USDT', '');
+                    const cached = lastMarketData[coin.symbol];
+                    
+                    if (!cached) return;
+                    
+                    // Atualizar preço se mudou
+                    if (cached.price !== coin.price) {
+                        const priceEl = document.getElementById('price-' + symbolId);
+                        if (priceEl) {
+                            priceEl.textContent = formatPrice(coin.price);
+                            // Flash animation para indicar mudança
+                            priceEl.classList.add('price-flash');
+                            setTimeout(() => priceEl.classList.remove('price-flash'), 500);
+                        }
+                        cached.price = coin.price;
+                        updatedCount++;
+                    }
+                    
+                    // Atualizar change se mudou
+                    if (cached.change_24h !== coin.change_24h) {
+                        const changeEl = document.getElementById('change-' + symbolId);
+                        if (changeEl) {
+                            const changeClass = coin.change_24h >= 0 ? 'text-success' : 'text-danger';
+                            const changeIcon = coin.change_24h >= 0 ? 'bi-caret-up-fill' : 'bi-caret-down-fill';
+                            changeEl.className = changeClass;
+                            changeEl.innerHTML = \`<i class="bi \${changeIcon}"></i> \${Math.abs(coin.change_24h).toFixed(2)}%\`;
+                        }
+                        cached.change_24h = coin.change_24h;
+                        updatedCount++;
+                    }
+                    
+                    // Atualizar RSI se mudou
+                    if (cached.rsi !== coin.rsi) {
+                        const rsiEl = document.getElementById('rsi-' + symbolId);
+                        if (rsiEl) {
+                            const rsiClass = coin.rsi < 30 ? 'text-success fw-bold' : (coin.rsi > 70 ? 'text-danger fw-bold' : 'text-muted');
+                            rsiEl.className = rsiClass;
+                            rsiEl.textContent = 'RSI: ' + coin.rsi.toFixed(1);
+                        }
+                        cached.rsi = coin.rsi;
+                        updatedCount++;
+                    }
+                });
+                
+                if (updatedCount > 0) {
+                    console.log('[Market] Incremental update -', updatedCount, 'changes');
+                }
+            }
             
-            container.innerHTML = html;
             document.getElementById('marketUpdateTime').textContent = new Date().toLocaleTimeString();
             
         } catch (error) {
@@ -1056,30 +1580,85 @@
     
     function getSelectedSymbols() {
         const symbols = [];
-        document.querySelectorAll('#scannerConfigForm input[type="checkbox"][id^="chk"]:checked').forEach(cb => {
+        document.querySelectorAll('.symbol-check:checked').forEach(cb => {
             if (cb.value.includes('/')) symbols.push(cb.value);
         });
         return symbols.length > 0 ? symbols : ['BTC/USDT', 'ETH/USDT', 'SOL/USDT'];
     }
     
-    // Select all symbols
-    function selectAllSymbols() {
-        document.querySelectorAll('#scannerConfigForm input[type="checkbox"][id^="chk"]').forEach(cb => {
-            if (cb.value.includes('/')) cb.checked = true;
+    // Update symbol count display
+    function updateSymbolCount() {
+        const checked = document.querySelectorAll('.symbol-check:checked').length;
+        document.getElementById('selectedCount').textContent = checked;
+        document.getElementById('symbolCountBadge').textContent = checked;
+    }
+    
+    // Toggle category visibility
+    function toggleCategory(category) {
+        const catDiv = document.getElementById('cat-' + category);
+        if (catDiv) {
+            catDiv.style.display = catDiv.style.display === 'none' ? 'block' : 'none';
+        }
+    }
+    
+    // Select all symbols in a category
+    function selectCategory(category) {
+        const catCheckbox = document.getElementById('cat' + category.charAt(0).toUpperCase() + category.slice(1));
+        const isChecked = catCheckbox.checked;
+        document.querySelectorAll('.symbol-check.' + category).forEach(cb => {
+            cb.checked = isChecked;
         });
+        updateSymbolCount();
         saveConfig();
     }
     
-    // Select top 5 symbols only
-    function selectTopSymbols() {
-        const topSymbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT', 'BNB/USDT', 'XRP/USDT'];
-        document.querySelectorAll('#scannerConfigForm input[type="checkbox"][id^="chk"]').forEach(cb => {
-            if (cb.value.includes('/')) {
-                cb.checked = topSymbols.includes(cb.value);
-            }
-        });
+    // Select all 100 symbols
+    function selectAllSymbols() {
+        document.querySelectorAll('.symbol-check').forEach(cb => cb.checked = true);
+        document.querySelectorAll('.category-select').forEach(cb => cb.checked = true);
+        updateSymbolCount();
         saveConfig();
     }
+    
+    // Clear all symbols
+    function clearAllSymbols() {
+        document.querySelectorAll('.symbol-check').forEach(cb => cb.checked = false);
+        document.querySelectorAll('.category-select').forEach(cb => cb.checked = false);
+        updateSymbolCount();
+        saveConfig();
+    }
+    
+    // Select top 10 symbols only (Blue Chips)
+    function selectTopSymbols() {
+        clearAllSymbols();
+        document.querySelectorAll('.symbol-check.bluechip').forEach(cb => cb.checked = true);
+        document.getElementById('catBluechip').checked = true;
+        updateSymbolCount();
+        saveConfig();
+    }
+    
+    // Select top 30 symbols (Blue Chips + Large Cap)
+    function selectTop30() {
+        clearAllSymbols();
+        document.querySelectorAll('.symbol-check.bluechip').forEach(cb => cb.checked = true);
+        document.querySelectorAll('.symbol-check.largecap').forEach(cb => cb.checked = true);
+        document.getElementById('catBluechip').checked = true;
+        document.getElementById('catLargecap').checked = true;
+        updateSymbolCount();
+        saveConfig();
+    }
+    
+    // Initialize symbol count on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        updateSymbolCount();
+        // Add event listeners to all symbol checkboxes
+        document.querySelectorAll('.symbol-check').forEach(cb => {
+            cb.addEventListener('change', function() {
+                updateSymbolCount();
+                saveConfig();
+            });
+        });
+    });
     
     function getSelectedTimeframes() {
         const timeframes = [];
@@ -1152,6 +1731,382 @@
                     '&direction=' + direction + 
                     '&price=' + price;
         window.open(url, '_blank');
+    }
+
+    // ==========================================
+    // AUTOTRADE FUNCTIONS - 100% LOCAL (SIMPLIFIED)
+    // ==========================================
+    
+    let autotradeActive = false;
+    let autotradeStatusInterval = null;
+    let autotradeStats = { signals_processed: 0, trades_executed: 0, start_time: null };
+    let autotradeSignalsLog = [];  // Log local de sinais
+    let autotradeConfig = { dryRun: true, minStrength: 0.5, capital: 10000 };
+    
+    // Initialize AutoTrade on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // Restore AutoTrade state from localStorage
+        restoreAutotradeState();
+        
+        // Setup dry run toggle
+        document.getElementById('autotradeDryRun').addEventListener('change', function() {
+            const label = document.getElementById('dryRunLabel');
+            const modeLabel = document.querySelector('#autotradeModeLabel .badge');
+            if (this.checked) {
+                label.textContent = '🔴 DRY RUN (Simulação)';
+                modeLabel.className = 'badge bg-warning text-dark';
+                modeLabel.textContent = 'DRY RUN';
+            } else {
+                label.textContent = '🟢 LIVE (Execução Real)';
+                modeLabel.className = 'badge bg-success';
+                modeLabel.textContent = 'LIVE';
+            }
+            // Save config change
+            saveAutotradeFullState();
+        });
+    });
+    
+    // Save FULL AutoTrade state (including stats and logs)
+    function saveAutotradeFullState() {
+        const symbols = getSelectedSymbols().map(s => s.replace('/', ''));
+        const state = {
+            active: autotradeActive,
+            stats: autotradeStats,
+            signals: autotradeSignalsLog.slice(-50),  // Keep last 50 signals
+            config: {
+                dryRun: document.getElementById('autotradeDryRun')?.checked ?? true,
+                minStrength: parseFloat(document.getElementById('autotradeMinStrength')?.value || 0.5),
+                capital: parseFloat(document.getElementById('autotradeCapital')?.value || 10000),
+                symbols: symbols
+            },
+            timestamp: Date.now()
+        };
+        localStorage.setItem(AUTOTRADE_STATE_KEY, JSON.stringify(state));
+        console.log('[AutoTrade] Full state saved');
+    }
+    
+    // Restore AutoTrade state from localStorage
+    function restoreAutotradeState() {
+        const savedState = localStorage.getItem(AUTOTRADE_STATE_KEY);
+        if (!savedState) {
+            console.log('[AutoTrade] No saved state found');
+            updateAutotradeUILocal();
+            return;
+        }
+        
+        try {
+            const state = JSON.parse(savedState);
+            
+            // Check if state is not too old (24h max)
+            if (state.timestamp && (Date.now() - state.timestamp) > 24 * 60 * 60 * 1000) {
+                console.log('[AutoTrade] Saved state too old (>24h), ignoring');
+                localStorage.removeItem(AUTOTRADE_STATE_KEY);
+                updateAutotradeUILocal();
+                return;
+            }
+            
+            // Restore state
+            autotradeActive = state.active || false;
+            autotradeStats = state.stats || { signals_processed: 0, trades_executed: 0, start_time: null };
+            autotradeSignalsLog = state.signals || [];
+            autotradeConfig = state.config || { dryRun: true, minStrength: 0.5, capital: 10000 };
+            
+            // Restore UI config
+            if (state.config) {
+                const dryRunEl = document.getElementById('autotradeDryRun');
+                const minStrengthEl = document.getElementById('autotradeMinStrength');
+                const capitalEl = document.getElementById('autotradeCapital');
+                
+                if (dryRunEl) dryRunEl.checked = state.config.dryRun;
+                if (minStrengthEl) minStrengthEl.value = state.config.minStrength;
+                if (capitalEl) capitalEl.value = state.config.capital;
+                
+                // Trigger UI update for dry run label
+                if (dryRunEl) {
+                    const label = document.getElementById('dryRunLabel');
+                    const modeLabel = document.querySelector('#autotradeModeLabel .badge');
+                    if (state.config.dryRun) {
+                        label.textContent = '🔴 DRY RUN (Simulação)';
+                        modeLabel.className = 'badge bg-warning text-dark';
+                        modeLabel.textContent = 'DRY RUN';
+                    } else {
+                        label.textContent = '🟢 LIVE (Execução Real)';
+                        modeLabel.className = 'badge bg-success';
+                        modeLabel.textContent = 'LIVE';
+                    }
+                }
+            }
+            
+            console.log('[AutoTrade] State restored:', { active: autotradeActive, signals: autotradeSignalsLog.length });
+            
+            // Update UI
+            updateAutotradeUILocal();
+            
+            // If was active, restart the polling
+            if (autotradeActive) {
+                console.log('[AutoTrade] Resuming active session...');
+                autotradeStatusInterval = setInterval(() => updateAutotradeUILocal(), 5000);
+                showToast('AutoTrade Restaurado', 'Sessão anterior restaurada com sucesso', 'info');
+            }
+            
+        } catch (e) {
+            console.error('[AutoTrade] Error restoring state:', e);
+            localStorage.removeItem(AUTOTRADE_STATE_KEY);
+            updateAutotradeUILocal();
+        }
+    }
+    
+    // UI Update function (100% local)
+    function updateAutotradeUILocal() {
+        const badge = document.getElementById('autotradeStatusBadge');
+        const btn = document.getElementById('btnAutotrade');
+        const header = document.getElementById('autotradeHeader');
+        
+        if (autotradeActive) {
+            badge.className = 'badge bg-success ms-2';
+            badge.textContent = 'Ativo';
+            btn.className = 'btn btn-danger btn-sm me-2';
+            btn.innerHTML = '<i class="bi bi-stop-fill"></i> Parar AutoTrade';
+            header.style.background = 'linear-gradient(135deg, #0f5132 0%, #198754 100%)';
+        } else {
+            badge.className = 'badge bg-secondary ms-2';
+            badge.textContent = 'Inativo';
+            btn.className = 'btn btn-success btn-sm me-2';
+            btn.innerHTML = '<i class="bi bi-play-fill"></i> Iniciar AutoTrade';
+            header.style.background = 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)';
+        }
+        
+        // Update stats from local state
+        document.getElementById('atSignalsProcessed').textContent = autotradeStats.signals_processed || 0;
+        document.getElementById('atTradesExecuted').textContent = autotradeStats.trades_executed || 0;
+        
+        const symbols = getSelectedSymbols();
+        document.getElementById('atSymbolsActive').textContent = autotradeActive ? symbols.length : '--';
+        
+        // Update last signal/trade from log
+        if (autotradeSignalsLog.length > 0) {
+            const lastSig = autotradeSignalsLog[autotradeSignalsLog.length - 1];
+            document.getElementById('atLastSignal').textContent = \`\${lastSig.symbol} \${lastSig.direction}\`;
+            
+            const lastTrade = autotradeSignalsLog.filter(s => s.executed).pop();
+            if (lastTrade) {
+                document.getElementById('atLastTrade').textContent = \`\${lastTrade.symbol} @ \${new Date(lastTrade.timestamp).toLocaleTimeString()}\`;
+            }
+        } else {
+            document.getElementById('atLastSignal').textContent = '--';
+            document.getElementById('atLastTrade').textContent = '--';
+        }
+        
+        // Update log table
+        updateAutotradeLogLocal();
+    }
+    
+    function updateAutotradeLogLocal() {
+        const tbody = document.getElementById('autotradeLogBody');
+        
+        if (autotradeSignalsLog.length === 0) {
+            tbody.innerHTML = \`
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-3">
+                        <i class="bi bi-inbox"></i> Nenhum sinal processado ainda
+                    </td>
+                </tr>
+            \`;
+            return;
+        }
+        
+        // Show most recent first
+        const signals = [...autotradeSignalsLog].reverse();
+        tbody.innerHTML = signals.map(sig => \`
+            <tr>
+                <td>\${new Date(sig.timestamp).toLocaleTimeString()}</td>
+                <td><strong>\${sig.symbol}</strong></td>
+                <td>
+                    <span class="badge bg-\${sig.direction === 'BUY' ? 'success' : 'danger'}">
+                        \${sig.direction}
+                    </span>
+                </td>
+                <td>\${(sig.strength * 100).toFixed(0)}%</td>
+                <td>
+                    <span class="badge bg-\${sig.executed ? 'success' : (sig.processed ? 'warning' : 'secondary')}">
+                        \${sig.executed ? 'Executado' : (sig.processed ? 'Ignorado' : 'Não processado')}
+                    </span>
+                </td>
+                <td class="small">\${sig.reason || '--'}</td>
+            </tr>
+        \`).join('');
+    }
+    
+    // Toggle AutoTrade (100% local - no backend dependency for state)
+    function toggleAutotrade() {
+        console.log('[AutoTrade] toggleAutotrade called, current state:', autotradeActive);
+        
+        if (autotradeActive) {
+            stopAutotradeLocal();
+        } else {
+            startAutotradeLocal();
+        }
+    }
+    
+    // Start AutoTrade (100% local)
+    function startAutotradeLocal() {
+        const symbols = getSelectedSymbols();
+        
+        if (symbols.length === 0) {
+            showToast('Erro', 'Nenhum símbolo selecionado', 'danger');
+            return;
+        }
+        
+        const dryRun = document.getElementById('autotradeDryRun').checked;
+        const minStrength = parseFloat(document.getElementById('autotradeMinStrength').value);
+        const capital = parseFloat(document.getElementById('autotradeCapital').value);
+        
+        // Set state
+        autotradeActive = true;
+        autotradeStats = { 
+            signals_processed: 0, 
+            trades_executed: 0, 
+            start_time: Date.now() 
+        };
+        autotradeConfig = { dryRun, minStrength, capital, symbols: symbols.map(s => s.replace('/', '')) };
+        
+        // Save to localStorage immediately
+        saveAutotradeFullState();
+        
+        // Start polling
+        if (autotradeStatusInterval) clearInterval(autotradeStatusInterval);
+        autotradeStatusInterval = setInterval(() => {
+            saveAutotradeFullState();  // Persist state periodically
+            updateAutotradeUILocal();
+        }, 5000);
+        
+        // Update UI
+        updateAutotradeUILocal();
+        
+        // Show notification
+        showToast('AutoTrade Iniciado', 
+            \`Modo: \${dryRun ? '🔴 DRY RUN (simulação)' : '🟢 LIVE (execução real)'} | \${symbols.length} pares | Min. Força: \${(minStrength * 100).toFixed(0)}%\`, 
+            dryRun ? 'warning' : 'success');
+        
+        console.log('[AutoTrade] Started:', { dryRun, minStrength, capital, symbols: symbols.length });
+    }
+    
+    // Stop AutoTrade (100% local)
+    function stopAutotradeLocal() {
+        // Stop polling
+        if (autotradeStatusInterval) {
+            clearInterval(autotradeStatusInterval);
+            autotradeStatusInterval = null;
+        }
+        
+        // Calculate session summary
+        const duration = autotradeStats.start_time ? 
+            Math.round((Date.now() - autotradeStats.start_time) / 1000 / 60) : 0;
+        
+        // Set state
+        autotradeActive = false;
+        
+        // Save to localStorage
+        saveAutotradeFullState();
+        
+        // Update UI
+        updateAutotradeUILocal();
+        
+        // Show notification
+        showToast('AutoTrade Parado', 
+            \`Duração: \${duration} min | Sinais: \${autotradeStats.signals_processed} | Trades: \${autotradeStats.trades_executed}\`, 
+            'info');
+        
+        console.log('[AutoTrade] Stopped:', autotradeStats);
+    }
+    
+    // Process signal locally (called by scanner when it detects a signal)
+    function processSignalLocally(signal) {
+        if (!autotradeActive) return;
+        
+        const minStrength = autotradeConfig.minStrength || 0.5;
+        const signalStrength = signal.strength || 0;
+        
+        // Create log entry
+        const logEntry = {
+            timestamp: Date.now(),
+            symbol: signal.symbol?.replace('/', '') || 'UNKNOWN',
+            direction: signal.direction === 1 ? 'BUY' : 'SELL',
+            strength: signalStrength,
+            processed: true,
+            executed: false,
+            reason: ''
+        };
+        
+        autotradeStats.signals_processed++;
+        
+        // Check if signal meets criteria
+        if (signalStrength < minStrength) {
+            logEntry.reason = \`Força \${(signalStrength * 100).toFixed(0)}% < mínimo \${(minStrength * 100).toFixed(0)}%\`;
+        } else {
+            // Signal meets criteria - would execute
+            if (autotradeConfig.dryRun) {
+                logEntry.executed = true;
+                logEntry.reason = '✅ DRY RUN - Simulado';
+                autotradeStats.trades_executed++;
+                
+                showToast('AutoTrade (DRY RUN)', 
+                    \`🔵 \${logEntry.symbol} \${logEntry.direction} simulado | Força: \${(signalStrength * 100).toFixed(0)}%\`, 
+                    'info');
+            } else {
+                // LIVE mode - call backend to execute
+                executeTradeOnBackend(signal).then(result => {
+                    if (result.success) {
+                        logEntry.executed = true;
+                        logEntry.reason = '✅ Executado';
+                        autotradeStats.trades_executed++;
+                    } else {
+                        logEntry.reason = \`❌ Falha: \${result.error}\`;
+                    }
+                    saveAutotradeFullState();
+                    updateAutotradeUILocal();
+                });
+                logEntry.reason = '⏳ Executando...';
+            }
+        }
+        
+        // Add to log (keep last 50)
+        autotradeSignalsLog.push(logEntry);
+        if (autotradeSignalsLog.length > 50) {
+            autotradeSignalsLog = autotradeSignalsLog.slice(-50);
+        }
+        
+        // Save and update UI
+        saveAutotradeFullState();
+        updateAutotradeUILocal();
+        
+        console.log('[AutoTrade] Signal processed:', logEntry);
+    }
+    
+    // Execute trade on backend (for LIVE mode only)
+    async function executeTradeOnBackend(signal) {
+        try {
+            const response = await fetch(API_BASE + '/api/autotrade/process-signal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    symbol: signal.symbol?.replace('/', ''),
+                    direction: signal.direction,
+                    signal_type: signal.signal_type,
+                    strength: signal.strength,
+                    entry_price: signal.entry_price,
+                    stop_loss: signal.stop_loss,
+                    take_profit: signal.take_profit,
+                    timeframe: signal.timeframe || '1h'
+                })
+            });
+            
+            const data = await response.json();
+            return { success: data.success && data.action === 'executed', error: data.message };
+        } catch (e) {
+            console.error('[AutoTrade] Backend execution error:', e);
+            return { success: false, error: e.message };
+        }
     }
 </script>
 `}) %>

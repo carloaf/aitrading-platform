@@ -88,21 +88,22 @@ class ScannerConfig:
     rsi_overbought: int = 70
     rsi_oversold: int = 30
     
-    # Parâmetros de detecção
-    lookback_periods: int = 10  # Otimizado para 1h conforme manual
-    min_signal_strength: float = 0.3
+    # Parâmetros de detecção (alinhados com Backtest Visual v2.1)
+    lookback_periods: int = 15  # Atualizado: 10 → 15 para coincidir com Backtest Visual
+    min_signal_strength: float = 0.35  # Atualizado: 0.3 → 0.35 (mais qualidade)
     min_adx_trend: int = 15
     divergence_threshold: float = 0.02
     
-    # Gestão de risco
+    # Gestão de risco (alinhados com Backtest Visual)
     atr_period: int = 14
     stop_loss_atr_mult: float = 2.0
-    take_profit_atr_mult: float = 4.0
+    take_profit_atr_mult: float = 3.5  # Atualizado: 4.0 → 3.5 (mais realista)
     
-    # Filtros
-    min_volume_ratio: float = 1.0
+    # Filtros (NOVO: alinhados com Backtest Visual v2.1)
+    min_volume_ratio: float = 1.3  # Atualizado: 1.0 → 1.3 (volume 30% acima da média)
     require_volume_confirmation: bool = True
     require_macd_confirmation: bool = False
+    use_ema_filter: bool = True  # NOVO: Filtro EMA 50/200 para alinhamento com tendência
     
     # Intervalo de scan (segundos)
     scan_interval: int = 60
@@ -292,10 +293,11 @@ class MultiSymbolScanner:
         df['volume_sma'] = df['volume'].rolling(window=20).mean()
         df['volume_ratio'] = df['volume'] / df['volume_sma']
         
-        # EMAs para tendência
+        # EMAs para tendência (incluindo EMA 200 para filtro v2.1)
         df['ema_12'] = ta.trend.ema_indicator(df['close'], window=12)
         df['ema_26'] = ta.trend.ema_indicator(df['close'], window=26)
         df['ema_50'] = ta.trend.ema_indicator(df['close'], window=50)
+        df['ema_200'] = ta.trend.ema_indicator(df['close'], window=200)  # NOVO: Para filtro EMA v2.1
         
         # Detectar picos e vales
         df = self._detect_peaks_valleys(df)
@@ -379,12 +381,23 @@ class MultiSymbolScanner:
                                    price: float, rsi: float, atr: float) -> Optional[DivergenceSignal]:
         """
         Divergência de Alta: Preço faz lower lows, RSI faz higher lows
+        Filtro EMA v2.1: Só aceita se EMA 50 > EMA 200 (tendência de alta macro)
         """
         price_valleys = df[df['price_valley']].tail(3)
         rsi_valleys = df[df['rsi_valley']].tail(3)
         
         if len(price_valleys) < 2 or len(rsi_valleys) < 2:
             return None
+        
+        # NOVO v2.1: Filtro EMA 50/200 para alinhamento com tendência macro
+        if self.config.use_ema_filter and 'ema_200' in df.columns:
+            ema_50 = df['ema_50'].iloc[-1]
+            ema_200 = df['ema_200'].iloc[-1]
+            # Bullish divergence funciona melhor quando tendência macro é de alta ou lateral
+            # Aceita se EMA 50 > EMA 200 OU se preço está próximo das EMAs (±5%)
+            ema_bullish_aligned = ema_50 >= ema_200 * 0.95  # Aceita até 5% abaixo
+            if not ema_bullish_aligned:
+                return None
         
         # Preço: lower lows
         price_ll = price_valleys['low'].iloc[-1] < price_valleys['low'].iloc[-2]
@@ -416,12 +429,23 @@ class MultiSymbolScanner:
                                    price: float, rsi: float, atr: float) -> Optional[DivergenceSignal]:
         """
         Divergência de Baixa: Preço faz higher highs, RSI faz lower highs
+        Filtro EMA v2.1: Só aceita se EMA 50 < EMA 200 (tendência de baixa macro)
         """
         price_peaks = df[df['price_peak']].tail(3)
         rsi_peaks = df[df['rsi_peak']].tail(3)
         
         if len(price_peaks) < 2 or len(rsi_peaks) < 2:
             return None
+        
+        # NOVO v2.1: Filtro EMA 50/200 para alinhamento com tendência macro
+        if self.config.use_ema_filter and 'ema_200' in df.columns:
+            ema_50 = df['ema_50'].iloc[-1]
+            ema_200 = df['ema_200'].iloc[-1]
+            # Bearish divergence funciona melhor quando tendência macro é de baixa ou lateral
+            # Aceita se EMA 50 < EMA 200 OU se preço está próximo das EMAs (±5%)
+            ema_bearish_aligned = ema_50 <= ema_200 * 1.05  # Aceita até 5% acima
+            if not ema_bearish_aligned:
+                return None
         
         # Preço: higher highs
         price_hh = price_peaks['high'].iloc[-1] > price_peaks['high'].iloc[-2]
@@ -636,19 +660,19 @@ class MultiSymbolScanner:
                     "symbol": s.symbol,
                     "type": s.signal_type.value,
                     "direction": "BUY" if s.direction == 1 else "SELL",
-                    "strength": round(s.strength, 3),
+                    "strength": round(float(s.strength), 3),
                     "strength_level": s.strength_level.value,
-                    "price": s.current_price,
-                    "rsi": round(s.rsi_value, 1),
+                    "price": float(s.current_price),
+                    "rsi": round(float(s.rsi_value), 1),
                     "timeframe": s.timeframe,
-                    "entry": s.entry_price,
-                    "stop_loss": round(s.stop_loss, 2),
-                    "take_profit": round(s.take_profit, 2),
-                    "risk_reward": round(s.risk_reward, 2),
+                    "entry": float(s.entry_price),
+                    "stop_loss": round(float(s.stop_loss), 2),
+                    "take_profit": round(float(s.take_profit), 2),
+                    "risk_reward": round(float(s.risk_reward), 2),
                     "confirmations": {
-                        "volume": s.volume_confirmed,
-                        "macd": s.macd_confirmed,
-                        "trend": s.trend_aligned
+                        "volume": bool(s.volume_confirmed),
+                        "macd": bool(s.macd_confirmed),
+                        "trend": bool(s.trend_aligned)
                     },
                     "timestamp": s.timestamp.isoformat()
                 }

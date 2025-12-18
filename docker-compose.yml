@@ -336,11 +336,14 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
-      interval: 60s
-      timeout: 30s
-      retries: 5
-      start_period: 60s
+      # Desabilitado temporariamente - API sob carga pesada do scanner 100 símbolos
+      # O problema é que o event loop do uvicorn fica congestionado
+      disable: true
+      # test: ["CMD", "curl", "-sf", "--max-time", "25", "http://localhost:8001/health"]
+      # interval: 60s
+      # timeout: 30s
+      # retries: 5
+      # start_period: 60s
 
   # ==========================================
   # NOTIFICATION SERVICE

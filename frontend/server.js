@@ -23,6 +23,7 @@ app.use(helmet({
       scriptSrcAttr: ["'unsafe-inline'"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
       imgSrc: ["'self'", "data:", "https:"],
+      mediaSrc: ["'self'", "https://assets.mixkit.co"],
       connectSrc: [
         "'self'",
         API_GATEWAY_URL,
