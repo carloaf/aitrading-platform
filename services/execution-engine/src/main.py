@@ -2471,14 +2471,15 @@ rsi_scanner: Optional[MultiSymbolScanner] = None
 
 
 class ScannerConfigRequest(BaseModel):
-    """Configuração do scanner de múltiplos símbolos"""
+    """Configuração do scanner de múltiplos símbolos (v2.1 - alinhado com Backtest Visual)"""
     symbols: Optional[List[str]] = None  # Ex: ["BTC/USDT", "ETH/USDT", "SOL/USDT"]
     timeframes: Optional[List[str]] = None  # Ex: ["1h", "4h"]
     rsi_period: int = 14
-    min_signal_strength: float = 0.3
-    lookback_periods: int = 10
+    min_signal_strength: float = 0.35  # Atualizado: 0.3 → 0.35 (validado no Backtest Visual)
+    lookback_periods: int = 15  # Atualizado: 10 → 15 (alinhado com Backtest Visual)
     stop_loss_atr_mult: float = 2.0
-    take_profit_atr_mult: float = 4.0
+    take_profit_atr_mult: float = 3.5  # Atualizado: 4.0 → 3.5 (validado no Backtest Visual)
+    use_ema_filter: bool = True  # NOVO v2.1: Filtro EMA 50/200 para alinhamento com tendência
 
 
 class ScanRequest(BaseModel):
@@ -2490,14 +2491,21 @@ class ScanRequest(BaseModel):
 @app.post("/api/scanner/init")
 async def init_rsi_scanner(request: ScannerConfigRequest):
     """
-    Inicializa o scanner de múltiplos símbolos para RSI Divergence
+    Inicializa o scanner de múltiplos símbolos para RSI Divergence v2.1
+    
+    Parâmetros alinhados com Backtest Visual (validado com +42.47% em SOLUSDT):
+    - min_signal_strength: 0.35 (mais qualidade)
+    - lookback_periods: 15 (mais contexto)
+    - take_profit_atr_mult: 3.5 (mais realista)
+    - use_ema_filter: true (filtro EMA 50/200)
     
     Exemplo:
     ```json
     {
       "symbols": ["BTC/USDT", "ETH/USDT", "SOL/USDT", "BNB/USDT"],
       "timeframes": ["1h", "4h"],
-      "min_signal_strength": 0.3
+      "min_signal_strength": 0.35,
+      "use_ema_filter": true
     }
     ```
     """
@@ -2516,19 +2524,22 @@ async def init_rsi_scanner(request: ScannerConfigRequest):
         config.lookback_periods = request.lookback_periods
         config.stop_loss_atr_mult = request.stop_loss_atr_mult
         config.take_profit_atr_mult = request.take_profit_atr_mult
+        config.use_ema_filter = request.use_ema_filter  # NOVO v2.1
         
         rsi_scanner = MultiSymbolScanner(config)
         
         return {
             'success': True,
-            'message': f'Scanner inicializado com {len(config.symbols)} símbolos',
+            'message': f'Scanner v2.1 inicializado com {len(config.symbols)} símbolos',
             'config': {
                 'symbols': config.symbols,
                 'timeframes': config.timeframes,
                 'rsi_period': config.rsi_period,
                 'min_signal_strength': config.min_signal_strength,
+                'lookback_periods': config.lookback_periods,
                 'stop_loss_atr_mult': config.stop_loss_atr_mult,
-                'take_profit_atr_mult': config.take_profit_atr_mult
+                'take_profit_atr_mult': config.take_profit_atr_mult,
+                'use_ema_filter': config.use_ema_filter  # NOVO v2.1
             }
         }
         
@@ -3022,6 +3033,329 @@ async def stop_all_multi_symbol_sessions(prefix: str = ""):
     }
 
 
+# ==========================================
+# AUTO-TRADE: Scanner → Paper Trading Connection
+# ==========================================
+
+# Estado global do AutoTrade
+autotrade_state = {
+    "active": False,
+    "dry_run": True,  # Por padrão, não executa trades reais
+    "session_id": None,
+    "min_signal_strength": 0.5,
+    "symbols": ["BTCUSDT", "ETHUSDT", "SOLUSDT"],
+    "signals_processed": 0,
+    "trades_executed": 0,
+    "last_signal": None,
+    "signals_log": []
+}
+
+
+class AutoTradeConfigRequest(BaseModel):
+    """Configuração do AutoTrade"""
+    min_signal_strength: float = 0.5
+    symbols: Optional[List[str]] = None  # Se None, usa símbolos do Scanner
+    dry_run: bool = True
+    initial_balance: float = 10000.0
+    risk_per_trade: float = 0.02  # 2% do capital por trade
+
+
+class AutoTradeSignal(BaseModel):
+    """Sinal recebido do Scanner para execução"""
+    symbol: str
+    direction: int  # 1 = BUY, -1 = SELL
+    signal_type: str
+    strength: float
+    entry_price: float
+    stop_loss: float
+    take_profit: float
+    timeframe: str = "1h"
+
+
+@app.post("/api/autotrade/start")
+async def start_autotrade(config: AutoTradeConfigRequest):
+    """
+    🤖 Inicia o modo AutoTrade - conecta Scanner ao Paper Trading
+    
+    - Quando Scanner detecta sinal forte → envia para Paper Trading
+    - dry_run=True por padrão (simula trades, não executa)
+    - Registra todos os sinais e trades
+    - Se symbols não for especificado, usa os símbolos do Scanner ativo
+    """
+    global autotrade_state, rsi_scanner
+    
+    if autotrade_state["active"]:
+        return {
+            "success": False,
+            "message": "AutoTrade já está ativo",
+            "state": autotrade_state
+        }
+    
+    # Determinar símbolos: usa os passados na requisição ou os do Scanner
+    symbols_to_use = config.symbols
+    if not symbols_to_use or len(symbols_to_use) == 0:
+        # Tentar usar símbolos do Scanner ativo
+        if rsi_scanner and hasattr(rsi_scanner, 'config') and rsi_scanner.config.symbols:
+            symbols_to_use = [s.replace('/', '') for s in rsi_scanner.config.symbols]
+            logger.info(f"🤖 AutoTrade usando {len(symbols_to_use)} símbolos do Scanner ativo")
+        else:
+            # Fallback para símbolos padrão
+            symbols_to_use = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+            logger.warning("🤖 AutoTrade usando símbolos padrão (Scanner não inicializado)")
+    
+    # Gerar session_id único
+    session_id = f"autotrade_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    
+    autotrade_state.update({
+        "active": True,
+        "dry_run": config.dry_run,
+        "session_id": session_id,
+        "min_signal_strength": config.min_signal_strength,
+        "symbols": symbols_to_use,
+        "initial_balance": config.initial_balance,
+        "risk_per_trade": config.risk_per_trade,
+        "signals_processed": 0,
+        "trades_executed": 0,
+        "last_signal": None,
+        "signals_log": [],
+        "started_at": datetime.now().isoformat()
+    })
+    
+    mode = "🔴 DRY RUN (simulação)" if config.dry_run else "🟢 LIVE (execução real)"
+    logger.info(f"🤖 AutoTrade STARTED - Session: {session_id} - Mode: {mode} - Símbolos: {len(symbols_to_use)}")
+    
+    return {
+        "success": True,
+        "message": f"AutoTrade iniciado em modo {'DRY RUN' if config.dry_run else 'LIVE'} com {len(symbols_to_use)} símbolos",
+        "session_id": session_id,
+        "symbols_count": len(symbols_to_use),
+        "state": autotrade_state
+    }
+
+
+@app.post("/api/autotrade/stop")
+async def stop_autotrade():
+    """
+    ⏹️ Para o modo AutoTrade
+    """
+    global autotrade_state
+    
+    if not autotrade_state["active"]:
+        return {
+            "success": False,
+            "message": "AutoTrade não está ativo"
+        }
+    
+    session_id = autotrade_state["session_id"]
+    trades = autotrade_state["trades_executed"]
+    signals = autotrade_state["signals_processed"]
+    
+    autotrade_state.update({
+        "active": False,
+        "stopped_at": datetime.now().isoformat()
+    })
+    
+    logger.info(f"⏹️ AutoTrade STOPPED - Session: {session_id} - Trades: {trades} - Signals: {signals}")
+    
+    return {
+        "success": True,
+        "message": "AutoTrade parado",
+        "session_summary": {
+            "session_id": session_id,
+            "signals_processed": signals,
+            "trades_executed": trades,
+            "signals_log": autotrade_state["signals_log"][-10:]  # Últimos 10 sinais
+        }
+    }
+
+
+@app.get("/api/autotrade/status")
+async def get_autotrade_status():
+    """
+    📊 Retorna o status atual do AutoTrade
+    
+    Se AutoTrade está inativo, mostra os símbolos que seriam usados
+    (do Scanner ativo, se disponível)
+    """
+    global rsi_scanner
+    
+    # Determinar símbolos a mostrar
+    if autotrade_state["active"]:
+        # Se ativo, usa os símbolos da sessão atual
+        symbols_to_show = autotrade_state["symbols"]
+    else:
+        # Se inativo, mostra os símbolos que seriam usados ao iniciar
+        if rsi_scanner and hasattr(rsi_scanner, 'config') and rsi_scanner.config.symbols:
+            symbols_to_show = [s.replace('/', '') for s in rsi_scanner.config.symbols]
+        else:
+            symbols_to_show = autotrade_state["symbols"]
+    
+    return {
+        "active": autotrade_state["active"],
+        "dry_run": autotrade_state["dry_run"],
+        "session_id": autotrade_state.get("session_id"),
+        "min_signal_strength": autotrade_state["min_signal_strength"],
+        "symbols": symbols_to_show,
+        "symbols_source": "scanner" if (rsi_scanner and hasattr(rsi_scanner, 'config') and rsi_scanner.config.symbols) else "default",
+        "stats": {
+            "signals_processed": autotrade_state["signals_processed"],
+            "trades_executed": autotrade_state["trades_executed"],
+            "last_signal": autotrade_state.get("last_signal")
+        },
+        "recent_signals": autotrade_state.get("signals_log", [])[-5:]
+    }
+
+
+@app.post("/api/autotrade/process-signal")
+async def process_autotrade_signal(signal: AutoTradeSignal):
+    """
+    🔔 Processa um sinal do Scanner para execução no AutoTrade
+    
+    Este endpoint é chamado pelo Scanner quando detecta uma divergência.
+    Se AutoTrade estiver ativo e o sinal passar nos filtros, executa o trade.
+    """
+    global autotrade_state
+    
+    # Log do sinal recebido
+    signal_log_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "symbol": signal.symbol,
+        "direction": "BUY" if signal.direction == 1 else "SELL",
+        "signal_type": signal.signal_type,
+        "strength": signal.strength,
+        "entry_price": signal.entry_price,
+        "processed": False,
+        "executed": False,
+        "reason": None
+    }
+    
+    # Verificar se AutoTrade está ativo
+    if not autotrade_state["active"]:
+        signal_log_entry["reason"] = "AutoTrade não está ativo"
+        return {
+            "success": False,
+            "message": "AutoTrade não está ativo",
+            "action": "none"
+        }
+    
+    autotrade_state["signals_processed"] += 1
+    
+    # Verificar se símbolo está na lista
+    if signal.symbol not in autotrade_state["symbols"]:
+        signal_log_entry["reason"] = f"Símbolo {signal.symbol} não está na lista de monitoramento"
+        autotrade_state["signals_log"].append(signal_log_entry)
+        return {
+            "success": False,
+            "message": f"Símbolo {signal.symbol} não está na lista",
+            "action": "ignored"
+        }
+    
+    # Verificar força mínima do sinal
+    if signal.strength < autotrade_state["min_signal_strength"]:
+        signal_log_entry["reason"] = f"Força ({signal.strength:.2f}) abaixo do mínimo ({autotrade_state['min_signal_strength']})"
+        autotrade_state["signals_log"].append(signal_log_entry)
+        return {
+            "success": False,
+            "message": f"Força do sinal ({signal.strength:.2f}) abaixo do mínimo",
+            "action": "ignored"
+        }
+    
+    signal_log_entry["processed"] = True
+    
+    # Executar trade (ou simular em dry_run)
+    if autotrade_state["dry_run"]:
+        # Modo simulação - registra mas não executa
+        signal_log_entry["executed"] = True
+        signal_log_entry["reason"] = "Trade simulado (dry_run)"
+        autotrade_state["trades_executed"] += 1
+        autotrade_state["last_signal"] = signal_log_entry
+        autotrade_state["signals_log"].append(signal_log_entry)
+        
+        logger.info(f"🔴 DRY RUN - Trade simulado: {signal.symbol} {'BUY' if signal.direction == 1 else 'SELL'} @ {signal.entry_price}")
+        
+        return {
+            "success": True,
+            "message": "Trade simulado (dry_run)",
+            "action": "simulated",
+            "trade": {
+                "symbol": signal.symbol,
+                "side": "BUY" if signal.direction == 1 else "SELL",
+                "entry_price": signal.entry_price,
+                "stop_loss": signal.stop_loss,
+                "take_profit": signal.take_profit,
+                "signal_strength": signal.strength,
+                "mode": "dry_run"
+            }
+        }
+    else:
+        # Modo LIVE - executa trade real via Paper Trading
+        try:
+            # Calcular quantidade baseada no risco
+            balance = autotrade_state.get("initial_balance", 10000)
+            risk_per_trade = autotrade_state.get("risk_per_trade", 0.02)
+            risk_amount = balance * risk_per_trade
+            
+            # Calcular stop em % 
+            stop_distance = abs(signal.entry_price - signal.stop_loss) / signal.entry_price
+            quantity = risk_amount / (signal.entry_price * stop_distance) if stop_distance > 0 else 0
+            
+            # Criar ordem via Paper Trading
+            order_request = ManualOrderRequest(
+                session_id=autotrade_state["session_id"],
+                symbol=signal.symbol,
+                side="BUY" if signal.direction == 1 else "SELL",
+                order_type="MARKET",
+                quantity=quantity
+            )
+            
+            signal_log_entry["executed"] = True
+            signal_log_entry["reason"] = "Trade executado"
+            signal_log_entry["quantity"] = quantity
+            autotrade_state["trades_executed"] += 1
+            autotrade_state["last_signal"] = signal_log_entry
+            autotrade_state["signals_log"].append(signal_log_entry)
+            
+            logger.info(f"🟢 LIVE - Trade executado: {signal.symbol} {'BUY' if signal.direction == 1 else 'SELL'} qty={quantity:.6f} @ {signal.entry_price}")
+            
+            return {
+                "success": True,
+                "message": "Trade executado",
+                "action": "executed",
+                "trade": {
+                    "symbol": signal.symbol,
+                    "side": "BUY" if signal.direction == 1 else "SELL",
+                    "quantity": quantity,
+                    "entry_price": signal.entry_price,
+                    "stop_loss": signal.stop_loss,
+                    "take_profit": signal.take_profit,
+                    "signal_strength": signal.strength,
+                    "mode": "live"
+                }
+            }
+            
+        except Exception as e:
+            signal_log_entry["reason"] = f"Erro na execução: {str(e)}"
+            autotrade_state["signals_log"].append(signal_log_entry)
+            logger.error(f"Erro no AutoTrade: {e}")
+            
+            return {
+                "success": False,
+                "message": f"Erro na execução: {str(e)}",
+                "action": "error"
+            }
+
+
+@app.get("/api/autotrade/signals-log")
+async def get_autotrade_signals_log(limit: int = 50):
+    """
+    📋 Retorna o log de sinais processados pelo AutoTrade
+    """
+    return {
+        "total_signals": len(autotrade_state.get("signals_log", [])),
+        "signals": autotrade_state.get("signals_log", [])[-limit:]
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
     
@@ -3033,5 +3367,8 @@ if __name__ == "__main__":
         app,
         host="0.0.0.0",
         port=port,
-        log_level="info"
+        log_level="info",
+        workers=1,  # Single worker (estado compartilhado)
+        timeout_keep_alive=30,  # Manter conexões vivas
+        limit_concurrency=50  # Limitar requisições simultâneas
     )

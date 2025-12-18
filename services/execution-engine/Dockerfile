@@ -25,9 +25,7 @@ COPY src/ ./src/
 RUN useradd --create-home --shell /bin/bash app
 RUN chown -R app:app /app
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
-  CMD python src/healthcheck.py || exit 1
+# Healthcheck configurado no docker-compose.yml (não aqui para evitar conflitos)
 
 # Trocar para usuário não-root
 USER app
