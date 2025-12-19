@@ -2762,16 +2762,20 @@ async def get_scanner_market_data(symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSD
     Parâmetros:
     - symbols: Lista de símbolos separados por vírgula
     
-    OTIMIZAÇÃO: Cache de 30 segundos para evitar rate limiting da Binance
+    OTIMIZAÇÃO v2: 
+    - Cache 60s (2x maior)
+    - Semáforo para limitar concorrência (máx 2 requests simultâneas)
+    - Retry logic com backoff exponencial (3 tentativas)
+    - Delay entre batches para respeitar rate limits
     """
     import ccxt.async_support as ccxt_async
     import ta
     import pandas as pd
     import asyncio
     
-    # Cache em memória (30 segundos TTL)
+    # Cache em memória (60 segundos TTL - aumentado)
     cache_key = f"market_data_{symbols}"
-    cache_ttl = 30  # segundos
+    cache_ttl = 60  # segundos (dobrado de 30s)
     
     # Verificar cache global
     if not hasattr(get_scanner_market_data, '_cache'):
@@ -2788,70 +2792,105 @@ async def get_scanner_market_data(symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSD
     
     try:
         exchange = ccxt_async.binance({
-            'enableRateLimit': True,  # Usar rate limit do ccxt
+            'enableRateLimit': True,
+            'rateLimit': 200,  # Delay mínimo entre requests (ms)
             'options': {'defaultType': 'spot'}
         })
-        symbol_list = [s.strip() for s in symbols.split(',')][:6]  # Limitar a 6 símbolos
+        symbol_list = [s.strip() for s in symbols.split(',')][:100]  # Máx 100 símbolos
         
-        # Semáforo para limitar chamadas paralelas (máximo 3 simultâneas)
-        semaphore = asyncio.Semaphore(3)
+        # Semáforo para limitar chamadas paralelas (REDUZIDO para 2 simultâneas)
+        semaphore = asyncio.Semaphore(2)
         
-        async def fetch_symbol_data(symbol):
-            async with semaphore:
-                try:
-                    ccxt_symbol = symbol.replace('USDT', '/USDT')
-                    ohlcv = await exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=30)  # Reduzido para 30
-                    
-                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                    
-                    # Calcular RSI
-                    df['rsi'] = ta.momentum.rsi(df['close'], window=14)
-                    current_rsi = df['rsi'].iloc[-1]
-                    
-                    # Preço atual e variação 24h
-                    current_price = df['close'].iloc[-1]
-                    price_24h_ago = df['close'].iloc[-24] if len(df) >= 24 else df['close'].iloc[0]
-                    change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
-                    
-                    # Calcular proximidade de alerta
-                    proximity = 0
-                    trend = 'neutral'
-                    
-                    if current_rsi <= 30:
-                        proximity = min(100, int((30 - current_rsi) * 5 + 50))
-                        trend = 'forming_bullish'
-                    elif current_rsi >= 70:
-                        proximity = min(100, int((current_rsi - 70) * 5 + 50))
-                        trend = 'forming_bearish'
-                    elif current_rsi <= 35:
-                        proximity = int((35 - current_rsi) * 8)
-                        trend = 'watching_bullish'
-                    elif current_rsi >= 65:
-                        proximity = int((current_rsi - 65) * 8)
-                        trend = 'watching_bearish'
-                    
-                    return {
-                        'symbol': ccxt_symbol,
-                        'price': round(current_price, 2 if current_price >= 1 else 4),
-                        'change_24h': round(change_24h, 2),
-                        'rsi': round(current_rsi, 1),
-                        'proximity': proximity,
-                        'trend': trend
-                    }
-                    
-                except Exception as e:
-                    logger.warning(f"Erro ao buscar dados de {symbol}: {e}")
-                    return None
+        async def fetch_symbol_data_with_retry(symbol, max_retries=3):
+            """Fetch com retry e backoff exponencial"""
+            for attempt in range(max_retries):
+                async with semaphore:
+                    try:
+                        ccxt_symbol = symbol.replace('USDT', '/USDT')
+                        
+                        # Delay progressivo entre tentativas
+                        if attempt > 0:
+                            delay = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s
+                            await asyncio.sleep(delay)
+                            logger.debug(f"[MarketData] Retry {attempt+1}/{max_retries} for {symbol} after {delay}s")
+                        
+                        ohlcv = await exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=30)
+                        
+                        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                        
+                        # Calcular RSI
+                        df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+                        current_rsi = df['rsi'].iloc[-1]
+                        
+                        # Preço atual e variação 24h
+                        current_price = df['close'].iloc[-1]
+                        price_24h_ago = df['close'].iloc[-24] if len(df) >= 24 else df['close'].iloc[0]
+                        change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
+                        
+                        # Calcular proximidade de alerta
+                        proximity = 0
+                        trend = 'neutral'
+                        
+                        if current_rsi <= 30:
+                            proximity = min(100, int((30 - current_rsi) * 5 + 50))
+                            trend = 'forming_bullish'
+                        elif current_rsi >= 70:
+                            proximity = min(100, int((current_rsi - 70) * 5 + 50))
+                            trend = 'forming_bearish'
+                        elif current_rsi <= 35:
+                            proximity = int((35 - current_rsi) * 8)
+                            trend = 'watching_bullish'
+                        elif current_rsi >= 65:
+                            proximity = int((current_rsi - 65) * 8)
+                            trend = 'watching_bearish'
+                        
+                        logger.debug(f"[MarketData] ✓ {symbol} fetched successfully on attempt {attempt+1}")
+                        
+                        return {
+                            'symbol': ccxt_symbol,
+                            'price': round(current_price, 2 if current_price >= 1 else 4),
+                            'change_24h': round(change_24h, 2),
+                            'rsi': round(current_rsi, 1),
+                            'proximity': proximity,
+                            'trend': trend
+                        }
+                        
+                    except ccxt_async.RateLimitExceeded as e:
+                        logger.warning(f"[MarketData] Rate limit exceeded for {symbol} (attempt {attempt+1}): {e}")
+                        if attempt == max_retries - 1:
+                            return None  # Última tentativa falhou
+                        continue  # Tentar novamente
+                        
+                    except Exception as e:
+                        logger.warning(f"[MarketData] Error fetching {symbol} (attempt {attempt+1}): {e}")
+                        if attempt == max_retries - 1:
+                            return None
+                        continue
+            
+            return None  # Todas as tentativas falharam
         
-        # Buscar todos os símbolos em paralelo
-        tasks = [fetch_symbol_data(symbol) for symbol in symbol_list]
-        results = await asyncio.gather(*tasks)
+        # Processar símbolos em batches de 5 com delay entre batches
+        batch_size = 5
+        all_results = []
+        
+        for i in range(0, len(symbol_list), batch_size):
+            batch = symbol_list[i:i+batch_size]
+            logger.info(f"[MarketData] Processing batch {i//batch_size + 1} ({len(batch)} symbols)")
+            
+            tasks = [fetch_symbol_data_with_retry(symbol) for symbol in batch]
+            batch_results = await asyncio.gather(*tasks)
+            all_results.extend(batch_results)
+            
+            # Delay entre batches (exceto no último)
+            if i + batch_size < len(symbol_list):
+                await asyncio.sleep(0.3)  # 300ms entre batches
         
         # Fechar conexão
         await exchange.close()
         
         # Filtrar resultados válidos
-        market_data = [r for r in results if r is not None]
+        market_data = [r for r in all_results if r is not None]
+        success_rate = len(market_data) / len(symbol_list) * 100 if symbol_list else 0
         
         # Ordenar por proximidade (maiores primeiro)
         market_data.sort(key=lambda x: x['proximity'], reverse=True)
@@ -2860,12 +2899,14 @@ async def get_scanner_market_data(symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSD
             'success': True,
             'timestamp': datetime.utcnow().isoformat(),
             'data': market_data,
-            'count': len(market_data)
+            'count': len(market_data),
+            'requested': len(symbol_list),
+            'success_rate': round(success_rate, 1)
         }
         
         # Salvar no cache
         cache[cache_key] = (response, now)
-        logger.info(f"[MarketData] Fetched {len(market_data)} symbols in parallel, cached for {cache_ttl}s")
+        logger.info(f"[MarketData] Fetched {len(market_data)}/{len(symbol_list)} symbols ({success_rate:.1f}% success), cached for {cache_ttl}s")
         
         return response
         
