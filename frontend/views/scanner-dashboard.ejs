@@ -559,7 +559,12 @@
                     
                     <!-- Recent AutoTrade Signals Log -->
                     <div class="mt-3">
-                        <h6><i class="bi bi-list-check"></i> Log de Sinais AutoTrade</h6>
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0"><i class="bi bi-list-check"></i> Log de Sinais AutoTrade</h6>
+                            <button class="btn btn-outline-danger btn-sm" onclick="clearAutoTradeLogs()" title="Limpar logs antigos">
+                                <i class="bi bi-trash"></i> Limpar Logs
+                            </button>
+                        </div>
                         <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
                             <table class="table table-sm table-striped mb-0">
                                 <thead class="table-dark sticky-top">
@@ -1481,8 +1486,10 @@
         const container = document.getElementById('nearAlertsRow');
         
         try {
-            // Fetch real market data from API
-            const symbols = getSelectedSymbols().map(s => s.replace('/', '')).join(',');
+            // Fetch real market data from API (LIMIT 30 symbols to avoid Binance rate limit)
+            const allSymbols = getSelectedSymbols().map(s => s.replace('/', ''));
+            const symbols = allSymbols.slice(0, 30).join(',');  // MAX 30 symbols
+            console.log('[NearAlerts] Fetching', allSymbols.length > 30 ? '30/' + allSymbols.length : allSymbols.length, 'symbols');
             const response = await fetch(API_BASE + '/api/scanner/market-data?symbols=' + symbols);
             const result = await response.json();
             
@@ -2088,8 +2095,8 @@
         }
     }
     
-    // Start AutoTrade (100% local)
-    function startAutotradeLocal() {
+    // Start AutoTrade (integrado com backend)
+    async function startAutotradeLocal() {
         const symbols = getSelectedSymbols();
         
         if (symbols.length === 0) {
@@ -2100,6 +2107,33 @@
         const dryRun = document.getElementById('autotradeDryRun').checked;
         const minStrength = parseFloat(document.getElementById('autotradeMinStrength').value);
         const capital = parseFloat(document.getElementById('autotradeCapital').value);
+        
+        // Notificar backend para criar sessão no banco
+        try {
+            const response = await fetch(API_BASE + '/api/autotrade/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    mode: dryRun ? 'DRY_RUN' : 'LIVE',
+                    symbols: symbols.map(s => s.replace('/', '')),
+                    min_strength: minStrength,
+                    initial_capital: capital
+                })
+            });
+            
+            const result = await response.json();
+            if (!result.success) {
+                showToast('Erro Backend', 'Falha ao iniciar sessão: ' + result.message, 'danger');
+                console.error('[AutoTrade] Backend start failed:', result);
+                return;
+            }
+            
+            console.log('[AutoTrade] Backend session created:', result.session_id);
+        } catch (e) {
+            showToast('Erro Backend', 'Não foi possível conectar ao backend: ' + e.message, 'danger');
+            console.error('[AutoTrade] Backend connection error:', e);
+            return;
+        }
         
         // Set state
         autotradeActive = true;
@@ -2125,14 +2159,29 @@
         
         // Show notification
         showToast('AutoTrade Iniciado', 
-            \`Modo: \${dryRun ? '🔴 DRY RUN (simulação)' : '🟢 LIVE (execução real)'} | \${symbols.length} pares | Min. Força: \${(minStrength * 100).toFixed(0)}%\`, 
+            \`Modo: \${dryRun ? '🔴 DRY RUN (banco ativo)' : '🟢 LIVE (banco ativo)'} | \${symbols.length} pares | Min. Força: \${(minStrength * 100).toFixed(0)}%\`, 
             dryRun ? 'warning' : 'success');
         
         console.log('[AutoTrade] Started:', { dryRun, minStrength, capital, symbols: symbols.length });
     }
     
-    // Stop AutoTrade (100% local)
-    function stopAutotradeLocal() {
+    // Stop AutoTrade (integrado com backend)
+    async function stopAutotradeLocal() {
+        // Notificar backend para finalizar sessão
+        try {
+            const response = await fetch(API_BASE + '/api/autotrade/stop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            const result = await response.json();
+            if (result.success) {
+                console.log('[AutoTrade] Backend session stopped:', result);
+            }
+        } catch (e) {
+            console.error('[AutoTrade] Backend stop error:', e);
+        }
+        
         // Stop polling
         if (autotradeStatusInterval) {
             clearInterval(autotradeStatusInterval);
@@ -2184,30 +2233,29 @@
         if (signalStrength < minStrength) {
             logEntry.reason = \`Força \${(signalStrength * 100).toFixed(0)}% < mínimo \${(minStrength * 100).toFixed(0)}%\`;
         } else {
-            // Signal meets criteria - would execute
-            if (autotradeConfig.dryRun) {
-                logEntry.executed = true;
-                logEntry.reason = '✅ DRY RUN - Simulado';
-                autotradeStats.trades_executed++;
-                
-                showToast('AutoTrade (DRY RUN)', 
-                    \`🔵 \${logEntry.symbol} \${logEntry.direction} simulado | Força: \${(signalStrength * 100).toFixed(0)}%\`, 
-                    'info');
-            } else {
-                // LIVE mode - call backend to execute
-                executeTradeOnBackend(signal).then(result => {
-                    if (result.success) {
-                        logEntry.executed = true;
-                        logEntry.reason = '✅ Executado';
-                        autotradeStats.trades_executed++;
+            // Signal meets criteria - SEMPRE enviar para backend (salvar no banco)
+            executeTradeOnBackend(signal).then(result => {
+                if (result.success) {
+                    logEntry.executed = true;
+                    if (autotradeConfig.dryRun) {
+                        logEntry.reason = '✅ DRY RUN - Trade simulado (salvo no banco)';
+                        showToast('AutoTrade (DRY RUN)', 
+                            \`🔵 \${logEntry.symbol} \${logEntry.direction} simulado | Força: \${(signalStrength * 100).toFixed(0)}%\`, 
+                            'info');
                     } else {
-                        logEntry.reason = \`❌ Falha: \${result.error}\`;
+                        logEntry.reason = '✅ LIVE - Trade executado (salvo no banco)';
+                        showToast('AutoTrade (LIVE)', 
+                            \`🟢 \${logEntry.symbol} \${logEntry.direction} executado | Força: \${(signalStrength * 100).toFixed(0)}%\`, 
+                            'success');
                     }
-                    saveAutotradeFullState();
-                    updateAutotradeUILocal();
-                });
-                logEntry.reason = '⏳ Executando...';
-            }
+                    autotradeStats.trades_executed++;
+                } else {
+                    logEntry.reason = \`❌ Falha: \${result.error}\`;
+                }
+                saveAutotradeFullState();
+                updateAutotradeUILocal();
+            });
+            logEntry.reason = '⏳ Enviando ao backend...';
         }
         
         // Add to log (keep last 50)
@@ -2223,29 +2271,55 @@
         console.log('[AutoTrade] Signal processed:', logEntry);
     }
     
-    // Execute trade on backend (for LIVE mode only)
+    // Execute trade on backend (salva no banco)
     async function executeTradeOnBackend(signal) {
         try {
+            // Extrair dados do sinal
+            const symbolClean = signal.symbol?.replace('/', '') || 'UNKNOWN';
+            const direction = signal.direction === 1 ? 'BUY' : (signal.direction === -1 ? 'SELL' : signal.direction);
+            
             const response = await fetch(API_BASE + '/api/autotrade/process-signal', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    symbol: signal.symbol?.replace('/', ''),
-                    direction: signal.direction,
-                    signal_type: signal.signal_type,
-                    strength: signal.strength,
-                    entry_price: signal.entry_price,
-                    stop_loss: signal.stop_loss,
-                    take_profit: signal.take_profit,
-                    timeframe: signal.timeframe || '1h'
+                    symbol: symbolClean,
+                    direction: direction,
+                    signal_type: signal.signal_type || signal.pattern || 'rsi_divergence',
+                    strength: signal.strength || 0,
+                    entry_price: signal.entry_price || signal.price || 0,
+                    stop_loss: signal.stop_loss || 0,
+                    take_profit: signal.take_profit || 0,
+                    timeframe: signal.timeframe || '1h',
+                    // Indicadores técnicos adicionais
+                    rsi: signal.rsi || null,
+                    adx: signal.adx || null,
+                    volume_ratio: signal.volume_ratio || null,
+                    atr: signal.atr || null,
+                    ema_50: signal.ema_50 || null,
+                    ema_200: signal.ema_200 || null
                 })
             });
             
             const data = await response.json();
-            return { success: data.success && data.action === 'executed', error: data.message };
+            console.log('[AutoTrade] Backend response:', data);
+            return { 
+                success: data.success && (data.action === 'executed' || data.action === 'simulated'), 
+                error: data.message 
+            };
         } catch (e) {
             console.error('[AutoTrade] Backend execution error:', e);
             return { success: false, error: e.message };
+        }
+    }
+    
+    // Limpar logs antigos do AutoTrade
+    function clearAutoTradeLogs() {
+        if (confirm('Tem certeza que deseja limpar TODOS os logs de sinais do AutoTrade?\\n\\nIsso irá apagar os ' + autotradeSignalsLog.length + ' sinais do localStorage, mas NÃO afeta os dados no banco de dados.')) {
+            autotradeSignalsLog = [];
+            saveAutotradeFullState();
+            updateAutotradeUILocal();
+            showToast('Logs Limpos', 'Todos os sinais antigos foram removidos do localStorage', 'success');
+            console.log('[AutoTrade] Logs cleared');
         }
     }
 </script>

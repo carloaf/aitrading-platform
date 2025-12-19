@@ -16,9 +16,13 @@ import numpy as np
 from order_manager import OrderManager, OrderSide, OrderType
 from strategy_executor import StrategyExecutor
 from auto_strategy_selector import AutoStrategySelector
+from autotrade_manager import AutoTradeManager, AutoTradeSignalData
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# AutoTrade Manager (global instance)
+autotrade_manager: Optional[AutoTradeManager] = None
 
 
 # Função para converter tipos numpy para tipos Python nativos
@@ -56,6 +60,58 @@ app.add_middleware(
 # Estado global
 executors: Dict[str, StrategyExecutor] = {}
 order_managers: Dict[str, OrderManager] = {}
+
+
+async def get_autotrade_manager():
+    """Get or initialize AutoTradeManager (lazy initialization)"""
+    global autotrade_manager
+    
+    logger.info("🔍 get_autotrade_manager() chamado")
+    
+    if autotrade_manager is None:
+        logger.info("🔄 Inicializando AutoTradeManager...")
+        autotrade_manager = AutoTradeManager(
+            db_host=os.getenv("TIMESCALE_HOST", "timescaledb"),
+            db_port=int(os.getenv("TIMESCALE_PORT", 5432)),
+            db_name=os.getenv("TIMESCALE_DB", "crypto_market"),
+            db_user=os.getenv("TIMESCALE_USER", "crypto_user"),
+            db_password=os.getenv("TIMESCALE_PASSWORD", "crypto_pass")
+        )
+        
+        try:
+            await autotrade_manager.connect()
+            logger.info("✅ AutoTradeManager inicializado e conectado")
+        except Exception as e:
+            logger.error(f"❌ Erro ao inicializar AutoTradeManager: {e}", exc_info=True)
+            autotrade_manager = None
+    else:
+        logger.info("♻️ AutoTradeManager já inicializado - reutilizando")
+    
+    return autotrade_manager
+
+
+# Lifecycle events
+@app.on_event("startup")
+async def startup_event():
+    """Inicializa conexões ao iniciar o app"""
+    logger.info("🚀 Iniciando Execution Engine...")
+    try:
+        await get_autotrade_manager()
+        logger.info("✅ Startup completo - AutoTradeManager disponível")
+    except Exception as e:
+        logger.error(f"❌ ERRO NO STARTUP: {e}", exc_info=True)
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Fecha conexões ao desligar o app"""
+    global autotrade_manager
+    
+    logger.info("⏹️ Encerrando Execution Engine...")
+    
+    if autotrade_manager:
+        await autotrade_manager.disconnect()
+        logger.info("✅ AutoTradeManager desconectado")
 
 
 # Models
@@ -2773,9 +2829,9 @@ async def get_scanner_market_data(symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSD
     import pandas as pd
     import asyncio
     
-    # Cache em memória (60 segundos TTL - aumentado)
+    # Cache em memória (120 segundos TTL - aumentado novamente)
     cache_key = f"market_data_{symbols}"
-    cache_ttl = 60  # segundos (dobrado de 30s)
+    cache_ttl = 120  # segundos (dobrado de 60s para reduzir chamadas à Binance)
     
     # Verificar cache global
     if not hasattr(get_scanner_market_data, '_cache'):
@@ -2793,10 +2849,11 @@ async def get_scanner_market_data(symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSD
     try:
         exchange = ccxt_async.binance({
             'enableRateLimit': True,
-            'rateLimit': 200,  # Delay mínimo entre requests (ms)
+            'rateLimit': 500,  # Delay mínimo entre requests (ms) - aumentado novamente para 500ms
             'options': {'defaultType': 'spot'}
         })
-        symbol_list = [s.strip() for s in symbols.split(',')][:100]  # Máx 100 símbolos
+        symbol_list = [s.strip() for s in symbols.split(',')][:30]  # Máx 30 símbolos (reduzido para evitar rate limit)
+        logger.info(f"[MarketData] Processing {len(symbol_list)} symbols (max 30)")
         
         # Semáforo para limitar chamadas paralelas (REDUZIDO para 2 simultâneas)
         semaphore = asyncio.Semaphore(2)
@@ -3158,10 +3215,13 @@ async def start_autotrade(config: AutoTradeConfigRequest):
     
     - Quando Scanner detecta sinal forte → envia para Paper Trading
     - dry_run=True por padrão (simula trades, não executa)
-    - Registra todos os sinais e trades
+    - Registra todos os sinais e trades NO BANCO DE DADOS
     - Se symbols não for especificado, usa os símbolos do Scanner ativo
     """
     global autotrade_state, rsi_scanner
+    
+    # Garantir que AutoTradeManager está inicializado
+    manager = await get_autotrade_manager()
     
     if autotrade_state["active"]:
         return {
@@ -3185,6 +3245,23 @@ async def start_autotrade(config: AutoTradeConfigRequest):
     # Gerar session_id único
     session_id = f"autotrade_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     
+    # Criar sessão no banco de dados
+    if manager:
+        mode = 'DRY_RUN' if config.dry_run else 'LIVE'
+        success = await manager.create_session(
+            session_id=session_id,
+            mode=mode,
+            initial_capital=config.initial_balance,
+            min_strength=config.min_signal_strength,
+            symbols=symbols_to_use,
+            timeframe='1h'
+        )
+        
+        if not success:
+            logger.warning(f"⚠️ Não foi possível criar sessão no banco (pode já existir)")
+    else:
+        logger.warning("⚠️ AutoTradeManager não disponível - dados não serão salvos no banco")
+    
     autotrade_state.update({
         "active": True,
         "dry_run": config.dry_run,
@@ -3202,12 +3279,14 @@ async def start_autotrade(config: AutoTradeConfigRequest):
     
     mode = "🔴 DRY RUN (simulação)" if config.dry_run else "🟢 LIVE (execução real)"
     logger.info(f"🤖 AutoTrade STARTED - Session: {session_id} - Mode: {mode} - Símbolos: {len(symbols_to_use)}")
+    logger.info(f"💾 Todos os sinais e trades serão salvos no banco de dados!")
     
     return {
         "success": True,
         "message": f"AutoTrade iniciado em modo {'DRY RUN' if config.dry_run else 'LIVE'} com {len(symbols_to_use)} símbolos",
         "session_id": session_id,
         "symbols_count": len(symbols_to_use),
+        "database_enabled": manager is not None,
         "state": autotrade_state
     }
 
@@ -3215,9 +3294,9 @@ async def start_autotrade(config: AutoTradeConfigRequest):
 @app.post("/api/autotrade/stop")
 async def stop_autotrade():
     """
-    ⏹️ Para o modo AutoTrade
+    ⏹️ Para o modo AutoTrade e finaliza a sessão no banco
     """
-    global autotrade_state
+    global autotrade_state, autotrade_manager
     
     if not autotrade_state["active"]:
         return {
@@ -3229,6 +3308,14 @@ async def stop_autotrade():
     trades = autotrade_state["trades_executed"]
     signals = autotrade_state["signals_processed"]
     
+    # Finalizar sessão no banco
+    if autotrade_manager:
+        await autotrade_manager.stop_session(session_id)
+        
+        # Obter estatísticas finais
+        stats = await autotrade_manager.get_session_stats(session_id)
+        logger.info(f"📊 Estatísticas finais da sessão salvas no banco")
+    
     autotrade_state.update({
         "active": False,
         "stopped_at": datetime.now().isoformat()
@@ -3238,12 +3325,12 @@ async def stop_autotrade():
     
     return {
         "success": True,
-        "message": "AutoTrade parado",
+        "message": "AutoTrade parado e sessão finalizada",
         "session_summary": {
             "session_id": session_id,
             "signals_processed": signals,
             "trades_executed": trades,
-            "signals_log": autotrade_state["signals_log"][-10:]  # Últimos 10 sinais
+            "database_stats": stats if autotrade_manager else None
         }
     }
 
@@ -3292,37 +3379,60 @@ async def process_autotrade_signal(signal: AutoTradeSignal):
     
     Este endpoint é chamado pelo Scanner quando detecta uma divergência.
     Se AutoTrade estiver ativo e o sinal passar nos filtros, executa o trade.
+    VERSÃO MELHORADA: Salva TUDO no banco de dados.
     """
     global autotrade_state
     
-    # Log do sinal recebido
-    signal_log_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "symbol": signal.symbol,
-        "direction": "BUY" if signal.direction == 1 else "SELL",
-        "signal_type": signal.signal_type,
-        "strength": signal.strength,
-        "entry_price": signal.entry_price,
-        "processed": False,
-        "executed": False,
-        "reason": None
-    }
+    # Garantir que AutoTradeManager está inicializado
+    manager = await get_autotrade_manager()
+    
+    # Preparar dados do sinal
+    signal_data = AutoTradeSignalData(
+        symbol=signal.symbol,
+        direction="BUY" if signal.direction == 1 else "SELL",
+        signal_type=signal.signal_type,
+        strength=signal.strength,
+        entry_price=signal.entry_price,
+        stop_loss=signal.stop_loss,
+        take_profit=signal.take_profit,
+        current_price=signal.entry_price,
+        timeframe=signal.timeframe
+    )
     
     # Verificar se AutoTrade está ativo
     if not autotrade_state["active"]:
-        signal_log_entry["reason"] = "AutoTrade não está ativo"
+        signal_data.reason = "AutoTrade não está ativo"
+        
+        # Salvar sinal mesmo que não processado
+        if manager:
+            await manager.save_signal(
+                session_id=autotrade_state.get("session_id", "unknown"),
+                signal_data=signal_data,
+                processed=False,
+                executed=False
+            )
+        
         return {
             "success": False,
             "message": "AutoTrade não está ativo",
             "action": "none"
         }
     
+    session_id = autotrade_state["session_id"]
     autotrade_state["signals_processed"] += 1
     
     # Verificar se símbolo está na lista
     if signal.symbol not in autotrade_state["symbols"]:
-        signal_log_entry["reason"] = f"Símbolo {signal.symbol} não está na lista de monitoramento"
-        autotrade_state["signals_log"].append(signal_log_entry)
+        signal_data.reason = f"Símbolo {signal.symbol} não está na lista de monitoramento"
+        
+        if manager:
+            await manager.save_signal(
+                session_id=session_id,
+                signal_data=signal_data,
+                processed=True,
+                executed=False
+            )
+        
         return {
             "success": False,
             "message": f"Símbolo {signal.symbol} não está na lista",
@@ -3331,34 +3441,58 @@ async def process_autotrade_signal(signal: AutoTradeSignal):
     
     # Verificar força mínima do sinal
     if signal.strength < autotrade_state["min_signal_strength"]:
-        signal_log_entry["reason"] = f"Força ({signal.strength:.2f}) abaixo do mínimo ({autotrade_state['min_signal_strength']})"
-        autotrade_state["signals_log"].append(signal_log_entry)
+        signal_data.reason = f"Força ({signal.strength:.2f}) abaixo do mínimo ({autotrade_state['min_signal_strength']})"
+        
+        if manager:
+            await manager.save_signal(
+                session_id=session_id,
+                signal_data=signal_data,
+                processed=True,
+                executed=False
+            )
+        
         return {
             "success": False,
             "message": f"Força do sinal ({signal.strength:.2f}) abaixo do mínimo",
             "action": "ignored"
         }
     
-    signal_log_entry["processed"] = True
+    # Sinal passou nos filtros!
+    signal_data.reason = "Sinal passou nos filtros"
+    
+    # Salvar sinal no banco ANTES de processar
+    signal_id = None
+    if manager:
+        signal_id = await manager.save_signal(
+            session_id=session_id,
+            signal_data=signal_data,
+            processed=True,
+            executed=False  # Ainda não executado
+        )
     
     # Executar trade (ou simular em dry_run)
     if autotrade_state["dry_run"]:
         # Modo simulação - registra mas não executa
-        signal_log_entry["executed"] = True
-        signal_log_entry["reason"] = "Trade simulado (dry_run)"
         autotrade_state["trades_executed"] += 1
-        autotrade_state["last_signal"] = signal_log_entry
-        autotrade_state["signals_log"].append(signal_log_entry)
         
-        logger.info(f"🔴 DRY RUN - Trade simulado: {signal.symbol} {'BUY' if signal.direction == 1 else 'SELL'} @ {signal.entry_price}")
+        # Atualizar status do sinal
+        if manager and signal_id:
+            await manager.update_signal_execution(
+                signal_id=signal_id,
+                executed=True,
+                reason="✅ DRY RUN - Trade simulado"
+            )
+        
+        logger.info(f"🔴 DRY RUN - Trade simulado: {signal.symbol} {signal_data.direction} @ {signal.entry_price}")
         
         return {
             "success": True,
             "message": "Trade simulado (dry_run)",
             "action": "simulated",
+            "signal_id": signal_id,
             "trade": {
                 "symbol": signal.symbol,
-                "side": "BUY" if signal.direction == 1 else "SELL",
+                "side": signal_data.direction,
                 "entry_price": signal.entry_price,
                 "stop_loss": signal.stop_loss,
                 "take_profit": signal.take_profit,
@@ -3380,29 +3514,33 @@ async def process_autotrade_signal(signal: AutoTradeSignal):
             
             # Criar ordem via Paper Trading
             order_request = ManualOrderRequest(
-                session_id=autotrade_state["session_id"],
+                session_id=session_id,
                 symbol=signal.symbol,
-                side="BUY" if signal.direction == 1 else "SELL",
+                side=signal_data.direction,
                 order_type="MARKET",
                 quantity=quantity
             )
             
-            signal_log_entry["executed"] = True
-            signal_log_entry["reason"] = "Trade executado"
-            signal_log_entry["quantity"] = quantity
             autotrade_state["trades_executed"] += 1
-            autotrade_state["last_signal"] = signal_log_entry
-            autotrade_state["signals_log"].append(signal_log_entry)
             
-            logger.info(f"🟢 LIVE - Trade executado: {signal.symbol} {'BUY' if signal.direction == 1 else 'SELL'} qty={quantity:.6f} @ {signal.entry_price}")
+            # Atualizar status do sinal
+            if manager and signal_id:
+                await manager.update_signal_execution(
+                    signal_id=signal_id,
+                    executed=True,
+                    reason="✅ Trade executado em modo LIVE"
+                )
+            
+            logger.info(f"🟢 LIVE - Trade executado: {signal.symbol} {signal_data.direction} qty={quantity:.6f} @ {signal.entry_price}")
             
             return {
                 "success": True,
                 "message": "Trade executado",
                 "action": "executed",
+                "signal_id": signal_id,
                 "trade": {
                     "symbol": signal.symbol,
-                    "side": "BUY" if signal.direction == 1 else "SELL",
+                    "side": signal_data.direction,
                     "quantity": quantity,
                     "entry_price": signal.entry_price,
                     "stop_loss": signal.stop_loss,
@@ -3413,26 +3551,183 @@ async def process_autotrade_signal(signal: AutoTradeSignal):
             }
             
         except Exception as e:
-            signal_log_entry["reason"] = f"Erro na execução: {str(e)}"
-            autotrade_state["signals_log"].append(signal_log_entry)
+            error_reason = f"❌ Erro na execução: {str(e)}"
+            
+            # Atualizar status do sinal com erro
+            if manager and signal_id:
+                await manager.update_signal_execution(
+                    signal_id=signal_id,
+                    executed=False,
+                    reason=error_reason
+                )
+            
             logger.error(f"Erro no AutoTrade: {e}")
             
             return {
                 "success": False,
-                "message": f"Erro na execução: {str(e)}",
-                "action": "error"
+                "message": error_reason,
+                "action": "error",
+                "signal_id": signal_id
             }
 
 
 @app.get("/api/autotrade/signals-log")
 async def get_autotrade_signals_log(limit: int = 50):
     """
-    📋 Retorna o log de sinais processados pelo AutoTrade
+    📋 Retorna o log de sinais processados pelo AutoTrade (do banco)
     """
+    global autotrade_state, autotrade_manager
+    
+    if not autotrade_manager:
+        # Fallback para dados em memória
+        return {
+            "total_signals": len(autotrade_state.get("signals_log", [])),
+            "signals": autotrade_state.get("signals_log", [])[-limit:],
+            "source": "memory"
+        }
+    
+    # Buscar do banco
+    session_id = autotrade_state.get("session_id", "unknown")
+    signals = await autotrade_manager.get_recent_signals(session_id, limit)
+    
     return {
-        "total_signals": len(autotrade_state.get("signals_log", [])),
-        "signals": autotrade_state.get("signals_log", [])[-limit:]
+        "total_signals": len(signals),
+        "signals": signals,
+        "source": "database"
     }
+
+
+@app.get("/api/autotrade/analytics/session/{session_id}")
+async def get_session_analytics(session_id: str):
+    """
+    📊 Retorna análise completa de uma sessão do AutoTrade
+    """
+    global autotrade_manager
+    
+    if not autotrade_manager:
+        raise HTTPException(status_code=503, detail="AutoTradeManager não disponível")
+    
+    # Estatísticas gerais
+    stats = await autotrade_manager.get_session_stats(session_id)
+    
+    if not stats:
+        raise HTTPException(status_code=404, detail=f"Sessão {session_id} não encontrada")
+    
+    # Performance por símbolo
+    by_symbol = await autotrade_manager.get_performance_by_symbol(session_id)
+    
+    # Performance por tipo de sinal
+    by_signal_type = await autotrade_manager.get_performance_by_signal_type(session_id)
+    
+    # Sinais recentes
+    recent_signals = await autotrade_manager.get_recent_signals(session_id, limit=20)
+    
+    return {
+        "session_stats": stats,
+        "performance_by_symbol": by_symbol,
+        "performance_by_signal_type": by_signal_type,
+        "recent_signals": recent_signals
+    }
+
+
+@app.get("/api/autotrade/analytics/symbols")
+async def get_symbols_analytics():
+    """
+    📈 Retorna performance agregada por símbolo (todas as sessões)
+    """
+    global autotrade_manager
+    
+    if not autotrade_manager:
+        raise HTTPException(status_code=503, detail="AutoTradeManager não disponível")
+    
+    try:
+        query = """
+            SELECT 
+                symbol,
+                COUNT(DISTINCT session_id) as sessions_count,
+                SUM(total_signals) as total_signals,
+                SUM(trades_executed) as total_trades,
+                SUM(winning_trades) as winning_trades,
+                SUM(losing_trades) as losing_trades,
+                ROUND(AVG(win_rate), 2) as avg_win_rate,
+                ROUND(SUM(total_pnl), 2) as total_pnl,
+                ROUND(AVG(avg_pnl_percent), 2) as avg_pnl_percent
+            FROM autotrade_performance_by_symbol
+            GROUP BY symbol
+            ORDER BY total_pnl DESC
+        """
+        
+        rows = await autotrade_manager.db_conn.fetch(query)
+        return {
+            "symbols": [dict(row) for row in rows]
+        }
+    except Exception as e:
+        logger.error(f"❌ Erro ao buscar analytics por símbolo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/autotrade/analytics/signal-types")
+async def get_signal_types_analytics():
+    """
+    🎯 Retorna performance agregada por tipo de sinal (todas as sessões)
+    """
+    global autotrade_manager
+    
+    if not autotrade_manager:
+        raise HTTPException(status_code=503, detail="AutoTradeManager não disponível")
+    
+    try:
+        query = """
+            SELECT 
+                signal_type,
+                direction,
+                COUNT(DISTINCT session_id) as sessions_count,
+                SUM(total_signals) as total_signals,
+                SUM(trades_executed) as total_trades,
+                SUM(winning_trades) as winning_trades,
+                SUM(losing_trades) as losing_trades,
+                ROUND(AVG(win_rate), 2) as avg_win_rate,
+                ROUND(SUM(total_pnl), 2) as total_pnl,
+                ROUND(AVG(avg_pnl_percent), 2) as avg_pnl_percent
+            FROM autotrade_performance_by_signal_type
+            GROUP BY signal_type, direction
+            ORDER BY total_pnl DESC
+        """
+        
+        rows = await autotrade_manager.db_conn.fetch(query)
+        return {
+            "signal_types": [dict(row) for row in rows]
+        }
+    except Exception as e:
+        logger.error(f"❌ Erro ao buscar analytics por tipo de sinal: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/autotrade/sessions")
+async def list_autotrade_sessions(active_only: bool = False, limit: int = 10):
+    """
+    📋 Lista todas as sessões do AutoTrade
+    """
+    global autotrade_manager
+    
+    if not autotrade_manager:
+        raise HTTPException(status_code=503, detail="AutoTradeManager não disponível")
+    
+    try:
+        query = """
+            SELECT * FROM autotrade_performance_summary
+            WHERE ($1 = FALSE OR is_active = TRUE)
+            ORDER BY started_at DESC
+            LIMIT $2
+        """
+        
+        rows = await autotrade_manager.db_conn.fetch(query, active_only, limit)
+        return {
+            "sessions": [dict(row) for row in rows]
+        }
+    except Exception as e:
+        logger.error(f"❌ Erro ao listar sessões: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
