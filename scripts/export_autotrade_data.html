@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Export AutoTrade Data - AI Trading Platform</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+        .stat-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            margin: 10px 0;
+        }
+        .stat-label {
+            font-size: 0.9em;
+            opacity: 0.9;
+        }
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin: 20px 0;
+        }
+        button {
+            flex: 1;
+            min-width: 150px;
+            padding: 12px 24px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: bold;
+        }
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+        .btn-info {
+            background: #17a2b8;
+            color: white;
+        }
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .alert {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .alert-warning {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        .alert-danger {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .data-preview {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            padding: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+            margin: 20px 0;
+        }
+        pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+        }
+        .section-title {
+            font-size: 1.3em;
+            color: #667eea;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        th {
+            background: #667eea;
+            color: white;
+            font-weight: bold;
+        }
+        tr:hover {
+            background: #f1f3f5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Export AutoTrade Data - Backup & Migration</h1>
+        
+        <div id="alertContainer"></div>
+        
+        <!-- Stats Overview -->
+        <div class="section">
+            <div class="section-title">📊 Dados do AutoTrade (localStorage)</div>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Sinais Processados</div>
+                    <div class="stat-value" id="statSignals">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Trades Executados</div>
+                    <div class="stat-value" id="statTrades">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Símbolos Únicos</div>
+                    <div class="stat-value" id="statSymbols">-</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-label">Duração Sessão</div>
+                    <div class="stat-value" id="statDuration">-</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Export Buttons -->
+        <div class="section">
+            <div class="section-title">💾 Exportar Dados</div>
+            <div class="button-group">
+                <button class="btn-primary" onclick="loadData()">
+                    🔄 Carregar Dados
+                </button>
+                <button class="btn-success" onclick="exportJSON()">
+                    📥 Export JSON
+                </button>
+                <button class="btn-success" onclick="exportCSV()">
+                    📊 Export CSV
+                </button>
+                <button class="btn-info" onclick="copyToClipboard()">
+                    📋 Copiar JSON
+                </button>
+                <button class="btn-danger" onclick="clearData()">
+                    🗑️ Limpar localStorage
+                </button>
+            </div>
+        </div>
+        
+        <!-- Data Preview -->
+        <div class="section">
+            <div class="section-title">👁️ Preview dos Dados</div>
+            <div class="data-preview">
+                <pre id="dataPreview">Clique em "Carregar Dados" para visualizar...</pre>
+            </div>
+        </div>
+        
+        <!-- Signals Table -->
+        <div class="section">
+            <div class="section-title">📋 Últimos 20 Sinais</div>
+            <div style="overflow-x: auto;">
+                <table id="signalsTable">
+                    <thead>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>Símbolo</th>
+                            <th>Direção</th>
+                            <th>Força</th>
+                            <th>Executado</th>
+                            <th>Motivo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="signalsTableBody">
+                        <tr>
+                            <td colspan="6" style="text-align: center; color: #999;">
+                                Nenhum dado carregado
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const AUTOTRADE_STATE_KEY = 'AUTOTRADE_STATE_KEY';
+        let autotradeData = null;
+
+        function showAlert(message, type = 'success') {
+            const alertContainer = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            alertContainer.appendChild(alert);
+            
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        function loadData() {
+            try {
+                const savedState = localStorage.getItem(AUTOTRADE_STATE_KEY);
+                
+                if (!savedState) {
+                    showAlert('⚠️ Nenhum dado encontrado no localStorage. Execute o AutoTrade primeiro.', 'warning');
+                    return;
+                }
+                
+                autotradeData = JSON.parse(savedState);
+                
+                // Update stats
+                document.getElementById('statSignals').textContent = autotradeData.stats?.signals_processed || 0;
+                document.getElementById('statTrades').textContent = autotradeData.stats?.trades_executed || 0;
+                
+                const uniqueSymbols = new Set(autotradeData.signals?.map(s => s.symbol) || []).size;
+                document.getElementById('statSymbols').textContent = uniqueSymbols;
+                
+                if (autotradeData.stats?.start_time) {
+                    const duration = Math.round((Date.now() - autotradeData.stats.start_time) / 1000 / 60);
+                    document.getElementById('statDuration').textContent = `${duration}m`;
+                } else {
+                    document.getElementById('statDuration').textContent = 'N/A';
+                }
+                
+                // Update preview
+                document.getElementById('dataPreview').textContent = JSON.stringify(autotradeData, null, 2);
+                
+                // Update signals table
+                updateSignalsTable(autotradeData.signals || []);
+                
+                showAlert('✅ Dados carregados com sucesso!', 'success');
+            } catch (error) {
+                showAlert(`❌ Erro ao carregar dados: ${error.message}`, 'danger');
+                console.error('Error loading data:', error);
+            }
+        }
+
+        function updateSignalsTable(signals) {
+            const tbody = document.getElementById('signalsTableBody');
+            
+            if (signals.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">Nenhum sinal encontrado</td></tr>';
+                return;
+            }
+            
+            const last20 = signals.slice(-20).reverse();
+            tbody.innerHTML = last20.map(sig => `
+                <tr>
+                    <td>${new Date(sig.timestamp).toLocaleString()}</td>
+                    <td><strong>${sig.symbol}</strong></td>
+                    <td>
+                        <span style="color: ${sig.direction === 'BUY' ? 'green' : 'red'}; font-weight: bold;">
+                            ${sig.direction}
+                        </span>
+                    </td>
+                    <td>${(sig.strength * 100).toFixed(0)}%</td>
+                    <td>${sig.executed ? '✅' : '❌'}</td>
+                    <td style="font-size: 0.9em;">${sig.reason || '-'}</td>
+                </tr>
+            `).join('');
+        }
+
+        function exportJSON() {
+            if (!autotradeData) {
+                showAlert('⚠️ Carregue os dados primeiro!', 'warning');
+                return;
+            }
+            
+            const dataStr = JSON.stringify(autotradeData, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `autotrade_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showAlert('✅ Arquivo JSON exportado com sucesso!', 'success');
+        }
+
+        function exportCSV() {
+            if (!autotradeData || !autotradeData.signals) {
+                showAlert('⚠️ Carregue os dados primeiro!', 'warning');
+                return;
+            }
+            
+            const signals = autotradeData.signals;
+            
+            // CSV Header
+            let csv = 'Timestamp,Symbol,Direction,Strength,Executed,Reason\n';
+            
+            // CSV Rows
+            signals.forEach(sig => {
+                const timestamp = new Date(sig.timestamp).toISOString();
+                const reason = (sig.reason || '').replace(/,/g, ';');
+                csv += `${timestamp},${sig.symbol},${sig.direction},${sig.strength},${sig.executed},${reason}\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `autotrade_signals_${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            
+            showAlert('✅ Arquivo CSV exportado com sucesso!', 'success');
+        }
+
+        function copyToClipboard() {
+            if (!autotradeData) {
+                showAlert('⚠️ Carregue os dados primeiro!', 'warning');
+                return;
+            }
+            
+            const dataStr = JSON.stringify(autotradeData, null, 2);
+            navigator.clipboard.writeText(dataStr).then(() => {
+                showAlert('✅ JSON copiado para a área de transferência!', 'success');
+            }).catch(err => {
+                showAlert(`❌ Erro ao copiar: ${err.message}`, 'danger');
+            });
+        }
+
+        function clearData() {
+            if (!confirm('⚠️ ATENÇÃO: Isso irá apagar TODOS os dados do AutoTrade do localStorage.\n\nExporte os dados primeiro se desejar manter um backup.\n\nDeseja continuar?')) {
+                return;
+            }
+            
+            if (!confirm('🔴 ÚLTIMA CHANCE: Tem certeza ABSOLUTA que deseja apagar os dados?')) {
+                return;
+            }
+            
+            localStorage.removeItem(AUTOTRADE_STATE_KEY);
+            autotradeData = null;
+            
+            document.getElementById('statSignals').textContent = '-';
+            document.getElementById('statTrades').textContent = '-';
+            document.getElementById('statSymbols').textContent = '-';
+            document.getElementById('statDuration').textContent = '-';
+            document.getElementById('dataPreview').textContent = 'Dados removidos. Recarregue a página do scanner para começar nova sessão.';
+            document.getElementById('signalsTableBody').innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">Dados removidos</td></tr>';
+            
+            showAlert('🗑️ Dados do localStorage removidos com sucesso!', 'success');
+        }
+
+        // Auto-load on page load
+        window.addEventListener('load', () => {
+            loadData();
+        });
+    </script>
+</body>
+</html>
