@@ -398,6 +398,9 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <h5 class="mb-0">
                             <i class="bi bi-lightning-charge text-warning"></i> Proximidade de Alerta
+                            <small class="text-muted ms-2" style="font-size: 0.65em;">
+                                <i class="bi bi-clock"></i> <span id="nearAlertsUpdateTime">--:--</span>
+                            </small>
                         </h5>
                         <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#proximityHelp">
                             <i class="bi bi-question-circle"></i> Como funciona?
@@ -811,6 +814,8 @@
     let scanInterval = null;
     let signalHistory = [];
     let nearAlerts = {};
+    let lastNearAlertsData = {};  // Cache para atualização incremental
+    let nearAlertsInitialized = false;  // Flag para controle de primeira renderização
     
     // API base URL - execution-engine runs on port 3008
     // Use o mesmo hostname que o browser está acessando (para evitar problemas de CORS)
@@ -845,7 +850,9 @@
         
         // Auto-refresh market data every 30 seconds
         setInterval(fetchMarketData, 30000);
-        setInterval(updateNearAlerts, 15000);
+        // Near Alerts atualiza a cada 30 segundos (era 15s, muito frequente)
+        // Atualização incremental evita "flash" visual
+        setInterval(updateNearAlerts, 30000);
         
         // Add auto-save event listeners to all config inputs
         setupAutoSave();
@@ -1362,16 +1369,127 @@
     }
     
     // Função separada para renderizar Near Alerts (usada por cache e API)
+    // Suporta atualização incremental para evitar "flash" visual
     function renderNearAlerts(data, fromCache = false) {
         const container = document.getElementById('nearAlertsRow');
         if (!container) return;
         
-        let html = '';
+        // BTC sempre visível + ativos com proximidade > 0 ou RSI extremo
+        const btcData = data.find(item => item.symbol.includes('BTC'));
+        const otherAlerts = data.filter(item => 
+            !item.symbol.includes('BTC') && (item.proximity > 0 || item.rsi <= 35 || item.rsi >= 65)
+        );
         
-        // Mostrar apenas os que têm proximidade > 0 ou RSI extremo
-        const alertData = data.filter(item => 
-            item.proximity > 0 || item.rsi <= 35 || item.rsi >= 65
-        ).slice(0, 6);
+        // BTC no topo + até 8 outros ativos (total 9 cards)
+        let alertData = [];
+        if (btcData) alertData.push(btcData);
+        alertData = alertData.concat(otherAlerts.slice(0, 8));
+        
+        // Verificar se precisa rebuild completo ou atualização incremental
+        const currentSymbols = alertData.map(a => a.symbol).sort().join(',');
+        const cachedSymbols = Object.keys(lastNearAlertsData).sort().join(',');
+        const needsFullRebuild = !nearAlertsInitialized || container.children.length === 0 || currentSymbols !== cachedSymbols;
+        
+        if (needsFullRebuild) {
+            // Rebuild completo - primeira vez ou símbolos mudaram
+            console.log('[NearAlerts] Full rebuild -', alertData.length, 'alerts', fromCache ? '(cache)' : '(fresh)');
+            renderNearAlertsFull(alertData, fromCache);
+            nearAlertsInitialized = true;
+            
+            // Atualizar cache
+            lastNearAlertsData = {};
+            alertData.forEach(item => {
+                lastNearAlertsData[item.symbol] = { ...item };
+            });
+        } else {
+            // Atualização incremental - só atualizar valores que mudaram
+            let updatedCount = 0;
+            
+            alertData.forEach(item => {
+                const cached = lastNearAlertsData[item.symbol];
+                if (!cached) return;
+                
+                const symbolId = item.symbol.replace('/', '').replace('USDT', '');
+                
+                // Atualizar preço se mudou
+                if (cached.price !== item.price) {
+                    const priceEl = document.getElementById('alert-price-' + symbolId);
+                    if (priceEl) {
+                        priceEl.textContent = formatPrice(item.price);
+                        priceEl.classList.add('price-flash');
+                        setTimeout(() => priceEl.classList.remove('price-flash'), 500);
+                    }
+                    cached.price = item.price;
+                    updatedCount++;
+                }
+                
+                // Atualizar RSI se mudou (mostrar na barra e no texto)
+                if (cached.rsi !== item.rsi) {
+                    const rsiTextEl = document.getElementById('alert-rsi-text-' + symbolId);
+                    const rsiMarkerEl = document.getElementById('alert-rsi-marker-' + symbolId);
+                    if (rsiTextEl) {
+                        const rsiClass = item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : 'text-muted');
+                        rsiTextEl.className = rsiClass;
+                        rsiTextEl.textContent = item.rsi.toFixed(1);
+                    }
+                    if (rsiMarkerEl) {
+                        rsiMarkerEl.style.left = item.rsi + '%';
+                    }
+                    cached.rsi = item.rsi;
+                    updatedCount++;
+                }
+                
+                // Atualizar change 24h se mudou
+                if (cached.change_24h !== item.change_24h) {
+                    const changeEl = document.getElementById('alert-change-' + symbolId);
+                    if (changeEl) {
+                        const changeClass = item.change_24h >= 0 ? 'text-success' : 'text-danger';
+                        const changeIcon = item.change_24h >= 0 ? 'caret-up-fill' : 'caret-down-fill';
+                        changeEl.className = changeClass + ' fw-bold';
+                        changeEl.innerHTML = \`<i class="bi bi-\${changeIcon}"></i> \${Math.abs(item.change_24h).toFixed(2)}%\`;
+                    }
+                    cached.change_24h = item.change_24h;
+                    updatedCount++;
+                }
+                
+                // Atualizar proximidade se mudou
+                if (cached.proximity !== item.proximity) {
+                    const proxEl = document.getElementById('alert-prox-' + symbolId);
+                    const badgeEl = document.getElementById('alert-badge-' + symbolId);
+                    if (proxEl && item.proximity > 0) {
+                        const proximityColor = item.proximity >= 70 ? 'danger' : (item.proximity >= 40 ? 'warning' : 'secondary');
+                        proxEl.className = \`small text-\${proximityColor} fw-bold mt-1\`;
+                        proxEl.textContent = item.proximity + '% próximo';
+                    }
+                    if (badgeEl) {
+                        if (item.proximity >= 70) {
+                            badgeEl.className = 'badge bg-danger pulse-animation';
+                            badgeEl.textContent = 'IMINENTE';
+                        } else if (item.proximity >= 40) {
+                            badgeEl.className = 'badge bg-warning text-dark';
+                            badgeEl.textContent = 'FORMANDO';
+                        } else if (item.proximity > 0) {
+                            badgeEl.className = 'badge bg-secondary';
+                            badgeEl.textContent = 'OBSERVANDO';
+                        }
+                    }
+                    cached.proximity = item.proximity;
+                    updatedCount++;
+                }
+            });
+            
+            if (updatedCount > 0) {
+                console.log('[NearAlerts] Incremental update -', updatedCount, 'fields changed');
+            }
+        }
+    }
+    
+    // Função para rebuild completo dos Near Alerts (primeira vez ou símbolos mudaram)
+    function renderNearAlertsFull(alertData, fromCache = false) {
+        const container = document.getElementById('nearAlertsRow');
+        if (!container) return;
+        
+        let html = '';
         
         // Indicador de cache
         const cacheIndicator = fromCache ? '<span class="badge bg-secondary ms-2" title="Dados do cache"><i class="bi bi-clock-history"></i></span>' : '';
@@ -1380,8 +1498,16 @@
             html = \`
                 <div class="col-12 text-center text-muted py-4">
                     <i class="bi bi-check-circle display-4 d-block mb-2 text-success"></i>
-                    <p>Nenhuma divergência em formação no momento \${cacheIndicator}</p>
-                    <small>RSI de todos os ativos está na faixa neutra (35-65)</small>
+                    <p class="mb-2"><strong>Nenhum alerta ativo nos símbolos selecionados</strong> \${cacheIndicator}</p>
+                    <small class="d-block mb-2">RSI de todos os ativos está na faixa neutra (35-65) e proximidade baixa</small>
+                    <div class="alert alert-info d-inline-block text-start mt-3" style="max-width: 500px;">
+                        <i class="bi bi-info-circle"></i> <strong>Dica:</strong> Para ver alertas:
+                        <ul class="mb-0 mt-2" style="font-size: 0.85em;">
+                            <li>Adicione mais símbolos à watchlist (ex: XRPUSDT, DOGEUSDT, BNBUSDT)</li>
+                            <li>Aguarde RSI entrar em zona extrema (< 35 ou > 65)</li>
+                            <li>Alertas aparecem quando proximity > 0 ou RSI extremo</li>
+                        </ul>
+                    </div>
                 </div>
             \`;
         } else {
@@ -1428,29 +1554,40 @@
                 const cardClass = item.proximity >= 70 ? 'near-alert-card forming' : 'near-alert-card';
                 const changeClass = item.change_24h >= 0 ? 'text-success' : 'text-danger';
                 const changeIcon = item.change_24h >= 0 ? 'caret-up-fill' : 'caret-down-fill';
+                const symbolId = item.symbol.replace('/', '').replace('USDT', '');
+                
+                // Determinar badge HTML com ID para atualização incremental
+                let urgencyBadgeHtml = '';
+                if (item.proximity >= 70) {
+                    urgencyBadgeHtml = \`<span id="alert-badge-\${symbolId}" class="badge bg-danger pulse-animation">IMINENTE</span>\`;
+                } else if (item.proximity >= 40) {
+                    urgencyBadgeHtml = \`<span id="alert-badge-\${symbolId}" class="badge bg-warning text-dark">FORMANDO</span>\`;
+                } else if (item.proximity > 0) {
+                    urgencyBadgeHtml = \`<span id="alert-badge-\${symbolId}" class="badge bg-secondary">OBSERVANDO</span>\`;
+                }
                 
                 html += \`
-                    <div class="col-md-4 mb-3">
+                    <div class="col-md-4 mb-3" data-symbol="\${item.symbol}">
                         <div class="card \${cardClass} h-100">
                             <div class="card-body">
                                 <div class="d-flex justify-content-between align-items-start mb-2">
                                     <div>
                                         <h6 class="mb-0 fw-bold">\${item.symbol}</h6>
-                                        <small class="text-muted">\${formatPrice(item.price)}</small>
+                                        <small id="alert-price-\${symbolId}" class="text-muted">\${formatPrice(item.price)}</small>
                                     </div>
                                     <div class="text-end">
-                                        \${urgencyBadge}
-                                        \${item.proximity > 0 ? \`<div class="small text-\${proximityColor} fw-bold mt-1">\${item.proximity}% próximo</div>\` : ''}
+                                        \${urgencyBadgeHtml}
+                                        \${item.proximity > 0 ? \`<div id="alert-prox-\${symbolId}" class="small text-\${proximityColor} fw-bold mt-1">\${item.proximity}% próximo</div>\` : ''}
                                     </div>
                                 </div>
                                 
                                 <div class="mb-2">
                                     <div class="d-flex justify-content-between align-items-center small mb-1">
                                         <span class="text-muted">RSI</span>
-                                        <span class="\${item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : 'text-muted')}">\${item.rsi.toFixed(1)}</span>
+                                        <span id="alert-rsi-text-\${symbolId}" class="\${item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : 'text-muted')}">\${item.rsi.toFixed(1)}</span>
                                     </div>
                                     <div class="rsi-gauge">
-                                        <div class="rsi-marker" style="left: \${item.rsi}%;"></div>
+                                        <div id="alert-rsi-marker-\${symbolId}" class="rsi-marker" style="left: \${item.rsi}%;"></div>
                                     </div>
                                     <div class="d-flex justify-content-between small text-muted mt-1">
                                         <span>30</span>
@@ -1461,7 +1598,7 @@
                                 
                                 <div class="d-flex justify-content-between align-items-center small mb-2">
                                     <span>24h:</span>
-                                    <span class="\${changeClass} fw-bold">
+                                    <span id="alert-change-\${symbolId}" class="\${changeClass} fw-bold">
                                         <i class="bi bi-\${changeIcon}"></i> \${Math.abs(item.change_24h).toFixed(2)}%
                                     </span>
                                 </div>
@@ -1486,10 +1623,10 @@
         const container = document.getElementById('nearAlertsRow');
         
         try {
-            // Fetch real market data from API (LIMIT 30 symbols to avoid Binance rate limit)
+            // Fetch TODOS os símbolos selecionados (API gerencia rate limit internamente)
             const allSymbols = getSelectedSymbols().map(s => s.replace('/', ''));
-            const symbols = allSymbols.slice(0, 30).join(',');  // MAX 30 symbols
-            console.log('[NearAlerts] Fetching', allSymbols.length > 30 ? '30/' + allSymbols.length : allSymbols.length, 'symbols');
+            const symbols = allSymbols.join(',');  // Enviar TODOS os símbolos
+            console.log('[NearAlerts] Fetching ALL', allSymbols.length, 'selected symbols');
             const response = await fetch(API_BASE + '/api/scanner/market-data?symbols=' + symbols);
             const result = await response.json();
             
@@ -1499,12 +1636,53 @@
                     console.log('[NearAlerts] API falhou mas tem cache, mantendo');
                     return;
                 }
-                container.innerHTML = \`
-                    <div class="col-12 text-center text-muted py-4">
-                        <i class="bi bi-wifi-off display-4 d-block mb-2"></i>
-                        <p>Aguardando dados do mercado...</p>
-                    </div>
-                \`;
+                
+                // Verificar se é erro da Binance
+                const isBinanceError = result.error && (
+                    result.error.includes('binance') || 
+                    result.error.includes('exchangeInfo') ||
+                    result.error.includes('rate limit') ||
+                    result.error.includes('timeout')
+                );
+                
+                if (isBinanceError) {
+                    container.innerHTML = \`
+                        <div class="col-12 text-center text-warning py-4">
+                            <i class="bi bi-exclamation-triangle-fill display-4 d-block mb-3"></i>
+                            <h5 class="text-warning">⚠️ Erro ao Conectar com Binance</h5>
+                            <p class="text-muted mb-3">
+                                Falha ao buscar dados de mercado da Binance API.<br>
+                                <small class="text-danger">\${result.error || 'Erro desconhecido'}</small>
+                            </p>
+                            <div class="alert alert-warning mx-auto" style="max-width: 600px; text-align: left;">
+                                <strong>Possíveis causas:</strong>
+                                <ul class="mb-2 mt-2">
+                                    <li>🔒 Binance API está indisponível ou em manutenção</li>
+                                    <li>⏱️ Rate limit atingido (muitas requisições)</li>
+                                    <li>🌐 Problemas de conexão com internet</li>
+                                    <li>🔑 Credenciais API inválidas (se configuradas)</li>
+                                </ul>
+                                <strong>Soluções:</strong>
+                                <ul class="mb-0">
+                                    <li>✅ Aguarde alguns minutos e recarregue a página</li>
+                                    <li>✅ Verifique status da Binance: <a href="https://www.binance.com/en/support/announcement" target="_blank">Status Page</a></li>
+                                    <li>✅ Reduza o número de símbolos selecionados</li>
+                                </ul>
+                            </div>
+                            <button class="btn btn-warning btn-sm mt-2" onclick="updateNearAlerts()">
+                                <i class="bi bi-arrow-clockwise"></i> Tentar Novamente
+                            </button>
+                        </div>
+                    \`;
+                } else {
+                    container.innerHTML = \`
+                        <div class="col-12 text-center text-muted py-4">
+                            <i class="bi bi-wifi-off display-4 d-block mb-2"></i>
+                            <p>Aguardando dados do mercado...</p>
+                            <small class="text-muted">Nenhum dado disponível no momento</small>
+                        </div>
+                    \`;
+                }
                 return;
             }
             
@@ -1514,19 +1692,144 @@
             // Renderizar dados frescos
             renderNearAlerts(result.data, false);
             
+            // Atualizar timestamp de última atualização
+            const timeEl = document.getElementById('nearAlertsUpdateTime');
+            if (timeEl) {
+                timeEl.textContent = new Date().toLocaleTimeString();
+            }
+            
+            // Atualizar rodapé com status de erros
+            updateNearAlertsFooter(result);
+            
         } catch (error) {
-            console.error('Error updating near alerts:', error);
+            console.error('[NearAlerts] Error updating:', error);
             // Não sobrescrever se já tem dados do cache
             if (container.innerHTML.includes('col-md-4')) {
                 console.log('[NearAlerts] Erro mas tem cache, mantendo');
                 return;
             }
-            container.innerHTML = \`
-                <div class="col-12 text-center text-danger py-4">
-                    <i class="bi bi-exclamation-triangle display-4 d-block mb-2"></i>
-                    <p>Erro ao carregar dados: \${error.message}</p>
+            
+            // Identificar tipo de erro
+            const isNetworkError = error.message.includes('fetch') || error.message.includes('network');
+            const isTimeoutError = error.message.includes('timeout');
+            
+            if (isNetworkError || isTimeoutError) {
+                container.innerHTML = \`
+                    <div class="col-12 text-center text-danger py-4">
+                        <i class="bi bi-wifi-off display-4 d-block mb-3"></i>
+                        <h5 class="text-danger">🔌 Erro de Conexão</h5>
+                        <p class="text-muted mb-3">
+                            Não foi possível conectar ao servidor de dados.<br>
+                            <small class="text-danger">\${error.message}</small>
+                        </p>
+                        <div class="alert alert-danger mx-auto" style="max-width: 600px; text-align: left;">
+                            <strong>Verifique:</strong>
+                            <ul class="mb-2 mt-2">
+                                <li>🌐 Sua conexão com a internet está ativa</li>
+                                <li>🔥 Backend está rodando: <code>docker compose ps</code></li>
+                                <li>🔌 API disponível em: <a href="\${API_BASE}/docs" target="_blank">\${API_BASE}/docs</a></li>
+                            </ul>
+                            <strong>Soluções:</strong>
+                            <ul class="mb-0">
+                                <li>✅ Reinicie os containers: <code>docker compose restart</code></li>
+                                <li>✅ Verifique os logs: <code>docker compose logs execution-engine</code></li>
+                            </ul>
+                        </div>
+                        <button class="btn btn-danger btn-sm mt-2" onclick="updateNearAlerts()">
+                            <i class="bi bi-arrow-clockwise"></i> Reconectar
+                        </button>
+                    </div>
+                \`;
+            } else {
+                container.innerHTML = \`
+                    <div class="col-12 text-center text-danger py-4">
+                        <i class="bi bi-exclamation-triangle display-4 d-block mb-2"></i>
+                        <p>Erro ao carregar dados: \${error.message}</p>
+                        <button class="btn btn-outline-danger btn-sm mt-2" onclick="updateNearAlerts()">
+                            <i class="bi bi-arrow-clockwise"></i> Tentar Novamente
+                        </button>
+                    </div>
+                \`;
+            }
+        }
+    }
+    
+    // Atualizar rodapé da seção Near Alerts com status de erros
+    function updateNearAlertsFooter(result) {
+        let footerHtml = '';
+        const warnings = [];
+        const errors = [];
+        
+        // Verificar se há símbolos com erro
+        if (result.data) {
+            const nullSymbols = result.data.filter(item => 
+                item.price === null || item.rsi === null
+            ).map(item => item.symbol);
+            
+            if (nullSymbols.length > 0) {
+                warnings.push(\`\${nullSymbols.length} ativo(s) retornaram dados nulos: \${nullSymbols.slice(0, 3).join(', ')}\${nullSymbols.length > 3 ? '...' : ''}\`);
+            }
+        }
+        
+        // Verificar taxa de sucesso da API
+        if (result.success_rate !== undefined && result.success_rate < 100) {
+            const failedCount = result.requested - result.count;
+            warnings.push(\`\${failedCount} de \${result.requested} símbolos falharam (\${result.success_rate.toFixed(1)}% sucesso)\`);
+        }
+        
+        // Verificar se há mensagem de erro da Binance
+        if (result.error) {
+            if (result.error.includes('binance') || result.error.includes('rate limit')) {
+                errors.push('Erro na comunicação com Binance API');
+            } else {
+                errors.push('Erro ao buscar dados de mercado');
+            }
+        }
+        
+        // Montar HTML do rodapé
+        if (errors.length > 0) {
+            footerHtml = \`
+                <div class="col-12 mt-3">
+                    <div class="alert alert-danger alert-dismissible fade show mb-0" role="alert" style="font-size: 0.85rem;">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <strong>Erro:</strong> \${errors.join(' • ')}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
                 </div>
             \`;
+        } else if (warnings.length > 0) {
+            footerHtml = \`
+                <div class="col-12 mt-3">
+                    <div class="alert alert-warning alert-dismissible fade show mb-0" role="alert" style="font-size: 0.85rem;">
+                        <i class="bi bi-exclamation-circle-fill me-2"></i>
+                        <strong>Atenção:</strong> \${warnings.join(' • ')}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                </div>
+            \`;
+        } else if (result.count > 0) {
+            // Tudo OK - mostrar estatísticas
+            const avgRsi = (result.data.reduce((sum, item) => sum + (item.rsi || 0), 0) / result.data.length).toFixed(1);
+            footerHtml = \`
+                <div class="col-12 mt-3">
+                    <div class="alert alert-success alert-dismissible fade show mb-0" role="alert" style="font-size: 0.85rem;">
+                        <i class="bi bi-check-circle-fill me-2"></i>
+                        <strong>Status:</strong> \${result.count} ativos monitorados • RSI médio: \${avgRsi} • Última atualização: \${new Date().toLocaleTimeString()}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                </div>
+            \`;
+        }
+        
+        // Inserir ou atualizar rodapé
+        const container = document.getElementById('nearAlertsRow');
+        if (container && footerHtml) {
+            // Remover rodapé anterior se existir
+            const oldFooter = container.querySelector('.col-12.mt-3');
+            if (oldFooter) oldFooter.remove();
+            
+            // Adicionar novo rodapé
+            container.insertAdjacentHTML('beforeend', footerHtml);
         }
     }
     

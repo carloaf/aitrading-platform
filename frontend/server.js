@@ -219,6 +219,11 @@ app.get('/consolidated', (req, res) => {
 // RSI DIVERGENCE SCANNER DASHBOARD (PASSO 32)
 // ==========================================
 app.get('/scanner', (req, res) => {
+  // Disable cache to ensure latest JS code is always loaded
+  res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+  
   const executionEngineUrl = process.env.EXECUTION_ENGINE_PUBLIC_URL || 'http://localhost:3008';
   res.render('scanner-dashboard', {
     title: 'RSI Divergence Scanner',

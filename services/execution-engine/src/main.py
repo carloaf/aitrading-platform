@@ -2849,14 +2849,14 @@ async def get_scanner_market_data(symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSD
     try:
         exchange = ccxt_async.binance({
             'enableRateLimit': True,
-            'rateLimit': 500,  # Delay mínimo entre requests (ms) - aumentado novamente para 500ms
+            'rateLimit': 500,  # Delay mínimo entre requests (ms)
             'options': {'defaultType': 'spot'}
         })
-        symbol_list = [s.strip() for s in symbols.split(',')][:30]  # Máx 30 símbolos (reduzido para evitar rate limit)
-        logger.info(f"[MarketData] Processing {len(symbol_list)} symbols (max 30)")
+        symbol_list = [s.strip() for s in symbols.split(',')][:100]  # Máx 100 símbolos (aumentado, com rate limit controlado)
+        logger.info(f"[MarketData] Processing {len(symbol_list)} symbols (max 100)")
         
-        # Semáforo para limitar chamadas paralelas (REDUZIDO para 2 simultâneas)
-        semaphore = asyncio.Semaphore(2)
+        # Semáforo para limitar chamadas paralelas
+        semaphore = asyncio.Semaphore(3)  # 3 simultâneas para melhor throughput
         
         async def fetch_symbol_data_with_retry(symbol, max_retries=3):
             """Fetch com retry e backoff exponencial"""
