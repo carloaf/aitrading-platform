@@ -55,7 +55,7 @@
          ▼
 ┌─────────────────┐
 │     Grafana     │  ← Visualiza em dashboard
-│   (porta 3000)  │  ← http://localhost:3000
+│   (porta 3001)  │  ← http://localhost:3001
 └─────────────────┘
 ```
 
@@ -97,7 +97,7 @@ docker compose -f monitoring/docker-compose.monitoring.yml ps
 NAME                    STATUS    PORTS
 wfo-metrics-exporter    Up        0.0.0.0:9090->9090/tcp
 wfo-prometheus          Up        0.0.0.0:9091->9090/tcp
-wfo-grafana             Up        0.0.0.0:3000->3000/tcp
+wfo-grafana             Up        0.0.0.0:3001->3001/tcp
 ```
 
 ### Passo 3: Verificar que Métricas Estão Sendo Exportadas
@@ -132,11 +132,11 @@ wfo_last_run_timestamp 1766351598
 
 ```bash
 # Opção 1: Abrir automaticamente (Linux/Mac)
-xdg-open http://localhost:3000   # Linux
-open http://localhost:3000        # Mac
+xdg-open http://localhost:3001   # Linux
+open http://localhost:3001        # Mac
 
 # Opção 2: Abrir manualmente
-# Navegador → http://localhost:3000
+# Navegador → http://localhost:3001
 ```
 
 ### Passo 2: Fazer Login
@@ -152,7 +152,7 @@ open http://localhost:3000        # Mac
 
 **Opções**:
 
-1. **URL Direta**: http://localhost:3000/d/wfo-dashboard
+1. **URL Direta**: http://localhost:3001/d/wfo-dashboard
 2. **Menu**: Home → Dashboards → "WFO Performance Monitor"
 3. **Search**: Clicar na lupa (🔍) e digitar "WFO"
 
@@ -282,7 +282,7 @@ Return %
 
 ```bash
 # 1. Abrir dashboard
-open http://localhost:3000/d/wfo-dashboard
+open http://localhost:3001/d/wfo-dashboard
 
 # 2. Verificar 3 indicadores principais:
 ✅ Return verde/amarelo? → Sistema lucrativo
@@ -416,7 +416,7 @@ docker logs wfo-grafana
 docker compose -f monitoring/docker-compose.monitoring.yml restart
 
 # 4. Acessar novamente
-open http://localhost:3000/d/wfo-dashboard
+open http://localhost:3001/d/wfo-dashboard
 ```
 
 ---
@@ -465,19 +465,19 @@ curl http://localhost:9091/api/v1/query?query=wfo_return_percent
 
 ---
 
-### Problema 4: Porta 3000 já em uso
+### Problema 4: Porta 3001 já em uso
 
-**Sintoma**: `Error: port 3000 already in use`
+**Sintoma**: `Error: port 3001 already in use`
 
 **Solução**:
 ```bash
-# Opção 1: Parar processo na porta 3000
-sudo lsof -ti:3000 | xargs kill -9
+# Opção 1: Parar processo na porta 3001
+sudo lsof -ti:3001 | xargs kill -9
 
 # Opção 2: Alterar porta do Grafana
 # Editar monitoring/docker-compose.monitoring.yml:
 #   ports:
-#     - "3001:3000"  ← Usar porta 3001
+#     - "3001:3001"  ← Usar porta 3001
 
 # Reiniciar
 docker compose -f monitoring/docker-compose.monitoring.yml up -d
@@ -554,7 +554,7 @@ docker restart wfo-grafana
 
 ### Links Úteis
 
-- **Grafana Dashboard**: http://localhost:3000/d/wfo-dashboard
+- **Grafana Dashboard**: http://localhost:3001/d/wfo-dashboard
 - **Prometheus UI**: http://localhost:9091
 - **Métricas Raw**: http://localhost:9090/metrics
 - **Health Check**: http://localhost:9090/health
@@ -588,7 +588,7 @@ docker compose -f monitoring/docker-compose.monitoring.yml down -v
 **Setup Inicial** (apenas 1ª vez):
 - [ ] Executar `wfo_simple.sh` para gerar history.csv
 - [ ] Iniciar stack: `docker compose -f monitoring/docker-compose.monitoring.yml up -d`
-- [ ] Acessar http://localhost:3000
+- [ ] Acessar http://localhost:3001
 - [ ] Login: admin/admin
 - [ ] Dashboard WFO disponível
 
