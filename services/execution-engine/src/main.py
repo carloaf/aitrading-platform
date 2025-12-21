@@ -35,11 +35,37 @@ _market_data_worker_running = False
 
 # Lista de símbolos para monitorar (pode ser configurada)
 DEFAULT_MARKET_SYMBOLS = [
-    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT",
-    "DOGEUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT", "MATICUSDT", "SHIBUSDT",
-    "LTCUSDT", "ATOMUSDT", "UNIUSDT", "XLMUSDT", "NEARUSDT", "ALGOUSDT",
-    "APTUSDT", "ARBUSDT", "OPUSDT", "INJUSDT", "SUIUSDT", "SEIUSDT",
-    "TIAUSDT", "WIFUSDT", "BONKUSDT", "PEPEUSDT", "FLOKIUSDT", "RENDERUSDT"
+    # Top 10 - Major Assets
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", 
+    "ADAUSDT", "DOGEUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT",
+    
+    # Top 20 - Large Cap
+    "TRXUSDT", "TONUSDT", "BCHUSDT", "ETCUSDT", "ICPUSDT",
+    "FILUSDT", "VETUSDT", "HBARUSDT", "MATICUSDT", "SHIBUSDT",
+    
+    # Top 40 - Mid Cap + Layer 2
+    "LTCUSDT", "ATOMUSDT", "UNIUSDT", "XLMUSDT", "NEARUSDT",
+    "IMXUSDT", "STXUSDT", "MANTAUSDT", "METISUSDT", "ZKUSDT",
+    "STRKUSDT", "LOOMUSDT", "SKLUSDT", "CELOUSDT", "ZETAUSDT",
+    "CYBERUSDT", "GLMUSDT", "CELRUSDT", "CTSIUSDT",
+    
+    # DeFi Protocol Tokens
+    "AAVEUSDT", "MKRUSDT", "CRVUSDT", "SNXUSDT", "COMPUSDT",
+    "LDOUSDT", "SUSHIUSDT", "1INCHUSDT", "DYDXUSDT", "GMXUSDT",
+    "PENDLEUSDT", "JUPUSDT", "RUNEUSDT", "YFIUSDT", "BALUSDT",
+    
+    # AI / Oracle / Data
+    "FETUSDT", "AGIXUSDT", "OCEANUSDT", "TAOUSDT", "WLDUSDT",
+    "ARKMUSDT", "GRTUSDT", "NMRUSDT", "IOTXUSDT", "RENDERUSDT",
+    "THETAUSDT", "ARUSDT",
+    
+    # Alt Layer-1 / Infrastructure
+    "KASUSDT", "ROSEUSDT", "FTMUSDT", "EGLDUSDT", "FLOWUSDT",
+    
+    # Hot / Trending
+    "APTUSDT", "ARBUSDT", "OPUSDT", "INJUSDT", "SUIUSDT",
+    "SEIUSDT", "TIAUSDT", "ALGOUSDT", "WIFUSDT", "BONKUSDT",
+    "PEPEUSDT", "FLOKIUSDT"
 ]
 
 async def get_market_data_pool():
@@ -52,9 +78,10 @@ async def get_market_data_pool():
     return _market_data_pool
 
 async def init_market_data_cache_table():
-    """Cria tabela de cache de market data se não existir"""
+    """Cria tabelas de market data se não existirem"""
     pool = await get_market_data_pool()
     async with pool.acquire() as conn:
+        # Tabela de cache (tempo real)
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS market_data_cache (
                 symbol VARCHAR(20) PRIMARY KEY,
@@ -66,23 +93,68 @@ async def init_market_data_cache_table():
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             )
         """)
-        # Criar índice para consultas rápidas
         await conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_market_data_updated 
             ON market_data_cache(updated_at DESC)
         """)
-        logger.info("[MarketDataCache] Tabela market_data_cache criada/verificada")
+        
+        # Tabela de símbolos monitorados (dinâmicos)
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS monitored_symbols (
+                symbol VARCHAR(20) PRIMARY KEY,
+                active BOOLEAN NOT NULL DEFAULT true,
+                added_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                notes TEXT
+            )
+        """)
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_monitored_symbols_active 
+            ON monitored_symbols(active) WHERE active = true
+        """)
+        
+        # Verificar se há símbolos - se não, inserir os padrão
+        count = await conn.fetchval("SELECT COUNT(*) FROM monitored_symbols")
+        if count == 0:
+            logger.info("[MarketDataCache] Inserindo símbolos padrão...")
+            for symbol in DEFAULT_MARKET_SYMBOLS:
+                await conn.execute("""
+                    INSERT INTO monitored_symbols (symbol, active, notes)
+                    VALUES ($1, true, 'Default symbol')
+                    ON CONFLICT (symbol) DO NOTHING
+                """, symbol)
+            logger.info(f"[MarketDataCache] {len(DEFAULT_MARKET_SYMBOLS)} símbolos padrão inseridos")
+        
+        logger.info("[MarketDataCache] Tabelas criadas/verificadas")
+
+async def get_active_symbols() -> List[str]:
+    """Busca lista de símbolos ativos do banco de dados"""
+    try:
+        pool = await get_market_data_pool()
+        async with pool.acquire() as conn:
+            rows = await conn.fetch("""
+                SELECT symbol FROM monitored_symbols 
+                WHERE active = true 
+                ORDER BY symbol
+            """)
+            symbols = [row['symbol'] for row in rows]
+            return symbols if symbols else DEFAULT_MARKET_SYMBOLS
+    except Exception as e:
+        logger.warning(f"[MarketDataCache] Erro ao buscar símbolos ativos: {e}. Usando DEFAULT.")
+        return DEFAULT_MARKET_SYMBOLS
 
 async def update_market_data_cache(symbols: List[str] = None):
     """
     Background worker: busca dados da Binance e atualiza o banco.
+    Salva em market_data_cache (tempo real) E market_data (histórico).
     Chamado periodicamente pelo worker.
     """
     import ta
     import pandas as pd
+    from datetime import datetime
     
     if symbols is None:
-        symbols = DEFAULT_MARKET_SYMBOLS
+        symbols = await get_active_symbols()
     
     try:
         exchange = await get_market_data_exchange()
@@ -96,6 +168,10 @@ async def update_market_data_cache(symbols: List[str] = None):
                 try:
                     ccxt_symbol = symbol.replace('USDT', '/USDT')
                     ohlcv = await exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=30)
+                    
+                    if not ohlcv or len(ohlcv) == 0:
+                        logger.warning(f"[MarketDataCache] Sem dados OHLCV para {symbol}")
+                        return None
                     
                     df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                     df['rsi'] = ta.momentum.rsi(df['close'], window=14)
@@ -121,13 +197,24 @@ async def update_market_data_cache(symbols: List[str] = None):
                         proximity = int((current_rsi - 65) * 8)
                         trend = 'watching_bearish'
                     
+                    # Retornar dados completos (cache + histórico)
                     return {
                         'symbol': ccxt_symbol,
+                        'db_symbol': symbol,  # Formato para banco (BTCUSDT)
                         'price': round(current_price, 2 if current_price >= 1 else 6),
                         'change_24h': round(change_24h, 2),
                         'rsi': round(current_rsi, 1),
                         'proximity': proximity,
-                        'trend': trend
+                        'trend': trend,
+                        # Dados históricos do último candle
+                        'ohlcv': {
+                            'timestamp': ohlcv[-1][0],  # Timestamp em ms
+                            'open': float(ohlcv[-1][1]),
+                            'high': float(ohlcv[-1][2]),
+                            'low': float(ohlcv[-1][3]),
+                            'close': float(ohlcv[-1][4]),
+                            'volume': float(ohlcv[-1][5])
+                        }
                     }
                 except Exception as e:
                     logger.warning(f"[MarketDataCache] Erro ao buscar {symbol}: {e}")
@@ -137,11 +224,15 @@ async def update_market_data_cache(symbols: List[str] = None):
         tasks = [fetch_single_symbol(s) for s in symbols]
         results = await asyncio.gather(*tasks)
         
-        # Salvar no banco
+        # Salvar no banco (cache + histórico)
         valid_results = [r for r in results if r is not None]
         
         async with pool.acquire() as conn:
+            cache_count = 0
+            historical_count = 0
+            
             for data in valid_results:
+                # 1. Salvar no cache (tempo real)
                 await conn.execute("""
                     INSERT INTO market_data_cache (symbol, price, change_24h, rsi, proximity, trend, updated_at)
                     VALUES ($1, $2, $3, $4, $5, $6, NOW())
@@ -154,9 +245,30 @@ async def update_market_data_cache(symbols: List[str] = None):
                         updated_at = NOW()
                 """, data['symbol'], data['price'], data['change_24h'], 
                     data['rsi'], data['proximity'], data['trend'])
+                cache_count += 1
+                
+                # 2. Salvar dados históricos (OHLCV) na tabela market_data
+                if 'ohlcv' in data:
+                    ohlcv = data['ohlcv']
+                    timestamp_dt = datetime.fromtimestamp(ohlcv['timestamp'] / 1000)
+                    
+                    await conn.execute("""
+                        INSERT INTO market_data (symbol, timestamp, price, open, high, low, close, volume, source)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        ON CONFLICT (symbol, timestamp) DO UPDATE SET
+                            price = EXCLUDED.price,
+                            open = EXCLUDED.open,
+                            high = EXCLUDED.high,
+                            low = EXCLUDED.low,
+                            close = EXCLUDED.close,
+                            volume = EXCLUDED.volume
+                    """, data['db_symbol'], timestamp_dt, ohlcv['close'],
+                        ohlcv['open'], ohlcv['high'], ohlcv['low'], 
+                        ohlcv['close'], ohlcv['volume'], 'binance_1h')
+                    historical_count += 1
         
-        logger.info(f"[MarketDataCache] Atualizado {len(valid_results)}/{len(symbols)} símbolos no banco")
-        return len(valid_results)
+        logger.info(f"[MarketDataCache] Atualizado {cache_count}/{len(symbols)} símbolos (cache) + {historical_count} candles históricos")
+        return cache_count
         
     except Exception as e:
         logger.error(f"[MarketDataCache] Erro no update: {e}")
@@ -315,6 +427,219 @@ async def shutdown_event():
     logger.info("🛑 Execution Engine shutdown event")
     await stop_market_data_worker()
     logger.info("✅ Market Data Worker parado")
+
+
+# ==========================================
+# SYMBOLS MANAGEMENT API (Dynamic Symbols)
+# ==========================================
+
+class AddSymbolRequest(BaseModel):
+    symbol: str = Field(..., description="Symbol to add (e.g., BTCUSDT)")
+    notes: Optional[str] = Field(None, description="Optional notes about the symbol")
+
+class SymbolResponse(BaseModel):
+    symbol: str
+    active: bool
+    added_at: datetime
+    updated_at: datetime
+    notes: Optional[str] = None
+
+@app.get("/api/symbols", response_model=List[SymbolResponse])
+async def get_monitored_symbols(active_only: bool = True):
+    """
+    Lista todos os símbolos monitorados.
+    
+    Query params:
+    - active_only: Se True, retorna apenas símbolos ativos (default: True)
+    """
+    try:
+        pool = await get_market_data_pool()
+        async with pool.acquire() as conn:
+            if active_only:
+                query = """
+                    SELECT symbol, active, added_at, updated_at, notes 
+                    FROM monitored_symbols 
+                    WHERE active = true 
+                    ORDER BY symbol
+                """
+            else:
+                query = """
+                    SELECT symbol, active, added_at, updated_at, notes 
+                    FROM monitored_symbols 
+                    ORDER BY active DESC, symbol
+                """
+            
+            rows = await conn.fetch(query)
+            
+            symbols = [
+                SymbolResponse(
+                    symbol=row['symbol'],
+                    active=row['active'],
+                    added_at=row['added_at'],
+                    updated_at=row['updated_at'],
+                    notes=row['notes']
+                )
+                for row in rows
+            ]
+            
+            return symbols
+    except Exception as e:
+        logger.error(f"Erro ao buscar símbolos: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/symbols", response_model=SymbolResponse)
+async def add_monitored_symbol(request: AddSymbolRequest):
+    """
+    Adiciona um novo símbolo para monitoramento.
+    
+    Body:
+    - symbol: Símbolo a adicionar (ex: BTCUSDT)
+    - notes: Notas opcionais sobre o símbolo
+    """
+    try:
+        # Validar formato do símbolo (deve terminar com USDT)
+        if not request.symbol.endswith('USDT'):
+            raise HTTPException(
+                status_code=400, 
+                detail="Símbolo deve terminar com USDT (ex: BTCUSDT)"
+            )
+        
+        # Validar se símbolo existe na Binance
+        try:
+            exchange = await get_market_data_exchange()
+            ccxt_symbol = request.symbol.replace('USDT', '/USDT')
+            await exchange.fetch_ticker(ccxt_symbol)
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Símbolo {request.symbol} não encontrado na Binance: {str(e)}"
+            )
+        
+        # Inserir no banco
+        pool = await get_market_data_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow("""
+                INSERT INTO monitored_symbols (symbol, active, notes, added_at, updated_at)
+                VALUES ($1, true, $2, NOW(), NOW())
+                ON CONFLICT (symbol) DO UPDATE SET
+                    active = true,
+                    notes = EXCLUDED.notes,
+                    updated_at = NOW()
+                RETURNING symbol, active, added_at, updated_at, notes
+            """, request.symbol, request.notes)
+            
+            logger.info(f"✅ Símbolo {request.symbol} adicionado ao monitoramento")
+            
+            return SymbolResponse(
+                symbol=row['symbol'],
+                active=row['active'],
+                added_at=row['added_at'],
+                updated_at=row['updated_at'],
+                notes=row['notes']
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao adicionar símbolo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/symbols/{symbol}")
+async def remove_monitored_symbol(symbol: str, permanent: bool = False):
+    """
+    Remove um símbolo do monitoramento.
+    
+    Path params:
+    - symbol: Símbolo a remover (ex: BTCUSDT)
+    
+    Query params:
+    - permanent: Se True, deleta do banco. Se False, apenas desativa (default: False)
+    """
+    try:
+        pool = await get_market_data_pool()
+        async with pool.acquire() as conn:
+            if permanent:
+                # Deletar permanentemente
+                result = await conn.execute("""
+                    DELETE FROM monitored_symbols WHERE symbol = $1
+                """, symbol)
+                
+                if result == "DELETE 0":
+                    raise HTTPException(status_code=404, detail=f"Símbolo {symbol} não encontrado")
+                
+                logger.info(f"🗑️ Símbolo {symbol} deletado permanentemente")
+                return {"status": "deleted", "symbol": symbol}
+            else:
+                # Apenas desativar
+                row = await conn.fetchrow("""
+                    UPDATE monitored_symbols 
+                    SET active = false, updated_at = NOW()
+                    WHERE symbol = $1
+                    RETURNING symbol
+                """, symbol)
+                
+                if not row:
+                    raise HTTPException(status_code=404, detail=f"Símbolo {symbol} não encontrado")
+                
+                logger.info(f"⏸️ Símbolo {symbol} desativado")
+                return {"status": "deactivated", "symbol": symbol}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao remover símbolo: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/symbols/stats")
+async def get_symbols_stats():
+    """
+    Retorna estatísticas dos símbolos monitorados.
+    """
+    try:
+        pool = await get_market_data_pool()
+        async with pool.acquire() as conn:
+            stats = await conn.fetchrow("""
+                SELECT 
+                    COUNT(*) as total_symbols,
+                    COUNT(*) FILTER (WHERE active = true) as active_symbols,
+                    COUNT(*) FILTER (WHERE active = false) as inactive_symbols,
+                    MIN(added_at) as first_added,
+                    MAX(added_at) as last_added
+                FROM monitored_symbols
+            """)
+            
+            # Buscar símbolos com mais dados históricos
+            top_symbols = await conn.fetch("""
+                SELECT 
+                    md.symbol,
+                    COUNT(*) as candle_count,
+                    MIN(md.timestamp) as oldest_data,
+                    MAX(md.timestamp) as latest_data
+                FROM market_data md
+                JOIN monitored_symbols ms ON md.symbol = ms.symbol
+                WHERE ms.active = true
+                GROUP BY md.symbol
+                ORDER BY candle_count DESC
+                LIMIT 10
+            """)
+            
+            return {
+                "total_symbols": stats['total_symbols'],
+                "active_symbols": stats['active_symbols'],
+                "inactive_symbols": stats['inactive_symbols'],
+                "first_added": stats['first_added'],
+                "last_added": stats['last_added'],
+                "top_symbols_by_data": [
+                    {
+                        "symbol": row['symbol'],
+                        "candle_count": row['candle_count'],
+                        "oldest_data": row['oldest_data'],
+                        "latest_data": row['latest_data']
+                    }
+                    for row in top_symbols
+                ]
+            }
+    except Exception as e:
+        logger.error(f"Erro ao buscar estatísticas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==========================================
