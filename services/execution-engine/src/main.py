@@ -12,17 +12,229 @@ import logging
 import asyncio
 import os
 import numpy as np
+import asyncpg
+import json
 
 from order_manager import OrderManager, OrderSide, OrderType
 from strategy_executor import StrategyExecutor
 from auto_strategy_selector import AutoStrategySelector
 from autotrade_manager import AutoTradeManager, AutoTradeSignalData
+import ccxt.async_support as ccxt_async
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ==========================================
+# MARKET DATA CACHE SYSTEM (Database-backed)
+# ==========================================
+
+# Pool de conexões global para market data cache
+_market_data_pool: Optional[asyncpg.Pool] = None
+_market_data_worker_task: Optional[asyncio.Task] = None
+_market_data_worker_running = False
+
+# Lista de símbolos para monitorar (pode ser configurada)
+DEFAULT_MARKET_SYMBOLS = [
+    "BTCUSDT", "ETHUSDT", "BNBUSDT", "SOLUSDT", "XRPUSDT", "ADAUSDT",
+    "DOGEUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT", "MATICUSDT", "SHIBUSDT",
+    "LTCUSDT", "ATOMUSDT", "UNIUSDT", "XLMUSDT", "NEARUSDT", "ALGOUSDT",
+    "APTUSDT", "ARBUSDT", "OPUSDT", "INJUSDT", "SUIUSDT", "SEIUSDT",
+    "TIAUSDT", "WIFUSDT", "BONKUSDT", "PEPEUSDT", "FLOKIUSDT", "RENDERUSDT"
+]
+
+async def get_market_data_pool():
+    """Retorna pool de conexões para market data cache"""
+    global _market_data_pool
+    if _market_data_pool is None:
+        db_url = f"postgresql://{os.getenv('TIMESCALE_USER', 'crypto_user')}:{os.getenv('TIMESCALE_PASSWORD', 'crypto_pass')}@{os.getenv('TIMESCALE_HOST', 'timescaledb')}:{os.getenv('TIMESCALE_PORT', '5432')}/{os.getenv('TIMESCALE_DB', 'crypto_market')}"
+        _market_data_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10)
+        logger.info("[MarketDataCache] Pool de conexões criado")
+    return _market_data_pool
+
+async def init_market_data_cache_table():
+    """Cria tabela de cache de market data se não existir"""
+    pool = await get_market_data_pool()
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS market_data_cache (
+                symbol VARCHAR(20) PRIMARY KEY,
+                price DECIMAL(20, 8),
+                change_24h DECIMAL(10, 4),
+                rsi DECIMAL(5, 2),
+                proximity INTEGER,
+                trend VARCHAR(30),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            )
+        """)
+        # Criar índice para consultas rápidas
+        await conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_market_data_updated 
+            ON market_data_cache(updated_at DESC)
+        """)
+        logger.info("[MarketDataCache] Tabela market_data_cache criada/verificada")
+
+async def update_market_data_cache(symbols: List[str] = None):
+    """
+    Background worker: busca dados da Binance e atualiza o banco.
+    Chamado periodicamente pelo worker.
+    """
+    import ta
+    import pandas as pd
+    
+    if symbols is None:
+        symbols = DEFAULT_MARKET_SYMBOLS
+    
+    try:
+        exchange = await get_market_data_exchange()
+        pool = await get_market_data_pool()
+        
+        # Semáforo para limitar chamadas paralelas à Binance
+        semaphore = asyncio.Semaphore(3)
+        
+        async def fetch_single_symbol(symbol):
+            async with semaphore:
+                try:
+                    ccxt_symbol = symbol.replace('USDT', '/USDT')
+                    ohlcv = await exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=30)
+                    
+                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    df['rsi'] = ta.momentum.rsi(df['close'], window=14)
+                    current_rsi = float(df['rsi'].iloc[-1])
+                    current_price = float(df['close'].iloc[-1])
+                    price_24h_ago = float(df['close'].iloc[-24]) if len(df) >= 24 else float(df['close'].iloc[0])
+                    change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
+                    
+                    # Calcular proximidade de alerta
+                    proximity = 0
+                    trend = 'neutral'
+                    
+                    if current_rsi <= 30:
+                        proximity = min(100, int((30 - current_rsi) * 5 + 50))
+                        trend = 'forming_bullish'
+                    elif current_rsi >= 70:
+                        proximity = min(100, int((current_rsi - 70) * 5 + 50))
+                        trend = 'forming_bearish'
+                    elif current_rsi <= 35:
+                        proximity = int((35 - current_rsi) * 8)
+                        trend = 'watching_bullish'
+                    elif current_rsi >= 65:
+                        proximity = int((current_rsi - 65) * 8)
+                        trend = 'watching_bearish'
+                    
+                    return {
+                        'symbol': ccxt_symbol,
+                        'price': round(current_price, 2 if current_price >= 1 else 6),
+                        'change_24h': round(change_24h, 2),
+                        'rsi': round(current_rsi, 1),
+                        'proximity': proximity,
+                        'trend': trend
+                    }
+                except Exception as e:
+                    logger.warning(f"[MarketDataCache] Erro ao buscar {symbol}: {e}")
+                    return None
+        
+        # Buscar todos os símbolos em paralelo (com limite de 3)
+        tasks = [fetch_single_symbol(s) for s in symbols]
+        results = await asyncio.gather(*tasks)
+        
+        # Salvar no banco
+        valid_results = [r for r in results if r is not None]
+        
+        async with pool.acquire() as conn:
+            for data in valid_results:
+                await conn.execute("""
+                    INSERT INTO market_data_cache (symbol, price, change_24h, rsi, proximity, trend, updated_at)
+                    VALUES ($1, $2, $3, $4, $5, $6, NOW())
+                    ON CONFLICT (symbol) DO UPDATE SET
+                        price = EXCLUDED.price,
+                        change_24h = EXCLUDED.change_24h,
+                        rsi = EXCLUDED.rsi,
+                        proximity = EXCLUDED.proximity,
+                        trend = EXCLUDED.trend,
+                        updated_at = NOW()
+                """, data['symbol'], data['price'], data['change_24h'], 
+                    data['rsi'], data['proximity'], data['trend'])
+        
+        logger.info(f"[MarketDataCache] Atualizado {len(valid_results)}/{len(symbols)} símbolos no banco")
+        return len(valid_results)
+        
+    except Exception as e:
+        logger.error(f"[MarketDataCache] Erro no update: {e}")
+        return 0
+
+async def market_data_worker():
+    """
+    Background worker que atualiza market data cache a cada 60 segundos.
+    Executado como task assíncrona no startup.
+    """
+    global _market_data_worker_running
+    _market_data_worker_running = True
+    
+    logger.info("[MarketDataWorker] Iniciando worker de atualização de market data...")
+    
+    # Primeira atualização imediata
+    await update_market_data_cache()
+    
+    while _market_data_worker_running:
+        try:
+            await asyncio.sleep(60)  # Atualiza a cada 60 segundos
+            if _market_data_worker_running:
+                await update_market_data_cache()
+        except asyncio.CancelledError:
+            logger.info("[MarketDataWorker] Worker cancelado")
+            break
+        except Exception as e:
+            logger.error(f"[MarketDataWorker] Erro: {e}")
+            await asyncio.sleep(10)  # Espera 10s antes de tentar novamente
+
+async def start_market_data_worker():
+    """Inicia o background worker de market data"""
+    global _market_data_worker_task
+    
+    # Inicializar tabela
+    await init_market_data_cache_table()
+    
+    # Iniciar worker
+    _market_data_worker_task = asyncio.create_task(market_data_worker())
+    logger.info("[MarketDataWorker] Worker iniciado como background task")
+
+async def stop_market_data_worker():
+    """Para o background worker de market data"""
+    global _market_data_worker_running, _market_data_worker_task
+    
+    _market_data_worker_running = False
+    if _market_data_worker_task:
+        _market_data_worker_task.cancel()
+        try:
+            await _market_data_worker_task
+        except asyncio.CancelledError:
+            pass
+    logger.info("[MarketDataWorker] Worker parado")
+
 # AutoTrade Manager (global instance)
 autotrade_manager: Optional[AutoTradeManager] = None
+
+# Exchange singleton para market-data (evita criar múltiplas conexões)
+_market_data_exchange = None
+_market_data_lock = asyncio.Lock()
+
+# Mutex global para fila de requisições de market-data (previne paralelismo entre chamadas)
+_market_data_handler_lock = asyncio.Lock()
+
+async def get_market_data_exchange():
+    """Retorna singleton do exchange para market-data com lock para thread-safety"""
+    global _market_data_exchange
+    
+    async with _market_data_lock:
+        if _market_data_exchange is None:
+            import ccxt.async_support as ccxt_async
+            _market_data_exchange = ccxt_async.binance({
+                'enableRateLimit': True,
+                'rateLimit': 500,
+                'options': {'defaultType': 'spot'}
+            })
+            logger.info("[MarketData] Exchange singleton criado")
+        return _market_data_exchange
 
 
 # Função para converter tipos numpy para tipos Python nativos
@@ -93,28 +305,22 @@ async def get_autotrade_manager():
 # Lifecycle events
 @app.on_event("startup")
 async def startup_event():
-    """Inicializa conexões ao iniciar o app"""
-    logger.info("🚀 Iniciando Execution Engine...")
-    try:
-        await get_autotrade_manager()
-        logger.info("✅ Startup completo - AutoTradeManager disponível")
-    except Exception as e:
-        logger.error(f"❌ ERRO NO STARTUP: {e}", exc_info=True)
-
+    logger.info("🚀 Execution Engine startup event")
+    # Iniciar background worker de market data cache
+    await start_market_data_worker()
+    logger.info("✅ Market Data Worker iniciado")
 
 @app.on_event("shutdown")
 async def shutdown_event():
-    """Fecha conexões ao desligar o app"""
-    global autotrade_manager
-    
-    logger.info("⏹️ Encerrando Execution Engine...")
-    
-    if autotrade_manager:
-        await autotrade_manager.disconnect()
-        logger.info("✅ AutoTradeManager desconectado")
+    logger.info("🛑 Execution Engine shutdown event")
+    await stop_market_data_worker()
+    logger.info("✅ Market Data Worker parado")
 
 
-# Models
+# ==========================================
+# PAPER TRADING REQUEST MODELS
+# ==========================================
+
 class StartPaperTradingRequest(BaseModel):
     session_id: str
     strategy_name: str
@@ -134,119 +340,6 @@ class ManualOrderRequest(BaseModel):
     quantity: float
     price: Optional[float] = None
     stop_price: Optional[float] = None
-
-
-# Endpoints
-@app.get("/health")
-async def health_check():
-    """Health check"""
-    return {
-        "status": "healthy",
-        "service": "execution-engine",
-        "timestamp": datetime.now().isoformat(),
-        "active_sessions": len(executors)
-    }
-
-
-# ==========================================
-# MARKET REGIME DETECTOR
-# ==========================================
-
-class MarketRegimeRequest(BaseModel):
-    """Requisição para detectar regime de mercado"""
-    symbol: str = "BTCUSDT"
-    interval: str = "1h"
-    lookback_days: int = 90  # Período para análise
-
-
-@app.post("/api/market-regime/detect")
-async def detect_market_regime(request: MarketRegimeRequest):
-    """
-    Detecta automaticamente o regime de mercado (Bull/Bear/Sideways/Volatile)
-    
-    Analisa múltiplos indicadores técnicos e retorna:
-    - Regime detectado
-    - Confiança da classificação
-    - Força da tendência
-    - Volatilidade
-    - Estratégias recomendadas
-    """
-    import asyncpg
-    from market_regime_detector import MarketRegimeDetector
-    from datetime import timedelta
-    
-    try:
-        logger.info(f"🔍 Detectando regime de mercado: {request.symbol} ({request.interval})")
-        
-        # 1. Buscar dados históricos do TimescaleDB
-        conn_string = os.getenv('TIMESCALE_URL', 
-            'postgresql://crypto_user:crypto_pass@timescaledb:5432/crypto_market')
-        
-        conn = await asyncpg.connect(conn_string)
-        
-        # Calcular data inicial
-        end_date = datetime.utcnow()
-        start_date = end_date - timedelta(days=request.lookback_days)
-        
-        query = """
-            SELECT 
-                timestamp,
-                open_price as open,
-                high_price as high,
-                low_price as low,
-                close_price as close,
-                volume
-            FROM market_data_realtime
-            WHERE symbol = $1 
-            AND interval_type = $2
-            AND timestamp >= $3
-            AND timestamp <= $4
-            ORDER BY timestamp ASC
-        """
-        
-        rows = await conn.fetch(query, request.symbol, request.interval, start_date, end_date)
-        await conn.close()
-        
-        if len(rows) < 200:
-            raise HTTPException(
-                status_code=400, 
-                detail=f"Dados insuficientes: {len(rows)} candles. Mínimo: 200"
-            )
-        
-        # 2. Converter para DataFrame
-        import pandas as pd
-        df = pd.DataFrame(rows, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-        
-        logger.info(f"📊 {len(df)} candles carregados ({df['timestamp'].min()} a {df['timestamp'].max()})")
-        
-        # 3. Executar detecção de regime
-        detector = MarketRegimeDetector()
-        analysis = detector.analyze(df)
-        
-        result = analysis.to_dict()
-        
-        # Adicionar informações adicionais
-        result['metadata'] = {
-            'symbol': request.symbol,
-            'interval': request.interval,
-            'lookback_days': request.lookback_days,
-            'candles_analyzed': len(df),
-            'analysis_date': datetime.utcnow().isoformat(),
-            'price_current': float(df['close'].iloc[-1]),
-            'price_7d_ago': float(df['close'].iloc[-7]) if len(df) >= 7 else None,
-            'price_30d_ago': float(df['close'].iloc[-30]) if len(df) >= 30 else None
-        }
-        
-        logger.info(f"✅ Regime detectado: {result['regime']} ({result['confidence']:.1f}% confiança)")
-        
-        return result
-        
-    except asyncpg.PostgresError as e:
-        logger.error(f"Erro no banco de dados: {e}")
-        raise HTTPException(status_code=500, detail=f"Erro ao buscar dados: {str(e)}")
-    except Exception as e:
-        logger.error(f"Erro na detecção de regime: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ==========================================
@@ -2607,31 +2700,55 @@ async def init_rsi_scanner(request: ScannerConfigRequest):
 @app.post("/api/scanner/scan")
 async def run_scan(request: ScanRequest = None):
     """
-    Executa um scan imediato em todos os símbolos configurados
+    VERSÃO OTIMIZADA: Retorna status do cache sem fazer scan completo
     
-    Retorna lista de sinais de divergência RSI detectados, ordenados por força.
+    O scan completo de 80 símbolos leva >60s. Esta versão retorna
+    apenas o status atual do cache de forma instantânea.
     
-    Exemplo de resposta:
-    ```json
-    {
-      "scan_count": 1,
-      "symbols_scanned": 10,
-      "signals_found": 2,
-      "signals": [
-        {
-          "symbol": "ETH/USDT",
-          "type": "bullish_divergence",
-          "direction": "BUY",
-          "strength": 0.75,
-          "price": 2930.50,
-          "entry": 2930.50,
-          "stop_loss": 2880.30,
-          "take_profit": 3030.90,
-          "risk_reward": 2.0
+    Para scan completo, use /api/scanner/scan-full (background task).
+    """
+    global rsi_scanner
+    
+    try:
+        # Retornar status rápido do cache ao invés de fazer scan completo
+        if rsi_scanner is None:
+            return {
+                'success': True,
+                'scan_count': 0,
+                'last_scan_time': None,
+                'symbols_scanned': 0,
+                'timeframes': [],
+                'signals_found': 0,
+                'signals': [],
+                'note': 'Scanner não inicializado. Use /api/scanner/init primeiro.'
+            }
+        
+        # Retornar último resultado do cache (instantâneo)
+        return {
+            'success': True,
+            'scan_count': rsi_scanner.scan_count if hasattr(rsi_scanner, 'scan_count') else 0,
+            'last_scan_time': rsi_scanner.last_scan_time if hasattr(rsi_scanner, 'last_scan_time') else None,
+            'symbols_scanned': len(rsi_scanner.config.symbols) if rsi_scanner.config else 0,
+            'timeframes': rsi_scanner.config.timeframes if rsi_scanner.config else [],
+            'signals_found': len(rsi_scanner.active_signals) if hasattr(rsi_scanner, 'active_signals') else 0,
+            'signals': rsi_scanner.active_signals[:10] if hasattr(rsi_scanner, 'active_signals') else [],
+            'note': 'Dados do cache (último scan). Para scan completo use /api/scanner/scan-full'
         }
-      ]
-    }
-    ```
+        
+    except Exception as e:
+        logger.error(f"Erro ao buscar status do scan: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/scanner/scan-full")
+async def run_full_scan(request: ScanRequest = None, background_tasks: BackgroundTasks = None):
+    """
+    Executa um scan completo em todos os símbolos (LENTO - >60s)
+    
+    Esta versão faz scan de 80 símbolos na Binance e pode demorar >60s.
+    Use /api/scanner/scan para obter status instantâneo do cache.
     """
     global rsi_scanner
     
@@ -2645,7 +2762,7 @@ async def run_scan(request: ScanRequest = None):
                 config.timeframes = request.timeframes
             rsi_scanner = MultiSymbolScanner(config)
         
-        # Executar scan
+        # Executar scan completo
         result = await rsi_scanner.scan_once()
         
         return {
@@ -2812,167 +2929,137 @@ async def stop_continuous_scanning():
 @app.get("/api/scanner/market-data")
 async def get_scanner_market_data(symbols: str = "BTCUSDT,ETHUSDT,SOLUSDT,BNBUSDT,XRPUSDT"):
     """
-    Retorna dados de mercado em tempo real para os símbolos monitorados
-    Inclui preço, RSI, variação e proximidade de alerta
+    Retorna dados de mercado do cache do banco de dados.
+    
+    ARQUITETURA v3 (Database-backed):
+    - Background worker atualiza dados da Binance a cada 60s
+    - Este endpoint apenas lê do banco (< 10ms)
+    - Elimina problemas de timeout/AbortError no frontend
+    - Suporta múltiplos clientes simultâneos sem sobrecarga
     
     Parâmetros:
     - symbols: Lista de símbolos separados por vírgula
-    
-    OTIMIZAÇÃO v2: 
-    - Cache 60s (2x maior)
-    - Semáforo para limitar concorrência (máx 2 requests simultâneas)
-    - Retry logic com backoff exponencial (3 tentativas)
-    - Delay entre batches para respeitar rate limits
     """
-    import ccxt.async_support as ccxt_async
-    import ta
-    import pandas as pd
-    import asyncio
-    
-    # Cache em memória (120 segundos TTL - aumentado novamente)
-    cache_key = f"market_data_{symbols}"
-    cache_ttl = 120  # segundos (dobrado de 60s para reduzir chamadas à Binance)
-    
-    # Verificar cache global
-    if not hasattr(get_scanner_market_data, '_cache'):
-        get_scanner_market_data._cache = {}
-    
-    cache = get_scanner_market_data._cache
-    now = datetime.utcnow().timestamp()
-    
-    if cache_key in cache:
-        cached_data, cached_time = cache[cache_key]
-        if now - cached_time < cache_ttl:
-            logger.info(f"[MarketData] Cache hit (age: {now - cached_time:.1f}s)")
-            return cached_data
-    
     try:
-        exchange = ccxt_async.binance({
-            'enableRateLimit': True,
-            'rateLimit': 500,  # Delay mínimo entre requests (ms)
-            'options': {'defaultType': 'spot'}
-        })
-        symbol_list = [s.strip() for s in symbols.split(',')][:100]  # Máx 100 símbolos (aumentado, com rate limit controlado)
-        logger.info(f"[MarketData] Processing {len(symbol_list)} symbols (max 100)")
+        pool = await get_market_data_pool()
+        symbol_list = [s.strip().replace('USDT', '/USDT') for s in symbols.split(',')]
         
-        # Semáforo para limitar chamadas paralelas
-        semaphore = asyncio.Semaphore(3)  # 3 simultâneas para melhor throughput
-        
-        async def fetch_symbol_data_with_retry(symbol, max_retries=3):
-            """Fetch com retry e backoff exponencial"""
-            for attempt in range(max_retries):
-                async with semaphore:
-                    try:
-                        ccxt_symbol = symbol.replace('USDT', '/USDT')
-                        
-                        # Delay progressivo entre tentativas
-                        if attempt > 0:
-                            delay = 0.5 * (2 ** attempt)  # 0.5s, 1s, 2s
-                            await asyncio.sleep(delay)
-                            logger.debug(f"[MarketData] Retry {attempt+1}/{max_retries} for {symbol} after {delay}s")
-                        
-                        ohlcv = await exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=30)
-                        
-                        df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
-                        
-                        # Calcular RSI
-                        df['rsi'] = ta.momentum.rsi(df['close'], window=14)
-                        current_rsi = df['rsi'].iloc[-1]
-                        
-                        # Preço atual e variação 24h
-                        current_price = df['close'].iloc[-1]
-                        price_24h_ago = df['close'].iloc[-24] if len(df) >= 24 else df['close'].iloc[0]
-                        change_24h = ((current_price - price_24h_ago) / price_24h_ago) * 100
-                        
-                        # Calcular proximidade de alerta
-                        proximity = 0
-                        trend = 'neutral'
-                        
-                        if current_rsi <= 30:
-                            proximity = min(100, int((30 - current_rsi) * 5 + 50))
-                            trend = 'forming_bullish'
-                        elif current_rsi >= 70:
-                            proximity = min(100, int((current_rsi - 70) * 5 + 50))
-                            trend = 'forming_bearish'
-                        elif current_rsi <= 35:
-                            proximity = int((35 - current_rsi) * 8)
-                            trend = 'watching_bullish'
-                        elif current_rsi >= 65:
-                            proximity = int((current_rsi - 65) * 8)
-                            trend = 'watching_bearish'
-                        
-                        logger.debug(f"[MarketData] ✓ {symbol} fetched successfully on attempt {attempt+1}")
-                        
-                        return {
-                            'symbol': ccxt_symbol,
-                            'price': round(current_price, 2 if current_price >= 1 else 4),
-                            'change_24h': round(change_24h, 2),
-                            'rsi': round(current_rsi, 1),
-                            'proximity': proximity,
-                            'trend': trend
-                        }
-                        
-                    except ccxt_async.RateLimitExceeded as e:
-                        logger.warning(f"[MarketData] Rate limit exceeded for {symbol} (attempt {attempt+1}): {e}")
-                        if attempt == max_retries - 1:
-                            return None  # Última tentativa falhou
-                        continue  # Tentar novamente
-                        
-                    except Exception as e:
-                        logger.warning(f"[MarketData] Error fetching {symbol} (attempt {attempt+1}): {e}")
-                        if attempt == max_retries - 1:
-                            return None
-                        continue
+        async with pool.acquire() as conn:
+            # Buscar dados do cache
+            rows = await conn.fetch("""
+                SELECT symbol, price, change_24h, rsi, proximity, trend, updated_at
+                FROM market_data_cache
+                WHERE symbol = ANY($1)
+                ORDER BY proximity DESC
+            """, symbol_list)
             
-            return None  # Todas as tentativas falharam
-        
-        # Processar símbolos em batches de 5 com delay entre batches
-        batch_size = 5
-        all_results = []
-        
-        for i in range(0, len(symbol_list), batch_size):
-            batch = symbol_list[i:i+batch_size]
-            logger.info(f"[MarketData] Processing batch {i//batch_size + 1} ({len(batch)} symbols)")
+            if not rows:
+                # Se não houver dados no cache, retornar vazio (worker ainda não rodou)
+                return {
+                    'success': True,
+                    'timestamp': datetime.utcnow().isoformat(),
+                    'data': [],
+                    'count': 0,
+                    'requested': len(symbol_list),
+                    'success_rate': 0,
+                    'source': 'database',
+                    'message': 'Cache ainda não populado. Aguarde ~60s para primeira atualização.'
+                }
             
-            tasks = [fetch_symbol_data_with_retry(symbol) for symbol in batch]
-            batch_results = await asyncio.gather(*tasks)
-            all_results.extend(batch_results)
+            # Converter para formato esperado pelo frontend
+            market_data = []
+            for row in rows:
+                market_data.append({
+                    'symbol': row['symbol'],
+                    'price': float(row['price']) if row['price'] else 0,
+                    'change_24h': float(row['change_24h']) if row['change_24h'] else 0,
+                    'rsi': float(row['rsi']) if row['rsi'] else 50,
+                    'proximity': int(row['proximity']) if row['proximity'] else 0,
+                    'trend': row['trend'] or 'neutral'
+                })
             
-            # Delay entre batches (exceto no último)
-            if i + batch_size < len(symbol_list):
-                await asyncio.sleep(0.3)  # 300ms entre batches
-        
-        # Fechar conexão
-        await exchange.close()
-        
-        # Filtrar resultados válidos
-        market_data = [r for r in all_results if r is not None]
-        success_rate = len(market_data) / len(symbol_list) * 100 if symbol_list else 0
-        
-        # Ordenar por proximidade (maiores primeiro)
-        market_data.sort(key=lambda x: x['proximity'], reverse=True)
-        
-        response = {
-            'success': True,
-            'timestamp': datetime.utcnow().isoformat(),
-            'data': market_data,
-            'count': len(market_data),
-            'requested': len(symbol_list),
-            'success_rate': round(success_rate, 1)
-        }
-        
-        # Salvar no cache
-        cache[cache_key] = (response, now)
-        logger.info(f"[MarketData] Fetched {len(market_data)}/{len(symbol_list)} symbols ({success_rate:.1f}% success), cached for {cache_ttl}s")
-        
-        return response
-        
+            # Calcular idade do cache mais antigo
+            oldest_update = min(row['updated_at'] for row in rows) if rows else datetime.utcnow()
+            cache_age_seconds = (datetime.utcnow().replace(tzinfo=oldest_update.tzinfo) - oldest_update).total_seconds() if oldest_update.tzinfo else (datetime.utcnow() - oldest_update).total_seconds()
+            
+            success_rate = len(market_data) / len(symbol_list) * 100 if symbol_list else 0
+            
+            logger.info(f"[MarketData] Retornando {len(market_data)}/{len(symbol_list)} símbolos do banco (cache age: {cache_age_seconds:.0f}s)")
+            
+            return {
+                'success': True,
+                'timestamp': datetime.utcnow().isoformat(),
+                'data': market_data,
+                'count': len(market_data),
+                'requested': len(symbol_list),
+                'success_rate': round(success_rate, 1),
+                'source': 'database',
+                'cache_age_seconds': round(cache_age_seconds, 0)
+            }
+            
     except Exception as e:
-        logger.error(f"Erro ao buscar market data: {e}")
+        logger.error(f"[MarketData] Erro ao ler do banco: {e}")
         return {
             'success': False,
             'error': str(e),
-            'data': []
+            'data': [],
+            'source': 'database'
+        }
+
+
+@app.post("/api/scanner/market-data/refresh")
+async def refresh_market_data_cache():
+    """
+    Força atualização imediata do cache de market data.
+    Útil quando o usuário quer dados frescos sem esperar o ciclo de 60s.
+    """
+    try:
+        count = await update_market_data_cache()
+        return {
+            'success': True,
+            'message': f'Cache atualizado com {count} símbolos',
+            'updated_count': count
+        }
+    except Exception as e:
+        logger.error(f"[MarketData] Erro ao atualizar cache: {e}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
+
+
+@app.get("/api/scanner/market-data/status")
+async def get_market_data_cache_status():
+    """
+    Retorna status do sistema de cache de market data.
+    """
+    try:
+        pool = await get_market_data_pool()
+        
+        async with pool.acquire() as conn:
+            # Contar símbolos no cache
+            count = await conn.fetchval("SELECT COUNT(*) FROM market_data_cache")
+            
+            # Data da última atualização
+            last_update = await conn.fetchval("SELECT MAX(updated_at) FROM market_data_cache")
+            
+            # Símbolos disponíveis
+            symbols = await conn.fetch("SELECT symbol FROM market_data_cache ORDER BY symbol")
+            
+        return {
+            'success': True,
+            'worker_running': _market_data_worker_running,
+            'symbols_cached': count,
+            'last_update': last_update.isoformat() if last_update else None,
+            'available_symbols': [row['symbol'] for row in symbols],
+            'update_interval_seconds': 60
+        }
+        
+    except Exception as e:
+        logger.error(f"[MarketData] Erro ao obter status: {e}")
+        return {
+            'success': False,
+            'error': str(e)
         }
 
 

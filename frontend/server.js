@@ -218,16 +218,123 @@ app.get('/consolidated', (req, res) => {
 // ==========================================
 // RSI DIVERGENCE SCANNER DASHBOARD (PASSO 32)
 // ==========================================
+
+// Proxy para execution-engine scanner API (evita CORS - lê do banco TimescaleDB)
+// Handles both GET and POST requests
+app.get('/api/scanner/*', async (req, res) => {
+  try {
+    const apiPath = req.url;
+    const url = `${EXECUTION_ENGINE_URL}${apiPath}`;
+    
+    console.log(`[Proxy] ${req.method} ${apiPath} → ${url}`);
+    
+    const response = await axios.get(url, {
+      params: req.query,
+      timeout: 60000  // 60s timeout - scan pode demorar
+    });
+    
+    res.json(response.data);
+  } catch (error) {
+    console.error('[Proxy] Error:', error.message);
+    if (error.code === 'ECONNABORTED') {
+      console.error('[Proxy] Timeout! Considere dividir em grupos menores.');
+    }
+    res.status(error.response?.status || 500).json({
+      success: false,
+      error: error.message,
+      code: error.code
+    });
+  }
+});
+
+app.post('/api/scanner/*', async (req, res) => {
+  try {
+    const apiPath = req.url;
+    const url = `${EXECUTION_ENGINE_URL}${apiPath}`;
+    
+    console.log(`[Proxy] ${req.method} ${apiPath} → ${url}`);
+    
+    const response = await axios.post(url, req.body, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 60000  // 60s timeout - scan pode demorar
+    });
+    
+    res.json(response.data);
+  } catch (error) {
+    console.error('[Proxy] Error:', error.message);
+    if (error.code === 'ECONNABORTED') {
+      console.error('[Proxy] Timeout! Considere dividir em grupos menores.');
+    }
+    res.status(error.response?.status || 500).json({
+      success: false,
+      error: error.message,
+      code: error.code
+    });
+  }
+});
+
+// Proxy para AutoTrade API (POST requests)
+app.post('/api/autotrade/*', async (req, res) => {
+  try {
+    const apiPath = req.url;
+    const url = `${EXECUTION_ENGINE_URL}${apiPath}`;
+    
+    console.log(`[Proxy] ${req.method} ${apiPath} → ${url}`);
+    
+    const response = await axios.post(url, req.body, {
+      headers: { 'Content-Type': 'application/json' },
+      timeout: 30000  // 30s para autotrade
+    });
+    
+    res.json(response.data);
+  } catch (error) {
+    console.error('[Proxy] Error:', error.message);
+    if (error.code === 'ECONNABORTED') {
+      console.error('[Proxy] Timeout ao acessar AutoTrade!');
+    }
+    res.status(error.response?.status || 500).json({
+      success: false,
+      error: error.message,
+      code: error.code
+    });
+  }
+});
+
+// Proxy para AutoTrade API (GET requests)
+app.get('/api/autotrade/*', async (req, res) => {
+  try {
+    const apiPath = req.url;
+    const url = `${EXECUTION_ENGINE_URL}${apiPath}`;
+    
+    console.log(`[Proxy] ${req.method} ${apiPath} → ${url}`);
+    
+    const response = await axios.get(url, {
+      params: req.query,
+      timeout: 30000  // 30s para autotrade
+    });
+    
+    res.json(response.data);
+  } catch (error) {
+    console.error('[Proxy] Error:', error.message);
+    if (error.code === 'ECONNABORTED') {
+      console.error('[Proxy] Timeout ao acessar AutoTrade!');
+    }
+    res.status(error.response?.status || 500).json({
+      success: false,
+      error: error.message,
+      code: error.code
+    });
+  }
+});
+
 app.get('/scanner', (req, res) => {
   // Disable cache to ensure latest JS code is always loaded
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
   
-  const executionEngineUrl = process.env.EXECUTION_ENGINE_PUBLIC_URL || 'http://localhost:3008';
   res.render('scanner-dashboard', {
-    title: 'RSI Divergence Scanner',
-    executionEngineUrl
+    title: 'RSI Divergence Scanner'
   });
 });
 

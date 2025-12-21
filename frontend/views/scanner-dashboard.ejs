@@ -809,50 +809,96 @@
 </style>
 
 <script>
+    console.log('[Scanner] Script loading...');
     // State
     let isContinuousRunning = false;
     let scanInterval = null;
     let signalHistory = [];
     let nearAlerts = {};
-    let lastNearAlertsData = {};  // Cache para atualização incremental
-    let nearAlertsInitialized = false;  // Flag para controle de primeira renderização
+    let lastNearAlertsData = {};  // Cache para atualizacao incremental
+    let nearAlertsInitialized = false;  // Flag para controle de primeira renderizacao
     
-    // API base URL - execution-engine runs on port 3008
-    // Use o mesmo hostname que o browser está acessando (para evitar problemas de CORS)
-    const API_BASE = window.location.hostname === 'localhost' 
-        ? 'http://localhost:3008' 
-        : \`http://\${window.location.hostname}:3008\`;
+    // API base URL - use proxy to avoid CORS
+    // Empty string = use relative paths, which will be proxied by frontend server
+    const API_BASE = '';  // Proxy: browser → /api/scanner/* → execution-engine
+    
     const STORAGE_KEY = 'scannerConfig';
-    const STATE_KEY = 'scannerState';  // Para persistir estado de execução
+    const STATE_KEY = 'scannerState';  // Para persistir estado de execucao
     const AUTOTRADE_STATE_KEY = 'autotradeState';  // Para persistir estado do AutoTrade
     const NEAR_ALERTS_KEY = 'nearAlertsCache';  // Cache para Proximidade de Alerta
     const MARKET_DATA_KEY = 'marketDataCache';  // Cache para Market Overview
     
     // Debug: log API base
-    console.log('[Scanner] API_BASE:', API_BASE);
+    console.log('[Scanner] API_BASE:', API_BASE || 'relative (proxy)');
     console.log('[Scanner] window.location.hostname:', window.location.hostname);
     
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
+        console.log('[Scanner] DOM loaded, initializing...');
         loadSavedConfig();  // Load saved config first
         loadSavedState();   // Load execution state (continuous scan, etc)
         initializeScanner();
         
-        // Restaurar cache primeiro (instantâneo), depois atualiza em background
+        console.log('[Scanner] Restoring caches...');
+        // Restaurar cache primeiro (instantaneo), depois atualiza em background
         restoreNearAlertsCache();
         restoreMarketDataCache();
         
-        // Atualiza dados em background (não bloqueia UI)
-        setTimeout(() => {
-            fetchMarketData();
-            updateNearAlerts();
+        console.log('[Scanner] Starting data fetch in 500ms...');
+        // Atualiza dados em background (nao bloqueia UI)
+        // ARQUITETURA v3: Backend le do banco (rapido), nao precisa de delays
+        setTimeout(async () => {
+            console.log('[Scanner] Fetching market data...');
+            fetchMarketData();  // Nao precisa await - banco e rapido
+            console.log('[Scanner] Updating near alerts...');
+            updateNearAlerts();  // Segunda chamada para Near Alerts
         }, 500);
         
-        // Auto-refresh market data every 30 seconds
-        setInterval(fetchMarketData, 30000);
-        // Near Alerts atualiza a cada 30 segundos (era 15s, muito frequente)
-        // Atualização incremental evita "flash" visual
-        setInterval(updateNearAlerts, 30000);
+        // AUTO-START: Scan Continuo (2s) e AutoTrade (DESABILITADO temporariamente)
+        setTimeout(() => {
+            if (!isContinuousRunning) {
+                console.log('[Scanner] Auto-starting continuous scan...');
+                toggleContinuousScan();
+            }
+        }, 2000);
+        
+        // AUTO-START: AutoTrade apos sincronizacao com backend (3s)
+        // Agora com sincronizacao de estado - nao falha se backend ja esta ativo
+        setTimeout(() => {
+            // Nao auto-start se ja esta ativo (restaurado do localStorage ou backend)
+            if (autotradeActive) {
+                console.log('[AutoTrade] Already active (synced), skipping auto-start');
+                return;
+            }
+            
+            // Verificar se deve auto-iniciar
+            const savedState = localStorage.getItem(AUTOTRADE_STATE_KEY);
+            let shouldAutoStart = true;
+            
+            if (savedState) {
+                try {
+                    const state = JSON.parse(savedState);
+                    // Se havia estado salvo e estava inativo, respeitar
+                    if (state.active === false) {
+                        shouldAutoStart = false;
+                        console.log('[AutoTrade] Auto-start skipped (saved state was inactive)');
+                    }
+                } catch (e) { }
+            }
+            
+            if (shouldAutoStart) {
+                console.log('[AutoTrade] Auto-starting AutoTrade...');
+                toggleAutotrade();
+            }
+        }, 3500);
+        
+        // Auto-refresh market data every 15 seconds (banco e rapido)
+        setInterval(fetchMarketData, 15000);
+        
+        // Near Alerts tambem usa fetchMarketData (mesmos dados do banco)
+        setTimeout(() => {
+            setInterval(() => updateNearAlerts(), 20000);
+        }, 10000);
         
         // Add auto-save event listeners to all config inputs
         setupAutoSave();
@@ -916,7 +962,7 @@
         }
     }
     
-    // Restaurar cache de Near Alerts (instantâneo)
+    // Restaurar cache de Near Alerts (instantaneo)
     function restoreNearAlertsCache() {
         const container = document.getElementById('nearAlertsRow');
         const cached = localStorage.getItem(NEAR_ALERTS_KEY);
@@ -930,16 +976,28 @@
             const { data, timestamp } = JSON.parse(cached);
             const ageMinutes = (Date.now() - timestamp) / 60000;
             
-            // Cache válido por 5 minutos
-            if (ageMinutes > 5) {
+            // Cache valido por 10 minutos (aumentado para suportar rotacao)
+            if (ageMinutes > 10) {
                 console.log('[Cache] Near Alerts expirado (' + ageMinutes.toFixed(1) + ' min)');
                 return;
             }
             
             console.log('[Cache] Restaurando Near Alerts (idade: ' + ageMinutes.toFixed(1) + ' min)');
             
+            // CORRECAO: Atualizar estado ANTES de renderizar para evitar rebuild desnecessario
+            // Isso garante que updateNearAlerts() nao sobrescreva o cache quando chamada depois
+            lastNearAlertsData = {};
+            data.forEach(item => {
+                lastNearAlertsData[item.symbol] = { ...item };
+                // Tambem inicializar o cache acumulado com dados do localStorage
+                accumulatedMarketData[item.symbol] = { ...item };
+            });
+            nearAlertsInitialized = true;  // Marcar como inicializado
+            
             // Renderizar imediatamente com dados do cache
             renderNearAlerts(data, true);
+            
+            console.log('[Cache] Estado sincronizado: nearAlertsInitialized=true, lastNearAlertsData=' + Object.keys(lastNearAlertsData).length + ' itens, accumulatedMarketData=' + Object.keys(accumulatedMarketData).length + ' itens');
             
         } catch (e) {
             console.warn('[Cache] Erro ao restaurar Near Alerts:', e);
@@ -960,7 +1018,7 @@
         }
     }
     
-    // Restaurar cache de Market Data (instantâneo)
+    // Restaurar cache de Market Data (instantaneo)
     function restoreMarketDataCache() {
         const container = document.getElementById('marketOverview');
         const cached = localStorage.getItem(MARKET_DATA_KEY);
@@ -974,7 +1032,7 @@
             const { data, timestamp } = JSON.parse(cached);
             const ageMinutes = (Date.now() - timestamp) / 60000;
             
-            // Cache válido por 5 minutos
+            // Cache valido por 5 minutos
             if (ageMinutes > 5) {
                 console.log('[Cache] Market Data expirado (' + ageMinutes.toFixed(1) + ' min)');
                 return;
@@ -996,7 +1054,13 @@
         document.querySelectorAll('#scannerConfigForm input[type="checkbox"]').forEach(cb => {
             cb.addEventListener('change', function() {
                 saveConfig();
-                console.log('Config auto-saved after checkbox change');
+                // Regenerar grupos dinamicos quando simbolos mudam
+                if (cb.classList.contains('symbol-check')) {
+                    generateSymbolGroups();
+                    console.log('[Scanner] Config auto-saved, grupos regenerados');
+                } else {
+                    console.log('[Scanner] Config auto-saved');
+                }
             });
         });
         
@@ -1368,30 +1432,30 @@
         container.innerHTML = html;
     }
     
-    // Função separada para renderizar Near Alerts (usada por cache e API)
-    // Suporta atualização incremental para evitar "flash" visual
+    // Funcao separada para renderizar Near Alerts (usada por cache e API)
+    // Suporta atualizacao incremental para evitar "flash" visual
     function renderNearAlerts(data, fromCache = false) {
         const container = document.getElementById('nearAlertsRow');
         if (!container) return;
         
-        // BTC sempre visível + ativos com proximidade > 0 ou RSI extremo
+        // BTC sempre visivel + ativos com proximidade > 0 ou RSI extremo
         const btcData = data.find(item => item.symbol.includes('BTC'));
         const otherAlerts = data.filter(item => 
             !item.symbol.includes('BTC') && (item.proximity > 0 || item.rsi <= 35 || item.rsi >= 65)
         );
         
-        // BTC no topo + até 8 outros ativos (total 9 cards)
+        // BTC no topo + ate 8 outros ativos (total 9 cards)
         let alertData = [];
         if (btcData) alertData.push(btcData);
         alertData = alertData.concat(otherAlerts.slice(0, 8));
         
-        // Verificar se precisa rebuild completo ou atualização incremental
+        // Verificar se precisa rebuild completo ou atualizacao incremental
         const currentSymbols = alertData.map(a => a.symbol).sort().join(',');
         const cachedSymbols = Object.keys(lastNearAlertsData).sort().join(',');
         const needsFullRebuild = !nearAlertsInitialized || container.children.length === 0 || currentSymbols !== cachedSymbols;
         
         if (needsFullRebuild) {
-            // Rebuild completo - primeira vez ou símbolos mudaram
+            // Rebuild completo - primeira vez ou simbolos mudaram
             console.log('[NearAlerts] Full rebuild -', alertData.length, 'alerts', fromCache ? '(cache)' : '(fresh)');
             renderNearAlertsFull(alertData, fromCache);
             nearAlertsInitialized = true;
@@ -1402,7 +1466,7 @@
                 lastNearAlertsData[item.symbol] = { ...item };
             });
         } else {
-            // Atualização incremental - só atualizar valores que mudaram
+            // Atualizacao incremental - so atualizar valores que mudaram
             let updatedCount = 0;
             
             alertData.forEach(item => {
@@ -1411,7 +1475,7 @@
                 
                 const symbolId = item.symbol.replace('/', '').replace('USDT', '');
                 
-                // Atualizar preço se mudou
+                // Atualizar preco se mudou
                 if (cached.price !== item.price) {
                     const priceEl = document.getElementById('alert-price-' + symbolId);
                     if (priceEl) {
@@ -1484,7 +1548,7 @@
         }
     }
     
-    // Função para rebuild completo dos Near Alerts (primeira vez ou símbolos mudaram)
+    // Funcao para rebuild completo dos Near Alerts (primeira vez ou simbolos mudaram)
     function renderNearAlertsFull(alertData, fromCache = false) {
         const container = document.getElementById('nearAlertsRow');
         if (!container) return;
@@ -1514,7 +1578,7 @@
             alertData.forEach(item => {
                 const proximityColor = item.proximity >= 70 ? 'danger' : (item.proximity >= 40 ? 'warning' : 'secondary');
                 
-                // Definir status e descrição com base na proximidade e RSI
+                // Definir status e descricao com base na proximidade e RSI
                 let statusText = '';
                 let statusIcon = '';
                 let statusDescription = '';
@@ -1538,10 +1602,10 @@
                 } else {
                     statusText = '📊 Monitorando';
                     statusIcon = 'hourglass-split';
-                    statusDescription = 'Avaliando condições de mercado';
+                    statusDescription = 'Avaliando condicoes de mercado';
                 }
                 
-                // Calcular nível de urgência
+                // Calcular nivel de urgencia
                 let urgencyBadge = '';
                 if (item.proximity >= 70) {
                     urgencyBadge = '<span class="badge bg-danger pulse-animation">IMINENTE</span>';
@@ -1556,7 +1620,7 @@
                 const changeIcon = item.change_24h >= 0 ? 'caret-up-fill' : 'caret-down-fill';
                 const symbolId = item.symbol.replace('/', '').replace('USDT', '');
                 
-                // Determinar badge HTML com ID para atualização incremental
+                // Determinar badge HTML com ID para atualizacao incremental
                 let urgencyBadgeHtml = '';
                 if (item.proximity >= 70) {
                     urgencyBadgeHtml = \`<span id="alert-badge-\${symbolId}" class="badge bg-danger pulse-animation">IMINENTE</span>\`;
@@ -1619,25 +1683,57 @@
         container.innerHTML = html;
     }
     
+    // Sistema de rotacao de simbolos para carregar gradualmente
+    // DINAMICO: Le simbolos selecionados da configuracao e divide em grupos de 4
+    let symbolRotationIndex = 0;
+    let SYMBOL_GROUPS = [
+        ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'],
+        ['XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'TRXUSDT']
+    ];  // Temporariamente hardcoded para debug
+    
+    let accumulatedMarketData = {};  // Cache acumulado de todos os grupos
+    let nearAlertsRequestInProgress = false;  // Flag simples (banco e rapido)
+    
     async function updateNearAlerts() {
+        // Flag simples - banco e rapido, nao precisa de mutex complexo
+        if (nearAlertsRequestInProgress) {
+            console.log('[NearAlerts] Requisição já em andamento, pulando...');
+            return;
+        }
+        nearAlertsRequestInProgress = true;
+        
         const container = document.getElementById('nearAlertsRow');
         
+        // Verificar se temos dados validos na memoria ou no DOM antes de qualquer requisicao
+        const hasDataInMemory = Object.keys(lastNearAlertsData).length > 0;
+        const hasDataInDOM = container && container.innerHTML.includes('col-md-4');
+        
         try {
-            // Fetch TODOS os símbolos selecionados (API gerencia rate limit internamente)
-            const allSymbols = getSelectedSymbols().map(s => s.replace('/', ''));
-            const symbols = allSymbols.join(',');  // Enviar TODOS os símbolos
-            console.log('[NearAlerts] Fetching ALL', allSymbols.length, 'selected symbols');
+            // SISTEMA DE ROTACAO: Carrega um grupo diferente a cada chamada
+            // Com backend database-backed, podemos carregar mais simbolos de uma vez
+            const currentGroup = SYMBOL_GROUPS[symbolRotationIndex];
+            const isFirstGroup = symbolRotationIndex === 0;
+            
+            // Avancar para proximo grupo na proxima chamada
+            symbolRotationIndex = (symbolRotationIndex + 1) % SYMBOL_GROUPS.length;
+            
+            const symbols = currentGroup.join(',');
+            const totalSymbols = SYMBOL_GROUPS.reduce((sum, g) => sum + g.length, 0);
+            const downloaded = Object.keys(accumulatedMarketData).length;
+            console.log('[NearAlerts] Fetching group', symbolRotationIndex + '/' + SYMBOL_GROUPS.length + ':', currentGroup.length, 'symbols | Total:', downloaded + '/' + totalSymbols, 'fetched from Binance');
+            
+            // Requisicao simples - sem AbortController (banco responde em < 100ms)
             const response = await fetch(API_BASE + '/api/scanner/market-data?symbols=' + symbols);
             const result = await response.json();
             
             if (!result.success || !result.data || result.data.length === 0) {
-                // Não sobrescrever se já tem dados do cache
-                if (container.innerHTML.includes('col-md-4')) {
-                    console.log('[NearAlerts] API falhou mas tem cache, mantendo');
+                // Nao sobrescrever se ja tem dados do cache (memoria ou DOM)
+                if (hasDataInMemory || hasDataInDOM) {
+                    console.log('[NearAlerts] API falhou mas tem cache (memory:', hasDataInMemory, ', DOM:', hasDataInDOM, '), mantendo');
                     return;
                 }
                 
-                // Verificar se é erro da Binance
+                // Verificar se e erro da Binance
                 const isBinanceError = result.error && (
                     result.error.includes('binance') || 
                     result.error.includes('exchangeInfo') ||
@@ -1686,34 +1782,67 @@
                 return;
             }
             
-            // Salvar no cache para próximo refresh
-            saveNearAlertsCache(result.data);
+            // ACUMULAR dados no cache (nao substituir)
+            // Isso permite que multiplos grupos sejam carregados ao longo do tempo
+            result.data.forEach(item => {
+                accumulatedMarketData[item.symbol] = item;
+            });
             
-            // Renderizar dados frescos
-            renderNearAlerts(result.data, false);
+            // Converter cache acumulado para array
+            const allMarketData = Object.values(accumulatedMarketData);
+            console.log('[NearAlerts] Accumulated', allMarketData.length, 'symbols total');
             
-            // Atualizar timestamp de última atualização
+            // Salvar dados acumulados no cache para proximo refresh
+            saveNearAlertsCache(allMarketData);
+            
+            // Renderizar com todos os dados acumulados
+            renderNearAlerts(allMarketData, false);
+            
+            // Atualizar timestamp de ultima atualizacao
             const timeEl = document.getElementById('nearAlertsUpdateTime');
             if (timeEl) {
-                timeEl.textContent = new Date().toLocaleTimeString();
+                timeEl.textContent = new Date().toLocaleTimeString() + ' (' + allMarketData.length + ' simbolos)';
             }
             
-            // Atualizar rodapé com status de erros
+            // Atualizar rodape com status de erros
             updateNearAlertsFooter(result);
             
         } catch (error) {
             console.error('[NearAlerts] Error updating:', error);
-            // Não sobrescrever se já tem dados do cache
-            if (container.innerHTML.includes('col-md-4')) {
-                console.log('[NearAlerts] Erro mas tem cache, mantendo');
+            // Nao sobrescrever se ja tem dados do cache (memoria ou DOM)
+            if (hasDataInMemory || hasDataInDOM) {
+                console.log('[NearAlerts] Erro mas tem cache (memory:', hasDataInMemory, ', DOM:', hasDataInDOM, '), mantendo');
                 return;
             }
             
             // Identificar tipo de erro
+            const isAbortError = error.name === 'AbortError';
             const isNetworkError = error.message.includes('fetch') || error.message.includes('network');
-            const isTimeoutError = error.message.includes('timeout');
+            const isTimeoutError = error.message.includes('timeout') || isAbortError;
             
-            if (isNetworkError || isTimeoutError) {
+            if (isAbortError) {
+                container.innerHTML = \`
+                    <div class="col-12 text-center text-warning py-4">
+                        <i class="bi bi-hourglass-split display-4 d-block mb-3"></i>
+                        <h5 class="text-warning">⏱️ Timeout - API Lenta</h5>
+                        <p class="text-muted mb-3">
+                            A requisição demorou muito tempo.<br>
+                            <small class="text-warning">A API da Binance pode estar sobrecarregada.</small>
+                        </p>
+                        <div class="alert alert-warning mx-auto" style="max-width: 600px; text-align: left;">
+                            <strong>Soluções:</strong>
+                            <ul class="mb-2 mt-2">
+                                <li>✅ Aguarde alguns segundos e tente novamente</li>
+                                <li>✅ Reduza o número de símbolos selecionados</li>
+                                <li>✅ Verifique status da Binance: <a href="https://www.binance.com/en/support/announcement" target="_blank">Status Page</a></li>
+                            </ul>
+                        </div>
+                        <button class="btn btn-warning btn-sm mt-2" onclick="updateNearAlerts()">
+                            <i class="bi bi-arrow-clockwise"></i> Tentar Novamente
+                        </button>
+                    </div>
+                \`;
+            } else if (isNetworkError || isTimeoutError) {
                 container.innerHTML = \`
                     <div class="col-12 text-center text-danger py-4">
                         <i class="bi bi-wifi-off display-4 d-block mb-3"></i>
@@ -1751,16 +1880,19 @@
                     </div>
                 \`;
             }
+        } finally {
+            // SEMPRE liberar o mutex, mesmo em caso de erro
+            nearAlertsRequestInProgress = false;
         }
     }
     
-    // Atualizar rodapé da seção Near Alerts com status de erros
+    // Atualizar rodape da secao Near Alerts com status de erros
     function updateNearAlertsFooter(result) {
         let footerHtml = '';
         const warnings = [];
         const errors = [];
         
-        // Verificar se há símbolos com erro
+        // Verificar se ha simbolos com erro
         if (result.data) {
             const nullSymbols = result.data.filter(item => 
                 item.price === null || item.rsi === null
@@ -1774,10 +1906,10 @@
         // Verificar taxa de sucesso da API
         if (result.success_rate !== undefined && result.success_rate < 100) {
             const failedCount = result.requested - result.count;
-            warnings.push(\`\${failedCount} de \${result.requested} símbolos falharam (\${result.success_rate.toFixed(1)}% sucesso)\`);
+            warnings.push(\`\${failedCount} de \${result.requested} simbolos falharam (\${result.success_rate.toFixed(1)}% sucesso)\`);
         }
         
-        // Verificar se há mensagem de erro da Binance
+        // Verificar se ha mensagem de erro da Binance
         if (result.error) {
             if (result.error.includes('binance') || result.error.includes('rate limit')) {
                 errors.push('Erro na comunicação com Binance API');
@@ -1786,7 +1918,7 @@
             }
         }
         
-        // Montar HTML do rodapé
+        // Montar HTML do rodape
         if (errors.length > 0) {
             footerHtml = \`
                 <div class="col-12 mt-3">
@@ -1808,35 +1940,35 @@
                 </div>
             \`;
         } else if (result.count > 0) {
-            // Tudo OK - mostrar estatísticas
+            // Tudo OK - mostrar estatisticas
             const avgRsi = (result.data.reduce((sum, item) => sum + (item.rsi || 0), 0) / result.data.length).toFixed(1);
             footerHtml = \`
                 <div class="col-12 mt-3">
                     <div class="alert alert-success alert-dismissible fade show mb-0" role="alert" style="font-size: 0.85rem;">
                         <i class="bi bi-check-circle-fill me-2"></i>
-                        <strong>Status:</strong> \${result.count} ativos monitorados • RSI médio: \${avgRsi} • Última atualização: \${new Date().toLocaleTimeString()}
+                        <strong>Status:</strong> \${result.count} ativos monitorados • RSI medio: \${avgRsi} • Ultima atualizacao: \${new Date().toLocaleTimeString()}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     </div>
                 </div>
             \`;
         }
         
-        // Inserir ou atualizar rodapé
+        // Inserir ou atualizar rodape
         const container = document.getElementById('nearAlertsRow');
         if (container && footerHtml) {
-            // Remover rodapé anterior se existir
+            // Remover rodape anterior se existir
             const oldFooter = container.querySelector('.col-12.mt-3');
             if (oldFooter) oldFooter.remove();
             
-            // Adicionar novo rodapé
+            // Adicionar novo rodape
             container.insertAdjacentHTML('beforeend', footerHtml);
         }
     }
     
-    // Cache para dados de mercado (evitar atualizações desnecessárias)
+    // Cache para dados de mercado (evitar atualizacoes desnecessarias)
     let lastMarketData = {};
     
-    // Função separada para renderizar Market Overview (usada por cache e API)
+    // Funcao separada para renderizar Market Overview (usada por cache e API)
     function renderMarketOverview(data, fromCache = false) {
         const container = document.getElementById('marketOverview');
         if (!container) return;
@@ -1878,11 +2010,22 @@
         console.log('[Market] Rendered -', data.length, 'symbols', fromCache ? '(from cache)' : '(fresh)');
     }
     
+    let marketDataRequestInProgress = false;  // Flag simples (banco e rapido)
+    
     async function fetchMarketData() {
+        // Flag simples - banco e rapido, nao precisa de mutex complexo
+        if (marketDataRequestInProgress) {
+            console.log('[Market] Requisição já em andamento, pulando...');
+            return;
+        }
+        marketDataRequestInProgress = true;
+        
         const container = document.getElementById('marketOverview');
         
         try {
-            const symbols = getSelectedSymbols().map(s => s.replace('/', '')).slice(0, 6).join(',');
+            const symbols = getSelectedSymbols().map(s => s.replace('/', '')).slice(0, 30).join(',');
+            
+            // Requisicao simples - sem AbortController (banco responde em < 100ms)
             const response = await fetch(API_BASE + '/api/scanner/market-data?symbols=' + symbols);
             const result = await response.json();
             
@@ -1890,19 +2033,19 @@
                 throw new Error('Falha ao buscar dados');
             }
             
-            // Salvar no cache para próximo refresh
+            // Salvar no cache para proximo refresh
             saveMarketDataCache(result.data);
             
-            // Verificar se container está vazio (primeira carga) ou estrutura mudou
+            // Verificar se container esta vazio (primeira carga) ou estrutura mudou
             const currentSymbols = result.data.map(c => c.symbol).join(',');
             const cachedSymbols = Object.keys(lastMarketData).join(',');
             const needsFullRebuild = container.children.length === 0 || currentSymbols !== cachedSymbols;
             
             if (needsFullRebuild) {
-                // Primeira carga ou símbolos mudaram - rebuild completo
+                // Primeira carga ou simbolos mudaram - rebuild completo
                 renderMarketOverview(result.data, false);
             } else {
-                // Atualização incremental - só mudar valores que mudaram
+                // Atualizacao incremental - so mudar valores que mudaram
                 let updatedCount = 0;
                 
                 result.data.forEach(coin => {
@@ -1911,12 +2054,12 @@
                     
                     if (!cached) return;
                     
-                    // Atualizar preço se mudou
+                    // Atualizar preco se mudou
                     if (cached.price !== coin.price) {
                         const priceEl = document.getElementById('price-' + symbolId);
                         if (priceEl) {
                             priceEl.textContent = formatPrice(coin.price);
-                            // Flash animation para indicar mudança
+                            // Flash animation para indicar mudanca
                             priceEl.classList.add('price-flash');
                             setTimeout(() => priceEl.classList.remove('price-flash'), 500);
                         }
@@ -1959,6 +2102,9 @@
             
         } catch (error) {
             console.error('Error fetching market data:', error);
+        } finally {
+            // SEMPRE liberar o mutex, mesmo em caso de erro
+            marketDataRequestInProgress = false;
         }
     }
     
@@ -2235,8 +2381,43 @@
         console.log('[AutoTrade] Full state saved');
     }
     
-    // Restore AutoTrade state from localStorage
-    function restoreAutotradeState() {
+    // Restore AutoTrade state from localStorage AND sync with backend
+    async function restoreAutotradeState() {
+        // FIRST: Check backend state (source of truth)
+        try {
+            const response = await fetch(API_BASE + '/api/autotrade/status');
+            const backendState = await response.json();
+            console.log('[AutoTrade] Backend state:', backendState);
+            
+            if (backendState.active) {
+                // Backend is active - sync frontend to match
+                console.log('[AutoTrade] Syncing with active backend session');
+                autotradeActive = true;
+                autotradeStats = backendState.stats || { signals_processed: 0, trades_executed: 0, start_time: Date.now() };
+                autotradeConfig = {
+                    dryRun: backendState.dry_run,
+                    minStrength: backendState.min_signal_strength,
+                    capital: 10000,
+                    symbols: backendState.symbols || []
+                };
+                
+                // Update UI
+                updateAutotradeUILocal();
+                
+                // Start polling if not already
+                if (!autotradeStatusInterval) {
+                    autotradeStatusInterval = setInterval(() => updateAutotradeUILocal(), 5000);
+                }
+                
+                showToast('AutoTrade Ativo', 'Sessao do backend restaurada: ' + (backendState.session_id || 'N/A'), 'success');
+                console.log('[AutoTrade] Synced with backend, session:', backendState.session_id);
+                return; // Skip localStorage restore
+            }
+        } catch (e) {
+            console.warn('[AutoTrade] Backend status check failed:', e.message);
+        }
+        
+        // Backend is not active - try localStorage
         const savedState = localStorage.getItem(AUTOTRADE_STATE_KEY);
         if (!savedState) {
             console.log('[AutoTrade] No saved state found');
@@ -2411,7 +2592,7 @@
         const minStrength = parseFloat(document.getElementById('autotradeMinStrength').value);
         const capital = parseFloat(document.getElementById('autotradeCapital').value);
         
-        // Notificar backend para criar sessão no banco
+        // Notificar backend para criar sessao no banco
         try {
             const response = await fetch(API_BASE + '/api/autotrade/start', {
                 method: 'POST',
@@ -2426,6 +2607,27 @@
             
             const result = await response.json();
             if (!result.success) {
+                // Special case: already active - sync state instead of failing
+                if (result.message && result.message.includes('já está ativo') && result.state) {
+                    console.log('[AutoTrade] Backend already active, syncing state...');
+                    autotradeActive = true;
+                    autotradeStats = result.state.stats || { 
+                        signals_processed: result.state.signals_processed || 0, 
+                        trades_executed: result.state.trades_executed || 0, 
+                        start_time: Date.now() 
+                    };
+                    autotradeConfig.symbols = result.state.symbols || symbols.map(s => s.replace('/', ''));
+                    saveAutotradeFullState();
+                    updateAutotradeUILocal();
+                    
+                    if (!autotradeStatusInterval) {
+                        autotradeStatusInterval = setInterval(() => updateAutotradeUILocal(), 5000);
+                    }
+                    
+                    showToast('AutoTrade Sincronizado', 'Sessao ativa do backend: ' + (result.state.session_id || 'N/A'), 'info');
+                    return;
+                }
+                
                 showToast('Erro Backend', 'Falha ao iniciar sessão: ' + result.message, 'danger');
                 console.error('[AutoTrade] Backend start failed:', result);
                 return;
@@ -2470,7 +2672,7 @@
     
     // Stop AutoTrade (integrado com backend)
     async function stopAutotradeLocal() {
-        // Notificar backend para finalizar sessão
+        // Notificar backend para finalizar sessao
         try {
             const response = await fetch(API_BASE + '/api/autotrade/stop', {
                 method: 'POST',
@@ -2593,7 +2795,7 @@
                     stop_loss: signal.stop_loss || 0,
                     take_profit: signal.take_profit || 0,
                     timeframe: signal.timeframe || '1h',
-                    // Indicadores técnicos adicionais
+                    // Indicadores tecnicos adicionais
                     rsi: signal.rsi || null,
                     adx: signal.adx || null,
                     volume_ratio: signal.volume_ratio || null,
