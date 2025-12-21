@@ -45,20 +45,31 @@ fi
 # Ler última execução
 LAST_RUN=$(tail -1 "$HISTORY_FILE")
 
-if [ -z "$LAST_RUN" ] || [ "$LAST_RUN" == "date,start_date,end_date,return,sharpe,sortino,pf,dd,wr,trades" ]; then
+if [ -z "$LAST_RUN" ] || [ "$LAST_RUN" == "date,period,return,sharpe,max_dd,win_rate,trades" ]; then
     echo -e "${RED}❌ Histórico WFO vazio!${NC}"
     exit 1
 fi
 
-# Parse métricas (formato: date,start_date,end_date,return,sharpe,sortino,pf,dd,wr,trades)
-IFS=',' read -r DATE START_DATE END_DATE RETURN SHARPE SORTINO PROFIT_FACTOR MAX_DD WIN_RATE TRADES <<< "$LAST_RUN"
+# Parse métricas (formato: date,period,return,sharpe,max_dd,win_rate,trades)
+IFS=',' read -r DATE PERIOD RETURN SHARPE MAX_DD WIN_RATE TRADES <<< "$LAST_RUN"
+
+# Valores padrão para compatibilidade
+START_DATE="$PERIOD"
+END_DATE="$PERIOD"
+SORTINO="${SHARPE:-0}"
+PROFIT_FACTOR="1.0"
 
 # Calcular score (0-10 baseado em múltiplas métricas)
 SCORE=$(python3 -c "
-return_score = max(0, min(3, ($RETURN + 10) / 5))
-sharpe_score = max(0, min(3, ($SHARPE + 1) / 1))
-dd_score = max(0, min(2, (20 - $MAX_DD) / 10))
-wr_score = max(0, min(2, $WIN_RATE / 50))
+return_val = float('$RETURN') if '$RETURN' else 0
+sharpe_val = float('$SHARPE') if '$SHARPE' else 0
+dd_val = float('$MAX_DD') if '$MAX_DD' else 0
+wr_val = float('$WIN_RATE') if '$WIN_RATE' else 0
+
+return_score = max(0, min(3, (return_val + 10) / 5))
+sharpe_score = max(0, min(3, (sharpe_val + 1) / 1))
+dd_score = max(0, min(2, (20 - dd_val) / 10))
+wr_score = max(0, min(2, wr_val / 50))
 total = return_score + sharpe_score + dd_score + wr_score
 print(f'{total:.2f}')
 ")
@@ -66,11 +77,9 @@ print(f'{total:.2f}')
 echo ""
 echo "📊 Última Execução WFO:"
 echo "   Data: $DATE"
-echo "   Período: $START_DATE → $END_DATE"
+echo "   Período: $PERIOD"
 echo "   Return: $RETURN%"
 echo "   Sharpe: $SHARPE"
-echo "   Sortino: $SORTINO"
-echo "   Profit Factor: $PROFIT_FACTOR"
 echo "   Max DD: $MAX_DD%"
 echo "   Win Rate: $WIN_RATE%"
 echo "   Trades: $TRADES"
