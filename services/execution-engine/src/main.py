@@ -33,6 +33,9 @@ _market_data_pool: Optional[asyncpg.Pool] = None
 _market_data_worker_task: Optional[asyncio.Task] = None
 _market_data_worker_running = False
 
+# Timeframes para coleta automática (1h para cache, demais para histórico)
+WORKER_TIMEFRAMES = ['1h', '4h', '1d']  # 15m opcional (muito pesado)
+
 # Lista de símbolos para monitorar (pode ser configurada)
 DEFAULT_MARKET_SYMBOLS = [
     # Top 10 - Major Assets
@@ -167,13 +170,15 @@ async def update_market_data_cache(symbols: List[str] = None):
             async with semaphore:
                 try:
                     ccxt_symbol = symbol.replace('USDT', '/USDT')
-                    ohlcv = await exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=30)
                     
-                    if not ohlcv or len(ohlcv) == 0:
+                    # Buscar 1h para cache (RSI, trend)
+                    ohlcv_1h = await exchange.fetch_ohlcv(ccxt_symbol, '1h', limit=30)
+                    
+                    if not ohlcv_1h or len(ohlcv_1h) == 0:
                         logger.warning(f"[MarketDataCache] Sem dados OHLCV para {symbol}")
                         return None
                     
-                    df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                    df = pd.DataFrame(ohlcv_1h, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
                     df['rsi'] = ta.momentum.rsi(df['close'], window=14)
                     current_rsi = float(df['rsi'].iloc[-1])
                     current_price = float(df['close'].iloc[-1])
@@ -197,7 +202,17 @@ async def update_market_data_cache(symbols: List[str] = None):
                         proximity = int((current_rsi - 65) * 8)
                         trend = 'watching_bearish'
                     
-                    # Retornar dados completos (cache + histórico)
+                    # Buscar outros timeframes para histórico (4h, 1d)
+                    multi_timeframe_data = {}
+                    for tf in ['4h', '1d']:
+                        try:
+                            ohlcv_tf = await exchange.fetch_ohlcv(ccxt_symbol, tf, limit=2)
+                            if ohlcv_tf and len(ohlcv_tf) > 0:
+                                multi_timeframe_data[tf] = ohlcv_tf[-1]  # Último candle
+                        except Exception as e:
+                            logger.debug(f"[MarketDataCache] Erro ao buscar {symbol} {tf}: {e}")
+                    
+                    # Retornar dados completos (cache + histórico multi-timeframe)
                     return {
                         'symbol': ccxt_symbol,
                         'db_symbol': symbol,  # Formato para banco (BTCUSDT)
@@ -206,27 +221,55 @@ async def update_market_data_cache(symbols: List[str] = None):
                         'rsi': round(current_rsi, 1),
                         'proximity': proximity,
                         'trend': trend,
-                        # Dados históricos do último candle
+                        # Dados históricos do último candle (1h para compatibilidade)
                         'ohlcv': {
-                            'timestamp': ohlcv[-1][0],  # Timestamp em ms
-                            'open': float(ohlcv[-1][1]),
-                            'high': float(ohlcv[-1][2]),
-                            'low': float(ohlcv[-1][3]),
-                            'close': float(ohlcv[-1][4]),
-                            'volume': float(ohlcv[-1][5])
-                        }
+                            'timestamp': ohlcv_1h[-1][0],  # Timestamp em ms
+                            'open': float(ohlcv_1h[-1][1]),
+                            'high': float(ohlcv_1h[-1][2]),
+                            'low': float(ohlcv_1h[-1][3]),
+                            'close': float(ohlcv_1h[-1][4]),
+                            'volume': float(ohlcv_1h[-1][5])
+                        },
+                        # Dados multi-timeframe
+                        'multi_timeframe': multi_timeframe_data
                     }
                 except Exception as e:
                     logger.warning(f"[MarketDataCache] Erro ao buscar {symbol}: {e}")
-                    return None
+                    # Retornar erro para processar depois (sem bloquear semaphore)
+                    return {'error': True, 'symbol': symbol, 'exception': str(e)}
         
         # Buscar todos os símbolos em paralelo (com limite de 3)
         tasks = [fetch_single_symbol(s) for s in symbols]
         results = await asyncio.gather(*tasks)
         
-        # Salvar no banco (cache + histórico)
-        valid_results = [r for r in results if r is not None]
+        # Separar resultados válidos de erros
+        valid_results = []
+        failed_symbols = []
         
+        for r in results:
+            if r is None:
+                continue
+            elif isinstance(r, dict) and r.get('error'):
+                failed_symbols.append(r)
+            else:
+                valid_results.append(r)
+        
+        # Criar alertas para símbolos que falharam (fora do semaphore)
+        # TEMPORARIAMENTE DESABILITADO - pode causar deadlock
+        # if failed_symbols:
+        #     for failed in failed_symbols:
+        #         try:
+        #             await create_symbol_alert(
+        #                 symbol=failed['symbol'],
+        #                 event_type='failed',
+        #                 message=f"Falha ao buscar dados: {failed['exception']}",
+        #                 severity='error',
+        #                 metadata={'error': failed['exception'], 'timeframe': '1h'}
+        #             )
+        #         except Exception as alert_error:
+        #             logger.debug(f"Erro ao criar alerta: {alert_error}")
+        
+        # Salvar no banco (cache + histórico) - valid_results já foi filtrado acima
         async with pool.acquire() as conn:
             cache_count = 0
             historical_count = 0
@@ -247,7 +290,7 @@ async def update_market_data_cache(symbols: List[str] = None):
                     data['rsi'], data['proximity'], data['trend'])
                 cache_count += 1
                 
-                # 2. Salvar dados históricos (OHLCV) na tabela market_data
+                # 2. Salvar dados históricos (OHLCV 1h) na tabela market_data
                 if 'ohlcv' in data:
                     ohlcv = data['ohlcv']
                     timestamp_dt = datetime.fromtimestamp(ohlcv['timestamp'] / 1000)
@@ -266,6 +309,28 @@ async def update_market_data_cache(symbols: List[str] = None):
                         ohlcv['open'], ohlcv['high'], ohlcv['low'], 
                         ohlcv['close'], ohlcv['volume'], 'binance_1h')
                     historical_count += 1
+                
+                # 3. Salvar dados multi-timeframe (4h, 1d)
+                if 'multi_timeframe' in data:
+                    for tf, candle_data in data['multi_timeframe'].items():
+                        try:
+                            tf_timestamp_dt = datetime.fromtimestamp(candle_data[0] / 1000)
+                            await conn.execute("""
+                                INSERT INTO market_data (symbol, timestamp, price, open, high, low, close, volume, source)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                                ON CONFLICT (symbol, timestamp) DO UPDATE SET
+                                    price = EXCLUDED.price,
+                                    open = EXCLUDED.open,
+                                    high = EXCLUDED.high,
+                                    low = EXCLUDED.low,
+                                    close = EXCLUDED.close,
+                                    volume = EXCLUDED.volume
+                            """, data['db_symbol'], tf_timestamp_dt, float(candle_data[4]),
+                                float(candle_data[1]), float(candle_data[2]), float(candle_data[3]),
+                                float(candle_data[4]), float(candle_data[5]), f'binance_{tf}')
+                            historical_count += 1
+                        except Exception as e:
+                            logger.debug(f"[MarketDataCache] Erro ao salvar {data['db_symbol']} {tf}: {e}")
         
         logger.info(f"[MarketDataCache] Atualizado {cache_count}/{len(symbols)} símbolos (cache) + {historical_count} candles históricos")
         return cache_count
@@ -530,6 +595,15 @@ async def add_monitored_symbol(request: AddSymbolRequest):
             
             logger.info(f"✅ Símbolo {request.symbol} adicionado ao monitoramento")
             
+            # Criar alerta de novo símbolo adicionado
+            await create_symbol_alert(
+                symbol=request.symbol,
+                event_type='added',
+                message=f'Novo símbolo adicionado ao monitoramento',
+                severity='success',
+                metadata={'notes': request.notes}
+            )
+            
             return SymbolResponse(
                 symbol=row['symbol'],
                 active=row['active'],
@@ -567,6 +641,16 @@ async def remove_monitored_symbol(symbol: str, permanent: bool = False):
                     raise HTTPException(status_code=404, detail=f"Símbolo {symbol} não encontrado")
                 
                 logger.info(f"🗑️ Símbolo {symbol} deletado permanentemente")
+                
+                # Criar alerta de remoção permanente
+                await create_symbol_alert(
+                    symbol=symbol,
+                    event_type='removed',
+                    message=f'Símbolo removido permanentemente do monitoramento',
+                    severity='warning',
+                    metadata={'permanent': True}
+                )
+                
                 return {"status": "deleted", "symbol": symbol}
             else:
                 # Apenas desativar
@@ -581,6 +665,16 @@ async def remove_monitored_symbol(symbol: str, permanent: bool = False):
                     raise HTTPException(status_code=404, detail=f"Símbolo {symbol} não encontrado")
                 
                 logger.info(f"⏸️ Símbolo {symbol} desativado")
+                
+                # Criar alerta de desativação
+                await create_symbol_alert(
+                    symbol=symbol,
+                    event_type='removed',
+                    message=f'Símbolo desativado (não deletado)',
+                    severity='info',
+                    metadata={'permanent': False}
+                )
+                
                 return {"status": "deactivated", "symbol": symbol}
     except HTTPException:
         raise
@@ -642,6 +736,167 @@ async def get_symbols_stats():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/history/candles")
+async def get_historical_candles(
+    symbol: str,
+    timeframe: str = "1h",
+    start: Optional[str] = None,
+    end: Optional[str] = None,
+    limit: int = 100
+):
+    """
+    Consultar dados históricos OHLCV por símbolo e timeframe.
+    
+    Parâmetros:
+    - symbol: Símbolo (ex: BTCUSDT)
+    - timeframe: Timeframe (1h, 4h, 1d)
+    - start: Data inicial (ISO 8601, ex: 2025-01-01T00:00:00Z)
+    - end: Data final (ISO 8601)
+    - limit: Máximo de candles (default: 100)
+    """
+    try:
+        pool = await get_market_data_pool()
+        async with pool.acquire() as conn:
+            # Construir query dinâmica
+            query = """
+                SELECT timestamp, open, high, low, close, volume
+                FROM market_data
+                WHERE symbol = $1 AND source = $2
+            """
+            params = [symbol, f'binance_{timeframe}']
+            param_count = 2
+            
+            if start:
+                param_count += 1
+                query += f" AND timestamp >= ${param_count}"
+                params.append(datetime.fromisoformat(start.replace('Z', '+00:00')))
+            
+            if end:
+                param_count += 1
+                query += f" AND timestamp <= ${param_count}"
+                params.append(datetime.fromisoformat(end.replace('Z', '+00:00')))
+            
+            query += f" ORDER BY timestamp DESC LIMIT ${param_count + 1}"
+            params.append(limit)
+            
+            rows = await conn.fetch(query, *params)
+            
+            return {
+                "symbol": symbol,
+                "timeframe": timeframe,
+                "count": len(rows),
+                "candles": [
+                    {
+                        "timestamp": row['timestamp'].isoformat(),
+                        "open": float(row['open']),
+                        "high": float(row['high']),
+                        "low": float(row['low']),
+                        "close": float(row['close']),
+                        "volume": float(row['volume'])
+                    }
+                    for row in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"Erro ao buscar candles históricos: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/symbols/coverage-dashboard")
+async def get_coverage_dashboard():
+    """
+    Dashboard de cobertura de dados: visualizar em tempo real quais símbolos têm dados atualizados.
+    
+    Retorna:
+    - Métricas globais (total_symbols, active, with_data, coverage %)
+    - Cobertura por timeframe (1h, 4h, 1d)
+    - Lista de símbolos com status (last_update, update_frequency, data_gaps)
+    """
+    try:
+        pool = await get_market_data_pool()
+        async with pool.acquire() as conn:
+            # Métricas globais
+            global_stats = await conn.fetchrow("""
+                SELECT 
+                    COUNT(DISTINCT ms.symbol) as total_symbols,
+                    COUNT(DISTINCT ms.symbol) FILTER (WHERE ms.active = true) as active_symbols,
+                    COUNT(DISTINCT md.symbol) as symbols_with_data
+                FROM monitored_symbols ms
+                LEFT JOIN market_data md ON ms.symbol = md.symbol
+            """)
+            
+            coverage_pct = (global_stats['symbols_with_data'] / global_stats['active_symbols'] * 100) if global_stats['active_symbols'] > 0 else 0
+            
+            # Cobertura por timeframe
+            timeframe_coverage = await conn.fetch("""
+                SELECT 
+                    source,
+                    COUNT(DISTINCT symbol) as symbol_count,
+                    COUNT(*) as total_candles,
+                    MAX(timestamp) as latest_data
+                FROM market_data
+                WHERE source IN ('binance_1h', 'binance_4h', 'binance_1d')
+                GROUP BY source
+            """)
+            
+            # Status por símbolo (últimos 7 dias)
+            symbol_status = await conn.fetch("""
+                SELECT 
+                    ms.symbol,
+                    ms.active,
+                    COUNT(DISTINCT md.timestamp) FILTER (WHERE md.source = 'binance_1h') as candles_1h,
+                    COUNT(DISTINCT md.timestamp) FILTER (WHERE md.source = 'binance_4h') as candles_4h,
+                    COUNT(DISTINCT md.timestamp) FILTER (WHERE md.source = 'binance_1d') as candles_1d,
+                    MAX(md.timestamp) FILTER (WHERE md.source = 'binance_1h') as last_update_1h,
+                    MAX(md.timestamp) FILTER (WHERE md.source = 'binance_4h') as last_update_4h,
+                    MAX(md.timestamp) FILTER (WHERE md.source = 'binance_1d') as last_update_1d
+                FROM monitored_symbols ms
+                LEFT JOIN market_data md ON ms.symbol = md.symbol 
+                    AND md.timestamp >= NOW() - INTERVAL '7 days'
+                WHERE ms.active = true
+                GROUP BY ms.symbol, ms.active
+                ORDER BY ms.symbol
+            """)
+            
+            return {
+                "global_metrics": {
+                    "total_symbols": global_stats['total_symbols'],
+                    "active_symbols": global_stats['active_symbols'],
+                    "symbols_with_data": global_stats['symbols_with_data'],
+                    "coverage_percentage": round(coverage_pct, 2)
+                },
+                "timeframe_coverage": [
+                    {
+                        "timeframe": row['source'].replace('binance_', ''),
+                        "symbol_count": row['symbol_count'],
+                        "total_candles": row['total_candles'],
+                        "latest_data": row['latest_data'].isoformat() if row['latest_data'] else None
+                    }
+                    for row in timeframe_coverage
+                ],
+                "symbol_status": [
+                    {
+                        "symbol": row['symbol'],
+                        "active": row['active'],
+                        "candles": {
+                            "1h": row['candles_1h'],
+                            "4h": row['candles_4h'],
+                            "1d": row['candles_1d']
+                        },
+                        "last_update": {
+                            "1h": row['last_update_1h'].isoformat() if row['last_update_1h'] else None,
+                            "4h": row['last_update_4h'].isoformat() if row['last_update_4h'] else None,
+                            "1d": row['last_update_1d'].isoformat() if row['last_update_1d'] else None
+                        }
+                    }
+                    for row in symbol_status
+                ]
+            }
+    except Exception as e:
+        logger.error(f"Erro ao buscar dashboard de cobertura: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==========================================
 # PAPER TRADING REQUEST MODELS
 # ==========================================
@@ -655,6 +910,92 @@ class StartPaperTradingRequest(BaseModel):
     initial_balance: float = 10000.0
     commission_rate: float = 0.001
     slippage_rate: float = 0.0005
+
+
+@app.get("/api/symbols/alerts")
+async def get_symbol_alerts(
+    symbol: Optional[str] = None,
+    event_type: Optional[str] = None,
+    severity: Optional[str] = None,
+    limit: int = 50
+):
+    """
+    Consultar alertas de símbolos.
+    
+    Parâmetros:
+    - symbol: Filtrar por símbolo específico (opcional)
+    - event_type: Filtrar por tipo de evento (added, failed, recovered, removed, no_data)
+    - severity: Filtrar por severidade (info, warning, error, success)
+    - limit: Máximo de resultados (default: 50)
+    """
+    try:
+        pool = await get_market_data_pool()
+        async with pool.acquire() as conn:
+            query = "SELECT * FROM symbol_alerts WHERE 1=1"
+            params = []
+            param_count = 0
+            
+            if symbol:
+                param_count += 1
+                query += f" AND symbol = ${param_count}"
+                params.append(symbol)
+            
+            if event_type:
+                param_count += 1
+                query += f" AND event_type = ${param_count}"
+                params.append(event_type)
+            
+            if severity:
+                param_count += 1
+                query += f" AND severity = ${param_count}"
+                params.append(severity)
+            
+            query += f" ORDER BY created_at DESC LIMIT ${param_count + 1}"
+            params.append(limit)
+            
+            rows = await conn.fetch(query, *params)
+            
+            return {
+                "count": len(rows),
+                "alerts": [
+                    {
+                        "id": row['id'],
+                        "symbol": row['symbol'],
+                        "event_type": row['event_type'],
+                        "message": row['message'],
+                        "severity": row['severity'],
+                        "metadata": row['metadata'],
+                        "created_at": row['created_at'].isoformat()
+                    }
+                    for row in rows
+                ]
+            }
+    except Exception as e:
+        logger.error(f"Erro ao buscar alertas: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def create_symbol_alert(
+    symbol: str,
+    event_type: str,
+    message: str,
+    severity: str = "info",
+    metadata: Optional[Dict] = None
+):
+    """
+    Helper function para criar alertas de símbolos.
+    """
+    try:
+        pool = await get_market_data_pool()
+        async with pool.acquire() as conn:
+            await conn.execute("""
+                INSERT INTO symbol_alerts (symbol, event_type, message, severity, metadata)
+                VALUES ($1, $2, $3, $4, $5)
+            """, symbol, event_type, message, severity, json.dumps(metadata) if metadata else None)
+            
+            logger.info(f"[Alert] {severity.upper()} - {symbol}: {message}")
+    except Exception as e:
+        logger.error(f"Erro ao criar alerta: {e}")
 
 
 class ManualOrderRequest(BaseModel):
