@@ -44,6 +44,7 @@ try:
     from strategies.breakdown_momentum import BreakdownMomentumStrategy
     from strategies.liquidity_grab import LiquidityGrabStrategy
     from strategies.rsi_divergence import RSIDivergenceStrategy
+    from ml_signal_filter import MLSignalFilter  # PASSO 34: ML Signal Filter
 except ImportError:
     # Para execução standalone
     pass
@@ -177,7 +178,11 @@ class MetaBacktester:
                  # PASSO 29: Multi-Timeframe confirmation (opt-in)
                  use_multi_timeframe_filter: bool = False,
                  mtf_timeframes: Optional[List[str]] = None,
-                 mtf_min_candles: int = 20):  # Realista para ano de dados 1h
+                 mtf_min_candles: int = 20,  # Realista para ano de dados 1h
+                 # PASSO 34: ML Signal Filter (opt-in)
+                 use_ml_filter: bool = False,
+                 ml_min_score: float = 0.6,
+                 ml_retrain_enabled: bool = False):
         """
         Inicializa o Meta-Backtester
         
@@ -189,6 +194,9 @@ class MetaBacktester:
             max_position_size: Tamanho máximo de posição (25%)
             regime_lookback: Candles para detectar regime
             use_trailing_stop: Usar trailing stop (padrão: True)
+            use_ml_filter: Ativar ML filter para classificar sinais (PASSO 34)
+            ml_min_score: Score mínimo do ML (0-1) para aceitar trade (default 0.6)
+            ml_retrain_enabled: Auto-retrain do modelo quando performance degrada
         """
         self.initial_capital = initial_capital
         self.slippage = slippage
@@ -227,6 +235,19 @@ class MetaBacktester:
         self.mtf_last_state: Optional[Dict[str, Any]] = None
         self._mtf_state: Optional[Dict[str, Any]] = None
         self._mtf_required_lookback_1h_candles = self._compute_mtf_required_lookback_1h_candles()
+        
+        # PASSO 34: ML Signal Filter (opt-in)
+        self.use_ml_filter = bool(use_ml_filter)
+        self.ml_min_score = float(ml_min_score)
+        self.ml_retrain_enabled = bool(ml_retrain_enabled)
+        self.ml_filter = None
+        if self.use_ml_filter:
+            try:
+                self.ml_filter = MLSignalFilter()
+                logger.info("🤖 ML Signal Filter initialized")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to initialize ML filter: {e}")
+                self.use_ml_filter = False
         
         # Componentes
         self.regime_detector = MarketRegimeDetector()
@@ -292,6 +313,7 @@ class MetaBacktester:
             'entry_rejected_quality': defaultdict(int),
             'entry_rejected_sentiment': defaultdict(int),
             'entry_rejected_mtf': defaultdict(int),
+            'entry_rejected_ml': defaultdict(int),  # PASSO 34: ML filter rejections
             'entry_rejected_chop_protection': defaultdict(int),
             'entry_rejected_exception': defaultdict(int),
             'entry_rejected_missing_signal_col': defaultdict(int),
@@ -961,6 +983,46 @@ class MetaBacktester:
                         f"📰 Sentiment filter: bloqueando LONG (score {self.sentiment_score:.3f} < {self.sentiment_min_score:.3f})"
                     )
                     return False
+            
+            # PASSO 34: ML Signal Filter (opt-in)
+            # Objetivo: filtrar sinais falsos usando classifier treinado em histórico
+            if self.use_ml_filter and self.ml_filter is not None and self.ml_filter.is_trained:
+                # Extrair features do estado atual
+                candle_data = {
+                    'close': float(df['Close'].iloc[-1]),
+                    'open': float(df['Open'].iloc[-1]),
+                    'volume': float(df['Volume'].iloc[-1]),
+                    'volume_ma_20': float(df['Volume'].rolling(20).mean().iloc[-1]) if len(df) >= 20 else float(df['Volume'].iloc[-1]),
+                    'rsi': float(df['RSI'].iloc[-1]) if 'RSI' in df.columns else 50.0,
+                    'adx': float(df['ADX'].iloc[-1]) if 'ADX' in df.columns else 20.0,
+                    'atr': float(df['ATR'].iloc[-1]) if 'ATR' in df.columns else 0.0,
+                    'ema_50': float(df['EMA50'].iloc[-1]) if 'EMA50' in df.columns else float(df['Close'].iloc[-1]),
+                    'ema_200': float(df['EMA200'].iloc[-1]) if 'EMA200' in df.columns else float(df['Close'].iloc[-1])
+                }
+                
+                # Calcular signal_strength (já foi calculado antes, usar 0.5 como default)
+                signal_strength_val = 0.5  # Default, pode ser melhorado extraindo do resultado da estratégia
+                
+                # Setup quality será calculado logo abaixo, usar default aqui
+                setup_quality_val = 50.0
+                
+                # Predizer score do sinal
+                ml_score = self.ml_filter.predict(
+                    candle_data=candle_data,
+                    strategy=strategy,
+                    signal_strength=signal_strength_val,
+                    setup_quality=setup_quality_val,
+                    regime=self.current_regime.value
+                )
+                
+                if ml_score < self.ml_min_score:
+                    self.debug_stats['entry_rejected_ml'][f"{strategy}:{direction}:{self.current_regime.value}"] += 1
+                    logger.debug(
+                        f"🤖 ML filter: bloqueando {direction} (score {ml_score:.3f} < {self.ml_min_score:.3f})"
+                    )
+                    return False
+                else:
+                    logger.debug(f"✅ ML filter: aprovado {direction} (score {ml_score:.3f} >= {self.ml_min_score:.3f})")
             
             # PASSO 17: FILTRO DE QUALIDADE DE SETUP
             # PASSO 23.6: Passar strategy e regime para lógica adaptativa

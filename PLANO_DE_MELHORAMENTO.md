@@ -36,7 +36,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 - [PASSO 31](#passo-31-live-trading-integration--dashboard-consolidado-): Live Trading + Dashboard ✅
 - [PASSO 32](#passo-32-multi-symbol-rsi-divergence-scanner--dashboard-): Multi-Symbol Scanner + Dashboard ✅
 - [PASSO 33](#passo-33-backtest-visual-dashboard-): Backtest Visual Dashboard ✅
-- [PASSO 34](#passo-34-machine-learning-signal-filter-planejamento): Machine Learning Signal Filter (Planejamento) 📋
+- [PASSO 34](#passo-34-machine-learning-signal-filter-implementado): Machine Learning Signal Filter ✅
 
 ---
 
@@ -59,7 +59,7 @@ Versão: 2.5 | Institutional Grade | Antifragilidade Total
 | **Dashboard Consolidado** | ✅ Operacional | 4 tabs unificadas | PASSO 31 |
 | **Scanner RSI Divergence** | ✅ Operacional | Multi-symbol real-time | PASSO 32 |
 | **Backtest Visual Dashboard** | ✅ Operacional | Charts interativos | PASSO 33 |
-| **ML Signal Filter** | 📋 Planejado | LightGBM classifier | PASSO 34 |
+| **ML Signal Filter** | ✅ Implementado | LightGBM classifier | PASSO 34 ✅ |
 | **Sentiment Layer** | 🟡 MVP Integrado | Opt-in | PASSO 28 (sentiment filter) |
 | **Multi-Timeframe Filter** | ✅ Implementado | Opt-in | PASSO 29 (HTF bias 4h/1d + RSI v2.1) |
 

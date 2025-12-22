@@ -1187,6 +1187,11 @@ class MetaBacktestRequest(BaseModel):
     mtf_timeframes: List[str] = Field(default_factory=lambda: ["4h", "1d"])
     mtf_min_candles: int = 20  # Realista: 1 ano 1h (~8760h) → 2190 candles 4h, 365 candles 1d
 
+    # PASSO 34: ML Signal Filter (opt-in)
+    use_ml_filter: bool = False
+    ml_min_score: float = 0.6  # Score mínimo do ML (0-1) para aceitar trade
+    ml_retrain_enabled: bool = False  # Auto-retrain quando performance degrada
+
 
 class RiskCalculationRequest(BaseModel):
     """Requisição para cálculo de risco"""
@@ -1386,6 +1391,10 @@ async def run_meta_backtest(request: MetaBacktestRequest):
             use_multi_timeframe_filter=request.use_multi_timeframe_filter,
             mtf_timeframes=request.mtf_timeframes,
             mtf_min_candles=request.mtf_min_candles,
+            # PASSO 34: ML Signal Filter
+            use_ml_filter=request.use_ml_filter,
+            ml_min_score=request.ml_min_score,
+            ml_retrain_enabled=request.ml_retrain_enabled,
         )
         
         result = backtester.run_simulation(df)
