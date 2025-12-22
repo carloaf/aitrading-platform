@@ -969,32 +969,46 @@
             }
         }, 3500);
         
-        // Auto-refresh market data every 15 seconds (banco e rapido)
-        setInterval(fetchMarketData, 15000);
+        // ============================================
+        // RATE LIMITING: Controle unificado de requisições
+        // Binance limites: 1200 req/min (weight varies)
+        // Nossa estratégia: máximo 4 req/min ao endpoint market-data
+        // ============================================
         
-        // GRUPO PRIORITARIO (HOT): Atualiza a cada 20 segundos (sempre grupo 0)
+        // Auto-refresh market data every 30 seconds (era 15s - reduzido para evitar rate limit)
+        setInterval(fetchMarketData, 30000);
+        
+        // ROTACAO UNIFICADA: Um único interval para Near Alerts
+        // Cicla pelos 4 grupos a cada 45 segundos (era 2 intervals de 20s+30s)
+        // Grupo HOT (G1) tem prioridade - aparece 2x no ciclo
+        let rotationCycleIndex = 0;
+        const ROTATION_CYCLE = [0, 1, 0, 2, 0, 3];  // HOT, G2, HOT, G3, HOT, G4
+        
         setTimeout(() => {
             setInterval(() => {
-                // Forcar grupo 0 (HOT) - Binance real-time
-                const savedIndex = symbolRotationIndex;
-                symbolRotationIndex = 0;
+                // Usar ciclo que prioriza HOT (3x mais frequente)
+                symbolRotationIndex = ROTATION_CYCLE[rotationCycleIndex];
+                const isHotGroup = symbolRotationIndex === 0;
+                const groupLabel = isHotGroup ? 'G1(HOT)' : 'G' + (symbolRotationIndex + 1);
+                
                 updateNearAlerts();
-                symbolRotationIndex = savedIndex;  // Restaurar rotacao
-                generateSymbolGroups();  // Regenera grupos (atualiza HOT)
-                console.log('[Priority] Grupo HOT atualizado (G1), rotacao atual: G' + (symbolRotationIndex + 1));
-            }, 20000);  // 20 segundos para grupo prioritario
-        }, 10000);
+                
+                // Regenerar grupos apenas quando no HOT
+                if (isHotGroup) {
+                    generateSymbolGroups();
+                }
+                
+                // Avançar ciclo
+                rotationCycleIndex = (rotationCycleIndex + 1) % ROTATION_CYCLE.length;
+                const nextIndex = ROTATION_CYCLE[rotationCycleIndex];
+                const nextLabel = nextIndex === 0 ? 'G1(HOT)' : 'G' + (nextIndex + 1);
+                
+                console.log('[Rotation] Grupo', groupLabel, 'carregado | Próximo:', nextLabel, '| Ciclo:', rotationCycleIndex + '/' + ROTATION_CYCLE.length);
+            }, 45000);  // 45 segundos entre cada requisição (era 20s+30s sobrepostos)
+        }, 15000);  // Delay inicial maior (era 10s/12s)
         
-        // ROTACAO NORMAL: Cicla pelos 4 grupos a cada 30 segundos
-        setTimeout(() => {
-            setInterval(() => {
-                updateNearAlerts();  // Rotaciona pelos grupos (G1→G2→G3→G4→G1)
-                console.log('[Rotation] Grupo', (symbolRotationIndex + 1) % 4 || 4, 'carregado (ciclo 30s)');
-            }, 30000);  // 30 segundos para rotacao normal
-        }, 12000);
-        
-        // Atualiza estatísticas de paper trading a cada 30 segundos
-        setInterval(loadPaperTradingStats, 30000);
+        // Atualiza estatísticas de paper trading a cada 60 segundos (era 30s)
+        setInterval(loadPaperTradingStats, 60000);
         
         // Add auto-save event listeners to all config inputs
         setupAutoSave();

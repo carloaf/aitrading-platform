@@ -163,12 +163,16 @@ async def update_market_data_cache(symbols: List[str] = None):
         exchange = await get_market_data_exchange()
         pool = await get_market_data_pool()
         
-        # Semáforo para limitar chamadas paralelas à Binance
-        semaphore = asyncio.Semaphore(3)
+        # Semáforo para limitar chamadas paralelas à Binance (reduzido de 3 para 2)
+        # Com 80 símbolos e delay de 0.2s, ciclo completo = ~8s
+        semaphore = asyncio.Semaphore(2)
         
         async def fetch_single_symbol(symbol):
             async with semaphore:
                 try:
+                    # Rate limiting adicional: delay entre requisições
+                    await asyncio.sleep(0.2)  # 200ms delay = 5 req/s máximo
+                    
                     ccxt_symbol = symbol.replace('USDT', '/USDT')
                     
                     # Buscar 1h para cache (RSI, trend)
@@ -341,8 +345,14 @@ async def update_market_data_cache(symbols: List[str] = None):
 
 async def market_data_worker():
     """
-    Background worker que atualiza market data cache a cada 60 segundos.
+    Background worker que atualiza market data cache a cada 120 segundos.
     Executado como task assíncrona no startup.
+    
+    RATE LIMITING:
+    - Binance API: 1200 weight/min
+    - fetch_ohlcv: ~5 weight cada
+    - Com 80 símbolos + 3 timeframes = ~400 weight/ciclo
+    - Intervalo de 120s = ~200 weight/min (margem de segurança)
     """
     global _market_data_worker_running
     _market_data_worker_running = True
@@ -354,7 +364,7 @@ async def market_data_worker():
     
     while _market_data_worker_running:
         try:
-            await asyncio.sleep(60)  # Atualiza a cada 60 segundos
+            await asyncio.sleep(120)  # Atualiza a cada 120 segundos (era 60s - aumentado para evitar rate limit)
             if _market_data_worker_running:
                 await update_market_data_cache()
         except asyncio.CancelledError:
@@ -362,7 +372,7 @@ async def market_data_worker():
             break
         except Exception as e:
             logger.error(f"[MarketDataWorker] Erro: {e}")
-            await asyncio.sleep(10)  # Espera 10s antes de tentar novamente
+            await asyncio.sleep(30)  # Espera 30s antes de tentar novamente (era 10s)
 
 async def start_market_data_worker():
     """Inicia o background worker de market data"""
