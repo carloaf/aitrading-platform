@@ -431,16 +431,17 @@
                             <div class="col-md-6">
                                 <p class="mb-2"><strong>Diferença entre Proximidade e Sinal:</strong></p>
                                 <ul class="list-unstyled small">
-                                    <li class="mb-2"><i class="bi bi-lightning-charge text-warning"></i> <strong>Proximidade 100%</strong> = RSI em zona extrema (ex: RSI=25)</li>
+                                    <li class="mb-2"><i class="bi bi-lightning-charge text-warning"></i> <strong>Proximidade 100%</strong> = RSI em zona extrema (ex: RSI=25 ou RSI=85)</li>
                                     <li class="mb-2"><i class="bi bi-check-circle text-success"></i> <strong>Sinal Ativo</strong> = Divergência confirmada (preço↓ + RSI↑)</li>
                                 </ul>
                                 <p class="mb-2"><strong>Por que um pode existir sem o outro?</strong></p>
                                 <p class="small text-muted">
-                                    Um ativo pode ter RSI=25 (100% proximidade) mas o preço não está fazendo novos mínimos 
-                                    enquanto o RSI sobe - então não há divergência, apenas RSI extremo.
+                                    Um ativo pode ter RSI=25 (100% proximidade) mas o preço não está fazendo novos mínimos
+                                    enquanto o RSI sobe - então não há divergência, apenas RSI extremo. <br>
+                                    Da mesma forma, RSI=85 indica sobrecompra extrema, mas só há bearish divergence se o preço fizer novos topos enquanto RSI cai.
                                 </p>
                                 <div class="alert alert-info py-2 mb-0 small">
-                                    <i class="bi bi-lightbulb"></i> <strong>Dica:</strong> Fique atento quando proximidade é alta - um sinal pode surgir em breve!
+                                    <i class="bi bi-lightbulb"></i> <strong>Dica:</strong> Fique atento quando proximidade é alta ou RSI > 70 - um sinal pode surgir em breve!
                                 </div>
                             </div>
                         </div>
@@ -649,6 +650,76 @@
             </div>
         </div>
     </div>
+
+    <!-- Paper Trading Performance Stats (NOVO) -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success bg-opacity-10 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-graph-up text-success"></i> Performance Paper Trading - Sinais Auto-Executados</h5>
+                    <button class="btn btn-success btn-sm" onclick="loadPaperTradingStats()">
+                        <i class="bi bi-arrow-clockwise"></i> Atualizar
+                    </button>
+                </div>
+                <div class="card-body">
+                    <!-- Stats Summary Cards -->
+                    <div class="row text-center mb-3">
+                        <div class="col-md-3">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="text-muted mb-1">Total Trades</h6>
+                                <h3 class="mb-0" id="statsTotalTrades">-</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="text-muted mb-1">Win Rate</h6>
+                                <h3 class="mb-0 text-success" id="statsWinRate">-</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="text-muted mb-1">P&L Total</h6>
+                                <h3 class="mb-0" id="statsPnL">$0.00</h3>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="p-3 bg-light rounded">
+                                <h6 class="text-muted mb-1">Profit Factor</h6>
+                                <h3 class="mb-0" id="statsProfitFactor">-</h3>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Trades Table -->
+                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
+                        <table class="table table-sm mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Símbolo</th>
+                                    <th>Tipo</th>
+                                    <th>Preço</th>
+                                    <th>Quantidade</th>
+                                    <th>Valor</th>
+                                    <th>P&L</th>
+                                    <th>Confiança</th>
+                                    <th>Data</th>
+                                </tr>
+                            </thead>
+                            <tbody id="paperTradingTableBody">
+                                <tr>
+                                    <td colspan="9" class="text-center text-muted py-3">
+                                        Carregando...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
 </div>
 
 <!-- Toast Container for Notifications -->
@@ -839,10 +910,16 @@
         loadSavedState();   // Load execution state (continuous scan, etc)
         initializeScanner();
         
+        console.log('[Scanner] Generating symbol groups...');
+        generateSymbolGroups();  // Gera grupos prioritarios (HOT first)
+        
         console.log('[Scanner] Restoring caches...');
         // Restaurar cache primeiro (instantaneo), depois atualiza em background
         restoreNearAlertsCache();
         restoreMarketDataCache();
+        
+        console.log('[Scanner] Loading paper trading stats...');
+        loadPaperTradingStats();  // Carrega estatísticas de paper trading
         
         console.log('[Scanner] Starting data fetch in 500ms...');
         // Atualiza dados em background (nao bloqueia UI)
@@ -895,10 +972,29 @@
         // Auto-refresh market data every 15 seconds (banco e rapido)
         setInterval(fetchMarketData, 15000);
         
-        // Near Alerts tambem usa fetchMarketData (mesmos dados do banco)
+        // GRUPO PRIORITARIO (HOT): Atualiza a cada 20 segundos (sempre grupo 0)
         setTimeout(() => {
-            setInterval(() => updateNearAlerts(), 20000);
+            setInterval(() => {
+                // Forcar grupo 0 (HOT) - Binance real-time
+                const savedIndex = symbolRotationIndex;
+                symbolRotationIndex = 0;
+                updateNearAlerts();
+                symbolRotationIndex = savedIndex;  // Restaurar rotacao
+                generateSymbolGroups();  // Regenera grupos (atualiza HOT)
+                console.log('[Priority] Grupo HOT atualizado (G1), rotacao atual: G' + (symbolRotationIndex + 1));
+            }, 20000);  // 20 segundos para grupo prioritario
         }, 10000);
+        
+        // ROTACAO NORMAL: Cicla pelos 4 grupos a cada 30 segundos
+        setTimeout(() => {
+            setInterval(() => {
+                updateNearAlerts();  // Rotaciona pelos grupos (G1→G2→G3→G4→G1)
+                console.log('[Rotation] Grupo', (symbolRotationIndex + 1) % 4 || 4, 'carregado (ciclo 30s)');
+            }, 30000);  // 30 segundos para rotacao normal
+        }, 12000);
+        
+        // Atualiza estatísticas de paper trading a cada 30 segundos
+        setInterval(loadPaperTradingStats, 30000);
         
         // Add auto-save event listeners to all config inputs
         setupAutoSave();
@@ -1683,13 +1779,183 @@
         container.innerHTML = html;
     }
     
+    // Gera grupos dinamicos de simbolos baseado nos selecionados
+    // PRIORIDADE: Simbolos com proximidade > 0 vao no primeiro grupo (HOT)
+    // DIVISAO: 4 grupos de ate 25 simbolos cada (total: 100 simbolos)
+    function generateSymbolGroups() {
+        const selectedSymbols = getSelectedSymbols();
+        
+        if (selectedSymbols.length === 0) {
+            SYMBOL_GROUPS = [
+                ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'],
+                ['XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'MATICUSDT']
+            ];
+            console.log('[Groups] No symbols selected, using defaults (2 groups):', SYMBOL_GROUPS.length);
+            return;
+        }
+        
+        // Limitar a 100 simbolos total (4 grupos x 25)
+        const maxSymbols = 100;
+        const symbolsToUse = selectedSymbols.slice(0, maxSymbols);
+        
+        // Pegar dados atuais do cache para priorizar simbolos HOT
+        const currentData = Object.values(accumulatedMarketData);
+        const hotSymbols = currentData
+            .filter(item => item.proximity > 0)
+            .sort((a, b) => b.proximity - a.proximity)  // Maior proximidade primeiro
+            .map(item => item.symbol)
+            .slice(0, 25);  // Primeiro grupo prioritario: ate 25 simbolos HOT
+        
+        const coldSymbols = symbolsToUse.filter(s => !hotSymbols.includes(s));
+        
+        // Dividir em EXATAMENTE 4 grupos de 25 (otimizado para 100 simbolos)
+        SYMBOL_GROUPS = [];
+        
+        // Grupo 1 (INDEX 0): HOT symbols (alta proximidade) - ate 25
+        if (hotSymbols.length > 0) {
+            SYMBOL_GROUPS.push(hotSymbols.slice(0, 25));
+        } else {
+            // Se nao tem HOT, pegar os primeiros 25 cold
+            SYMBOL_GROUPS.push(coldSymbols.slice(0, 25));
+        }
+        
+        // Grupos 2-4 (INDEX 1-3): COLD symbols - 25 cada
+        const remainingSymbols = hotSymbols.length > 0 ? coldSymbols : coldSymbols.slice(25);
+        for (let i = 0; i < remainingSymbols.length && SYMBOL_GROUPS.length < 4; i += 25) {
+            const group = remainingSymbols.slice(i, i + 25);
+            if (group.length > 0) {
+                SYMBOL_GROUPS.push(group);
+            }
+        }
+        
+        // Garantir que temos exatamente 4 grupos (preencher com vazios se necessario)
+        while (SYMBOL_GROUPS.length < 4) {
+            SYMBOL_GROUPS.push([]);
+        }
+        
+        const totalSymbols = SYMBOL_GROUPS.reduce((sum, g) => sum + g.length, 0);
+        console.log('[Groups] Generated 4 groups for', totalSymbols, 'symbols:', 
+                   'G1(HOT):', SYMBOL_GROUPS[0].length, 
+                   '| G2:', SYMBOL_GROUPS[1].length,
+                   '| G3:', SYMBOL_GROUPS[2].length,
+                   '| G4:', SYMBOL_GROUPS[3].length);
+        console.log('[Groups] HOT symbols (G1):', SYMBOL_GROUPS[0].slice(0, 5).join(', '), 
+                   SYMBOL_GROUPS[0].length > 5 ? '...' : '');
+        
+        // Reset rotation para comecar do grupo prioritario (HOT)
+        symbolRotationIndex = 0;
+    }
+    
+    // Carrega estatisticas de paper trading
+    async function loadPaperTradingStats() {
+        try {
+            // TODO: Implementar endpoint /api/paper-trading/stats no backend
+            // Por enquanto, exibir mensagem de "em desenvolvimento"
+            console.log('[PaperTrading] Endpoint em desenvolvimento');
+            
+            // Atualizar UI com mensagem
+            document.getElementById('statsTotalTrades').textContent = '-';
+            document.getElementById('statsWinRate').textContent = '-';
+            document.getElementById('statsPnL').textContent = '-';
+            document.getElementById('statsProfitFactor').textContent = '-';
+            
+            const tbody = document.getElementById('paperTradingTableBody');
+            tbody.innerHTML = \`
+                <tr>
+                    <td colspan="9" class="text-center text-muted py-3">
+                        <i class="bi bi-tools"></i> Funcionalidade em desenvolvimento<br>
+                        <small>Endpoint /api/paper-trading/stats será implementado em breve</small>
+                    </td>
+                </tr>
+            \`;
+            
+            return; // Temporariamente desabilitado
+            
+            // CODIGO ORIGINAL (comentado temporariamente):
+            /*
+            const response = await fetch(API_BASE + '/api/paper-trading/stats');
+            const result = await response.json();
+            
+            if (!result.success) {
+                console.error('[PaperTrading] Error loading stats:', result.error);
+                showToast('Erro', 'Falha ao carregar estatísticas de paper trading', 'danger');
+                return;
+            }
+            
+            const stats = result.data || {};
+            const trades = result.trades || [];
+            
+            // Atualizar cards de estatísticas
+            document.getElementById('statsTotalTrades').textContent = stats.total_trades || '0';
+            document.getElementById('statsWinRate').textContent = stats.win_rate 
+                ? (stats.win_rate * 100).toFixed(1) + '%' 
+                : '-';
+            document.getElementById('statsPnL').textContent = stats.total_pnl 
+                ? '$' + stats.total_pnl.toFixed(2) 
+                : '$0.00';
+            document.getElementById('statsProfitFactor').textContent = stats.profit_factor 
+                ? stats.profit_factor.toFixed(2) 
+                : '-';
+            
+            // Atualizar tabela de trades
+            const tbody = document.getElementById('paperTradingTableBody');
+            
+            if (trades.length === 0) {
+                tbody.innerHTML = \`
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-3">
+                            Nenhum trade executado ainda
+                        </td>
+                    </tr>
+                \`;
+                return;
+            }
+            
+            // Mostrar últimos 50 trades
+            const recentTrades = trades.slice(0, 50);
+            tbody.innerHTML = recentTrades.map(trade => {
+                const pnlClass = trade.pnl >= 0 ? 'text-success' : 'text-danger';
+                const pnlIcon = trade.pnl >= 0 ? 'caret-up-fill' : 'caret-down-fill';
+                const typeClass = trade.side === 'BUY' ? 'success' : 'danger';
+                
+                return \`
+                    <tr>
+                        <td>\${trade.id || '-'}</td>
+                        <td><strong>\${trade.symbol}</strong></td>
+                        <td><span class="badge bg-\${typeClass}">\${trade.side}</span></td>
+                        <td>\${formatPrice(trade.price)}</td>
+                        <td>\${trade.quantity?.toFixed(6) || '-'}</td>
+                        <td>$\${(trade.price * trade.quantity).toFixed(2)}</td>
+                        <td class="\${pnlClass}">
+                            <i class="bi bi-\${pnlIcon}"></i> $\${Math.abs(trade.pnl || 0).toFixed(2)}
+                        </td>
+                        <td>\${trade.confidence ? (trade.confidence * 100).toFixed(0) + '%' : '-'}</td>
+                        <td>\${new Date(trade.timestamp).toLocaleString()}</td>
+                    </tr>
+                \`;
+            }).join('');
+            
+            showToast('Estatísticas Atualizadas', 'Dados de paper trading carregados com sucesso', 'success');
+            */
+            
+        } catch (error) {
+            console.error('[PaperTrading] Error:', error);
+            // Não mostrar toast de erro para não poluir a UI
+            // showToast('Erro', 'Falha ao conectar com API de paper trading', 'danger');
+        }
+    }
+    
     // Sistema de rotacao de simbolos para carregar gradualmente
-    // DINAMICO: Le simbolos selecionados da configuracao e divide em grupos de 4
+    // DIVISAO INTELIGENTE: 4 grupos de 25 simbolos (100 total)
+    // ROTACAO: A cada 30s um grupo diferente (ciclo completo: 2 minutos)
+    // PRIORITARIO: Grupo 1 (HOT) atualizado a cada 20s da Binance
     let symbolRotationIndex = 0;
     let SYMBOL_GROUPS = [
         ['BTCUSDT', 'ETHUSDT', 'BNBUSDT', 'SOLUSDT'],
-        ['XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'TRXUSDT']
-    ];  // Temporariamente hardcoded para debug
+        ['XRPUSDT', 'ADAUSDT', 'DOGEUSDT', 'TRXUSDT'],
+        ['MATICUSDT', 'DOTUSDT', 'LINKUSDT', 'AVAXUSDT'],
+        ['ATOMUSDT', 'UNIUSDT', 'APTUSDT', 'ARBUSDT']
+    ];  // Defaults: 4 grupos
     
     let accumulatedMarketData = {};  // Cache acumulado de todos os grupos
     let nearAlertsRequestInProgress = false;  // Flag simples (banco e rapido)
@@ -1709,18 +1975,21 @@
         const hasDataInDOM = container && container.innerHTML.includes('col-md-4');
         
         try {
-            // SISTEMA DE ROTACAO: Carrega um grupo diferente a cada chamada
-            // Com backend database-backed, podemos carregar mais simbolos de uma vez
+            // SISTEMA DE ROTACAO: 4 grupos de 25 simbolos (ciclo de 2 minutos)
+            // G1 (HOT): Prioridade, atualizado a cada 20s
+            // G2-G4 (COLD): Rotacao de 30s
             const currentGroup = SYMBOL_GROUPS[symbolRotationIndex];
             const isFirstGroup = symbolRotationIndex === 0;
+            const groupLabel = isFirstGroup ? 'G1(HOT)' : 'G' + (symbolRotationIndex + 1);
             
-            // Avancar para proximo grupo na proxima chamada
-            symbolRotationIndex = (symbolRotationIndex + 1) % SYMBOL_GROUPS.length;
+            // Avancar para proximo grupo na proxima chamada (ciclo 1→2→3→4→1)
+            symbolRotationIndex = (symbolRotationIndex + 1) % 4;
             
             const symbols = currentGroup.join(',');
             const totalSymbols = SYMBOL_GROUPS.reduce((sum, g) => sum + g.length, 0);
             const downloaded = Object.keys(accumulatedMarketData).length;
-            console.log('[NearAlerts] Fetching group', symbolRotationIndex + '/' + SYMBOL_GROUPS.length + ':', currentGroup.length, 'symbols | Total:', downloaded + '/' + totalSymbols, 'fetched from Binance');
+            const nextGroup = symbolRotationIndex === 0 ? 'G1(HOT)' : 'G' + (symbolRotationIndex + 1);
+            console.log('[NearAlerts] Fetching', groupLabel + ':', currentGroup.length, 'symbols | Next:', nextGroup, '| Total cache:', downloaded + '/' + totalSymbols);
             
             // Requisicao simples - sem AbortController (banco responde em < 100ms)
             const response = await fetch(API_BASE + '/api/scanner/market-data?symbols=' + symbols);
