@@ -30,6 +30,56 @@
         </div>
     </div>
 
+    <!-- 🤖 ML Filter Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm border-info">
+                <div class="card-header bg-info bg-opacity-10 d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <i class="bi bi-robot text-info"></i> Machine Learning Filter
+                        <span id="mlFilterStatus" class="badge bg-secondary ms-2">Desabilitado</span>
+                    </h5>
+                    <div>
+                        <button class="btn btn-info btn-sm" onclick="toggleMLFilter()" id="btnMLFilter">
+                            <i class="bi bi-cpu"></i> Habilitar ML
+                        </button>
+                        <button class="btn btn-outline-info btn-sm ms-1" onclick="loadMLFilterStats()">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body py-2">
+                    <div class="row text-center">
+                        <div class="col-md-2">
+                            <small class="text-muted d-block">Sinais Totais</small>
+                            <span class="fw-bold fs-5" id="mlStatTotalSignals">0</span>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted d-block">Aprovados</small>
+                            <span class="fw-bold fs-5 text-success" id="mlStatApproved">0</span>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted d-block">Rejeitados</small>
+                            <span class="fw-bold fs-5 text-danger" id="mlStatRejected">0</span>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted d-block">Taxa Aprovação</small>
+                            <span class="fw-bold fs-5 text-info" id="mlStatApprovalRate">-</span>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted d-block">Score Médio</small>
+                            <span class="fw-bold fs-5" id="mlStatAvgScore">-</span>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted d-block">Accuracy</small>
+                            <span class="fw-bold fs-5 text-primary" id="mlStatAccuracy">-</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Active Signals Section -->
     <div class="row mb-4">
         <div class="col-12">
@@ -1148,6 +1198,10 @@
         // Atualiza estatísticas de paper trading a cada 60 segundos (era 30s)
         setInterval(loadPaperTradingStats, 60000);
         
+        // Carrega ML Filter stats no init e atualiza a cada 30 segundos
+        loadMLFilterStats();
+        setInterval(loadMLFilterStats, 30000);
+        
         // Add auto-save event listeners to all config inputs
         setupAutoSave();
     });
@@ -2075,6 +2129,117 @@
         // Reset rotation para comecar do grupo prioritario (HOT)
         symbolRotationIndex = 0;
     }
+    
+    // ========== ML FILTER FUNCTIONS ==========
+    
+    let mlFilterEnabled = false;
+    
+    async function toggleMLFilter() {
+        try {
+            const endpoint = mlFilterEnabled 
+                ? '/api/scanner/disable-ml-filter' 
+                : '/api/scanner/enable-ml-filter?min_score=0.6&min_trades=30';
+            
+            const btnML = document.getElementById('btnMLFilter');
+            btnML.disabled = true;
+            btnML.innerHTML = '<i class="bi bi-hourglass-split"></i> Processando...';
+            
+            const response = await fetch(API_BASE + endpoint, { method: 'POST' });
+            const result = await response.json();
+            
+            btnML.disabled = false;
+            
+            if (!result.success && !mlFilterEnabled) {
+                showToast('Erro ML Filter', result.detail || 'Falha ao habilitar ML Filter (precisa de histórico de trades)', 'danger');
+                btnML.innerHTML = '<i class="bi bi-cpu"></i> Habilitar ML';
+                return;
+            }
+            
+            // Toggle state
+            mlFilterEnabled = !mlFilterEnabled;
+            
+            // Update UI
+            const statusBadge = document.getElementById('mlFilterStatus');
+            
+            if (mlFilterEnabled) {
+                statusBadge.textContent = 'Habilitado';
+                statusBadge.className = 'badge bg-success ms-2';
+                btnML.innerHTML = '<i class="bi bi-cpu-fill"></i> Desabilitar ML';
+                btnML.className = 'btn btn-outline-info btn-sm';
+                
+                // Mostrar métricas de treino
+                if (result.metrics) {
+                    showToast('ML Filter Ativado', 
+                        \`Treino: \${result.training_samples} samples | Accuracy: \${(result.metrics.accuracy * 100).toFixed(1)}%\`, 
+                        'success');
+                }
+                
+                loadMLFilterStats();
+            } else {
+                statusBadge.textContent = 'Desabilitado';
+                statusBadge.className = 'badge bg-secondary ms-2';
+                btnML.innerHTML = '<i class="bi bi-cpu"></i> Habilitar ML';
+                btnML.className = 'btn btn-info btn-sm';
+                showToast('ML Filter', 'ML Filter desabilitado', 'info');
+            }
+            
+        } catch (error) {
+            console.error('Error toggling ML Filter:', error);
+            showToast('Erro', 'Falha ao comunicar com servidor', 'danger');
+            document.getElementById('btnMLFilter').disabled = false;
+            document.getElementById('btnMLFilter').innerHTML = '<i class="bi bi-cpu"></i> Habilitar ML';
+        }
+    }
+    
+    async function loadMLFilterStats() {
+        try {
+            const response = await fetch(API_BASE + '/api/scanner/ml-filter-stats');
+            const result = await response.json();
+            
+            if (!result.success) {
+                return;
+            }
+            
+            // Update status
+            mlFilterEnabled = result.enabled;
+            const statusBadge = document.getElementById('mlFilterStatus');
+            const btnML = document.getElementById('btnMLFilter');
+            
+            if (result.enabled) {
+                statusBadge.textContent = 'Habilitado';
+                statusBadge.className = 'badge bg-success ms-2';
+                btnML.innerHTML = '<i class="bi bi-cpu-fill"></i> Desabilitar ML';
+                btnML.className = 'btn btn-outline-info btn-sm';
+            } else {
+                statusBadge.textContent = 'Desabilitado';
+                statusBadge.className = 'badge bg-secondary ms-2';
+                btnML.innerHTML = '<i class="bi bi-cpu"></i> Habilitar ML';
+                btnML.className = 'btn btn-info btn-sm';
+            }
+            
+            // Update stats
+            document.getElementById('mlStatTotalSignals').textContent = result.total_signals || '0';
+            document.getElementById('mlStatApproved').textContent = result.approved || '0';
+            document.getElementById('mlStatRejected').textContent = result.rejected || '0';
+            document.getElementById('mlStatApprovalRate').textContent = result.approval_rate 
+                ? result.approval_rate.toFixed(1) + '%' 
+                : '-';
+            document.getElementById('mlStatAvgScore').textContent = result.avg_ml_score 
+                ? (result.avg_ml_score * 100).toFixed(1) + '%'
+                : '-';
+            
+            // Training metrics
+            const metrics = result.training_metrics || {};
+            document.getElementById('mlStatAccuracy').textContent = metrics.accuracy 
+                ? (metrics.accuracy * 100).toFixed(1) + '%'
+                : '-';
+            
+        } catch (error) {
+            console.error('Error loading ML stats:', error);
+        }
+    }
+    
+    // ========== PAPER TRADING FUNCTIONS ==========
     
     // Carrega estatisticas de paper trading
     async function loadPaperTradingStats() {

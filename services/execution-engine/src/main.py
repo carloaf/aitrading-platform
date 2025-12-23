@@ -3659,6 +3659,108 @@ async def disable_scanner_auto_trade():
     }
 
 
+# ========== ML FILTER ENDPOINTS ==========
+
+@app.post("/api/scanner/enable-ml-filter")
+async def enable_scanner_ml_filter(min_score: float = 0.6, min_trades: int = 50):
+    """
+    🤖 Habilita ML Filter no scanner
+    
+    O ML Filter treina com histórico de trades para:
+    1. Filtrar sinais de baixa qualidade (score < threshold)
+    2. Ajustar position sizing baseado em confiança
+    
+    Args:
+        min_score: Score mínimo para aprovar sinal (0.0-1.0, default: 0.6)
+        min_trades: Mínimo de trades históricos para treinar (default: 50)
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None:
+        raise HTTPException(status_code=400, detail="Scanner not initialized")
+    
+    # Inicializar e treinar ML filter
+    result = await rsi_scanner.initialize_ml_filter(min_trades=min_trades)
+    
+    if not result.get('success'):
+        raise HTTPException(
+            status_code=500, 
+            detail=result.get('error', 'ML Filter initialization failed')
+        )
+    
+    rsi_scanner.min_ml_score = min_score
+    
+    return {
+        'success': True,
+        'message': 'ML Filter enabled and trained',
+        'min_ml_score': min_score,
+        'training_samples': result.get('samples', 0),
+        'metrics': result.get('metrics', {}),
+        'note': 'Signals will be filtered by ML confidence before auto-execution'
+    }
+
+
+@app.post("/api/scanner/disable-ml-filter")
+async def disable_scanner_ml_filter():
+    """
+    🤖 Desabilita ML Filter
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None:
+        return {'success': True, 'message': 'Scanner not initialized'}
+    
+    rsi_scanner.disable_ml_filter()
+    
+    return {
+        'success': True,
+        'message': 'ML Filter disabled'
+    }
+
+
+@app.get("/api/scanner/ml-filter-stats")
+async def get_ml_filter_stats():
+    """
+    📊 Retorna estatísticas do ML Filter
+    
+    Inclui:
+    - Status (habilitado/desabilitado)
+    - Sinais totais, aprovados, rejeitados
+    - Taxa de aprovação
+    - Métricas de treinamento (accuracy, precision, recall, AUC)
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None:
+        return {
+            'success': False,
+            'enabled': False,
+            'message': 'Scanner not initialized'
+        }
+    
+    stats = rsi_scanner.get_ml_filter_stats()
+    
+    # Calcular taxa de aprovação
+    total = stats['stats']['total_signals']
+    approved = stats['stats']['approved']
+    approval_rate = (approved / total * 100) if total > 0 else 0
+    
+    return {
+        'success': True,
+        'enabled': stats['enabled'],
+        'available': stats['available'],
+        'min_score_threshold': stats['min_score'],
+        'total_signals': total,
+        'approved': approved,
+        'rejected': stats['stats']['rejected'],
+        'approval_rate': round(approval_rate, 1),
+        'avg_ml_score': round(stats['stats']['avg_score'], 3),
+        'training_metrics': stats['training_metrics']
+    }
+
+
+# ========== AUTO-TRADE PERFORMANCE ==========
+
 @app.get("/api/scanner/auto-trade-performance")
 async def get_scanner_auto_trade_performance():
     """

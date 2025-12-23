@@ -20,6 +20,14 @@ from enum import Enum
 import logging
 import ta
 
+# ML Signal Filter
+try:
+    from ml_signal_filter import MLSignalFilter
+    ML_FILTER_AVAILABLE = True
+except ImportError:
+    ML_FILTER_AVAILABLE = False
+    logging.warning("ML Signal Filter not available. Install: pip install lightgbm")
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,7 +161,19 @@ class MultiSymbolScanner:
         self.auto_trade_session_id: Optional[str] = None
         self.min_signal_strength_for_trade = 0.4  # Mínimo 40% de força
         
-        logger.info(f"MultiSymbolScanner initialized with {len(self.config.symbols)} symbols | Auto-trade: {auto_trade_enabled}")
+        # ML Filter configuration
+        self.ml_filter_enabled = False
+        self.ml_filter: Optional['MLSignalFilter'] = None
+        self.min_ml_score = 0.60  # 60% confiança mínima
+        self.ml_training_metrics: Dict[str, Any] = {}
+        self.ml_stats = {
+            'total_signals': 0,
+            'approved': 0,
+            'rejected': 0,
+            'avg_score': 0.0
+        }
+        
+        logger.info(f"MultiSymbolScanner initialized with {len(self.config.symbols)} symbols | Auto-trade: {auto_trade_enabled} | ML: {ML_FILTER_AVAILABLE}")
     
     async def start(self):
         """Inicia o scanner em modo contínuo"""
@@ -759,11 +779,72 @@ class MultiSymbolScanner:
                 
                 logger.info(f"💾 Signal saved to DB: {signal_id} - {signal.symbol} {signal.type.value}")
                 
-                # 🚀 AUTO-EXECUTE: Se auto-trade estiver habilitado, criar paper trade automaticamente
+                # 🤖 ML FILTER: Avaliar sinal antes de executar
+                ml_score = 0.5  # Default (sem filtro)
+                ml_approved = True
+                
+                if self.ml_filter_enabled and self.ml_filter:
+                    try:
+                        # Extrair features do sinal
+                        candle_data = {
+                            'close': signal.price,
+                            'open': signal.price * 0.999,  # Aproximação
+                            'rsi': signal.rsi,
+                            'adx': signal.confirmations.get('adx', 20.0) if isinstance(signal.confirmations, dict) else 20.0,
+                            'volume': signal.confirmations.get('volume', 1000.0) if isinstance(signal.confirmations, dict) else 1000.0,
+                            'atr': abs(signal.entry - signal.stop_loss),
+                            'volume_ma_20': 1000.0,  # Placeholder
+                            'ema_50': signal.price,
+                            'ema_200': signal.price
+                        }
+                        
+                        # Predizer qualidade do sinal
+                        ml_score = self.ml_filter.predict(
+                            candle_data=candle_data,
+                            strategy='rsi_divergence',
+                            signal_strength=signal.strength,
+                            setup_quality=70.0,  # Placeholder
+                            regime='SIDEWAYS'  # RSI Divergence é mean-reversion
+                        )
+                        
+                        ml_approved = ml_score >= self.min_ml_score
+                        
+                        # Atualizar estatísticas
+                        self.ml_stats['total_signals'] += 1
+                        if ml_approved:
+                            self.ml_stats['approved'] += 1
+                        else:
+                            self.ml_stats['rejected'] += 1
+                        # Média móvel do score
+                        n = self.ml_stats['total_signals']
+                        self.ml_stats['avg_score'] = ((n-1) * self.ml_stats['avg_score'] + ml_score) / n
+                        
+                        logger.info(f"🤖 ML Score: {ml_score:.2%} | Approved: {ml_approved} | Min: {self.min_ml_score:.2%}")
+                        
+                        # Salvar ML score no banco
+                        await conn.execute("""
+                            UPDATE autotrade_signals
+                            SET ml_score = $1
+                            WHERE signal_id = $2
+                        """, ml_score, signal_id)
+                        
+                    except Exception as e:
+                        logger.warning(f"🤖 ML Filter error (using default): {e}")
+                
+                # 🚀 AUTO-EXECUTE: Se auto-trade estiver habilitado E ML aprovar
                 if self.auto_trade_enabled and signal.strength >= self.min_signal_strength_for_trade:
-                    trade_id = await self._create_paper_trade_from_signal(signal, signal_id)
-                    if trade_id:
-                        logger.info(f"🤖 Auto-executed paper trade: {trade_id} from signal {signal_id}")
+                    if ml_approved:
+                        trade_id = await self._create_paper_trade_from_signal(signal, signal_id, ml_score)
+                        if trade_id:
+                            logger.info(f"🤖 Auto-executed paper trade: {trade_id} from signal {signal_id} (ML: {ml_score:.2%})")
+                    else:
+                        logger.info(f"🚫 ML Filter rejected signal: {signal_id} | Score: {ml_score:.2%} < {self.min_ml_score:.2%}")
+                        # Marcar sinal como rejeitado pelo ML
+                        await conn.execute("""
+                            UPDATE autotrade_signals
+                            SET executed = false, execution_reason = $1
+                            WHERE signal_id = $2
+                        """, f"ML Filter rejected: {ml_score:.2%} < {self.min_ml_score:.2%}", signal_id)
                 
                 return signal_id
                 
@@ -772,6 +853,122 @@ class MultiSymbolScanner:
             import traceback
             traceback.print_exc()
             return None
+    
+    async def initialize_ml_filter(self, min_trades: int = 50) -> Dict[str, Any]:
+        """
+        🤖 Inicializa e treina o ML Filter com histórico de trades
+        
+        Args:
+            min_trades: Mínimo de trades necessários para treinar
+            
+        Returns:
+            Dict com métricas de treinamento ou erro
+        """
+        if not ML_FILTER_AVAILABLE:
+            return {'success': False, 'error': 'LightGBM not installed. Run: pip install lightgbm'}
+        
+        if not self.db_pool:
+            return {'success': False, 'error': 'Database not connected'}
+        
+        try:
+            self.ml_filter = MLSignalFilter()
+            
+            # Buscar histórico de trades do banco
+            async with self.db_pool.acquire() as conn:
+                trades = await conn.fetch("""
+                    SELECT 
+                        t.entry_price, t.exit_price, t.quantity,
+                        t.side, t.status, t.pnl, t.signal_strength,
+                        t.entry_time, t.exit_time, t.stop_loss, t.take_profit,
+                        s.rsi as rsi_current, s.adx, s.current_price as price_current, 
+                        s.signal_type, s.timeframe, s.strength
+                    FROM paper_trading_trades t
+                    LEFT JOIN autotrade_signals s ON t.signal_id = s.signal_id
+                    WHERE t.status = 'closed'
+                        AND t.pnl IS NOT NULL
+                        AND t.entry_time >= NOW() - INTERVAL '60 days'
+                    ORDER BY t.entry_time DESC
+                    LIMIT 500
+                """)
+            
+            if len(trades) < min_trades:
+                return {
+                    'success': False, 
+                    'error': f'Not enough trades for training: {len(trades)} (need {min_trades}+)',
+                    'trades_found': len(trades)
+                }
+            
+            # Preparar dados para treino
+            training_data = []
+            for trade in trades:
+                # Determinar label (0=bad, 1=good)
+                pnl = trade['pnl'] if trade['pnl'] else 0
+                label = 1 if pnl > 0 else 0
+                
+                entry_price = float(trade['entry_price']) if trade['entry_price'] else 40000.0
+                stop_loss = float(trade['stop_loss']) if trade['stop_loss'] else entry_price * 0.98
+                
+                training_data.append({
+                    'entry_state': {
+                        'close': entry_price,
+                        'open': entry_price * 0.999,
+                        'rsi': float(trade['rsi_current']) if trade['rsi_current'] else 50.0,
+                        'adx': float(trade['adx']) if trade['adx'] else 25.0,
+                        'volume': 1000.0,
+                        'atr': abs(entry_price - stop_loss),
+                        'volume_ma_20': 1000.0,
+                        'ema_50': entry_price,
+                        'ema_200': entry_price
+                    },
+                    'strategy': 'rsi_divergence',
+                    'signal_strength': float(trade['signal_strength']) if trade['signal_strength'] else 0.5,
+                    'setup_quality': 70.0,
+                    'regime': 'SIDEWAYS',
+                    'exit_reason': 'TAKE_PROFIT' if label == 1 else 'STOP_LOSS'
+                })
+            
+            # Treinar modelo
+            metrics = self.ml_filter.train(training_data, test_size=0.2, num_rounds=100)
+            
+            self.ml_filter_enabled = True
+            self.ml_training_metrics = metrics
+            
+            logger.info(f"🤖 ML Filter trained successfully!")
+            logger.info(f"   Samples: {len(training_data)}")
+            logger.info(f"   Accuracy: {metrics['accuracy']:.2%}")
+            logger.info(f"   Precision: {metrics['precision']:.2%}")
+            logger.info(f"   Recall: {metrics['recall']:.2%}")
+            logger.info(f"   AUC: {metrics['auc']:.2f}")
+            
+            return {
+                'success': True,
+                'message': 'ML Filter trained successfully',
+                'samples': len(training_data),
+                'metrics': metrics
+            }
+            
+        except Exception as e:
+            logger.error(f"🤖 Error initializing ML Filter: {e}")
+            import traceback
+            traceback.print_exc()
+            return {'success': False, 'error': str(e)}
+    
+    def disable_ml_filter(self):
+        """Desabilita o ML Filter"""
+        self.ml_filter_enabled = False
+        logger.info("🤖 ML Filter disabled")
+    
+    def get_ml_filter_stats(self) -> Dict[str, Any]:
+        """
+        📊 Retorna estatísticas do ML Filter
+        """
+        return {
+            'enabled': self.ml_filter_enabled,
+            'available': ML_FILTER_AVAILABLE,
+            'min_score': self.min_ml_score,
+            'stats': self.ml_stats,
+            'training_metrics': self.ml_training_metrics
+        }
     
     async def get_recent_signals_from_db(self, limit: int = 50, hours: int = 24):
         """
@@ -823,9 +1020,14 @@ class MultiSymbolScanner:
             logger.error(f"Error fetching signals from DB: {e}")
             return []
     
-    async def _create_paper_trade_from_signal(self, signal: DivergenceSignal, signal_id: str) -> Optional[int]:
+    async def _create_paper_trade_from_signal(self, signal: DivergenceSignal, signal_id: str, ml_score: float = 0.5) -> Optional[int]:
         """
         🤖 Cria automaticamente um paper trade a partir de um sinal detectado
+        
+        Position sizing ajustado por ML score:
+        - ML >= 80%: 3% risk (high confidence)
+        - ML >= 60%: 2% risk (medium confidence)
+        - ML < 60%: 1% risk (low confidence)
         """
         if not self.db_pool:
             return None
@@ -852,9 +1054,21 @@ class MultiSymbolScanner:
                     datetime.utcnow())
             
             async with self.db_pool.acquire() as conn:
-                # Calcular posição baseada em risco 2%
+                # Calcular posição baseada em risco ajustado pelo ML
                 capital = 10000.0
-                risk_amount = capital * 0.02  # 2% de risco
+                
+                # 🤖 ML POSITION SIZING ADJUSTMENT
+                if ml_score >= 0.8:
+                    risk_pct = 0.03  # High confidence: 3% risk
+                    logger.info(f"🤖 High ML confidence ({ml_score:.2%}) -> 3% risk")
+                elif ml_score >= 0.6:
+                    risk_pct = 0.02  # Medium confidence: 2% risk (padrão)
+                    logger.info(f"🤖 Medium ML confidence ({ml_score:.2%}) -> 2% risk")
+                else:
+                    risk_pct = 0.01  # Low confidence: 1% risk (conservador)
+                    logger.info(f"🤖 Low ML confidence ({ml_score:.2%}) -> 1% risk")
+                
+                risk_amount = capital * risk_pct
                 entry_price = signal.entry
                 stop_loss = signal.stop_loss
                 stop_distance = abs(entry_price - stop_loss)
