@@ -3617,6 +3617,79 @@ async def stop_continuous_scanning():
     }
 
 
+@app.post("/api/scanner/enable-auto-trade")
+async def enable_scanner_auto_trade(min_strength: float = 0.4):
+    """
+    🤖 Habilita auto-execução de sinais em paper trading
+    
+    Quando habilitado, sinais detectados com força >= min_strength
+    serão automaticamente executados como paper trades.
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None:
+        raise HTTPException(status_code=400, detail="Scanner not initialized")
+    
+    rsi_scanner.auto_trade_enabled = True
+    rsi_scanner.min_signal_strength_for_trade = min_strength
+    
+    return {
+        'success': True,
+        'message': 'Auto-trade enabled',
+        'min_signal_strength': min_strength,
+        'note': 'Signals with strength >= threshold will be auto-executed'
+    }
+
+
+@app.post("/api/scanner/disable-auto-trade")
+async def disable_scanner_auto_trade():
+    """
+    Desabilita auto-execução de sinais
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None:
+        return {'success': True, 'message': 'Scanner not initialized'}
+    
+    rsi_scanner.auto_trade_enabled = False
+    
+    return {
+        'success': True,
+        'message': 'Auto-trade disabled'
+    }
+
+
+@app.get("/api/scanner/auto-trade-performance")
+async def get_scanner_auto_trade_performance():
+    """
+    📊 Retorna performance dos trades auto-executados pelo scanner
+    
+    Inclui estatísticas completas:
+    - Win rate
+    - Total PnL
+    - Profit factor
+    - Trades recentes
+    """
+    global rsi_scanner
+    
+    if rsi_scanner is None:
+        return {
+            'success': False,
+            'enabled': False,
+            'message': 'Scanner not initialized'
+        }
+    
+    try:
+        performance = await rsi_scanner.get_auto_trade_performance()
+        return {
+            'success': True,
+            **performance
+        }
+    except Exception as e:
+        logger.error(f"Error fetching auto-trade performance: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/scanner/history")
 async def get_scanner_history(limit: int = 50, hours: int = 24):
     """

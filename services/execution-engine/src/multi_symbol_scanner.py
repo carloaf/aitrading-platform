@@ -122,7 +122,7 @@ class MultiSymbolScanner:
     - Integra com Paper Trading
     """
     
-    def __init__(self, config: ScannerConfig = None, db_pool=None):
+    def __init__(self, config: ScannerConfig = None, db_pool=None, auto_trade_enabled: bool = False):
         self.config = config or ScannerConfig()
         self.exchange = ccxt.binance({
             'enableRateLimit': True,
@@ -148,7 +148,12 @@ class MultiSymbolScanner:
         # Database connection
         self.db_pool = db_pool
         
-        logger.info(f"MultiSymbolScanner initialized with {len(self.config.symbols)} symbols")
+        # Auto-trade configuration
+        self.auto_trade_enabled = auto_trade_enabled
+        self.auto_trade_session_id: Optional[str] = None
+        self.min_signal_strength_for_trade = 0.4  # Mínimo 40% de força
+        
+        logger.info(f"MultiSymbolScanner initialized with {len(self.config.symbols)} symbols | Auto-trade: {auto_trade_enabled}")
     
     async def start(self):
         """Inicia o scanner em modo contínuo"""
@@ -754,10 +759,19 @@ class MultiSymbolScanner:
                 
                 logger.info(f"💾 Signal saved to DB: {signal_id} - {signal.symbol} {signal.type.value}")
                 
+                # 🚀 AUTO-EXECUTE: Se auto-trade estiver habilitado, criar paper trade automaticamente
+                if self.auto_trade_enabled and signal.strength >= self.min_signal_strength_for_trade:
+                    trade_id = await self._create_paper_trade_from_signal(signal, signal_id)
+                    if trade_id:
+                        logger.info(f"🤖 Auto-executed paper trade: {trade_id} from signal {signal_id}")
+                
+                return signal_id
+                
         except Exception as e:
             logger.error(f"Error saving signal to DB: {e}")
             import traceback
             traceback.print_exc()
+            return None
     
     async def get_recent_signals_from_db(self, limit: int = 50, hours: int = 24):
         """
@@ -808,6 +822,176 @@ class MultiSymbolScanner:
         except Exception as e:
             logger.error(f"Error fetching signals from DB: {e}")
             return []
+    
+    async def _create_paper_trade_from_signal(self, signal: DivergenceSignal, signal_id: str) -> Optional[int]:
+        """
+        🤖 Cria automaticamente um paper trade a partir de um sinal detectado
+        """
+        if not self.db_pool:
+            return None
+        
+        try:
+            # Criar session_id se não existir
+            if not self.auto_trade_session_id:
+                self.auto_trade_session_id = f"auto_scanner_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+                
+                # Criar sessão de paper trading
+                async with self.db_pool.acquire() as conn:
+                    await conn.execute("""
+                        INSERT INTO paper_trading_sessions (
+                            session_id, initial_capital, current_capital, strategy, 
+                            status, created_at
+                        ) VALUES ($1, $2, $3, $4, $5, $6)
+                        ON CONFLICT (session_id) DO NOTHING
+                    """, 
+                    self.auto_trade_session_id,
+                    10000.0,  # Capital inicial
+                    10000.0,
+                    'rsi_divergence_auto',
+                    'active',
+                    datetime.utcnow())
+            
+            async with self.db_pool.acquire() as conn:
+                # Calcular posição baseada em risco 2%
+                capital = 10000.0
+                risk_amount = capital * 0.02  # 2% de risco
+                entry_price = signal.entry
+                stop_loss = signal.stop_loss
+                stop_distance = abs(entry_price - stop_loss)
+                
+                if stop_distance > 0:
+                    position_size = risk_amount / stop_distance
+                else:
+                    position_size = 0.001  # Posição mínima
+                
+                # Inserir paper trade
+                trade_id = await conn.fetchval("""
+                    INSERT INTO paper_trading_trades (
+                        session_id, symbol, side, entry_price, quantity,
+                        stop_loss, take_profit, status, entry_time,
+                        signal_source, signal_strength, timeframe
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    RETURNING id
+                """,
+                self.auto_trade_session_id,
+                signal.symbol.replace('/', ''),  # BTCUSDT format
+                'BUY' if 'bullish' in signal.type.value else 'SELL',
+                entry_price,
+                position_size,
+                stop_loss,
+                signal.take_profit,
+                'open',
+                datetime.utcnow(),
+                f"scanner_{signal.type.value}",
+                signal.strength,
+                signal.timeframe)
+                
+                # Vincular sinal ao trade
+                await conn.execute("""
+                    UPDATE autotrade_signals
+                    SET paper_trading_trade_id = $1, executed = true, execution_reason = $2
+                    WHERE signal_id = $3
+                """,
+                trade_id,
+                f"Auto-executed by scanner | Strength: {signal.strength:.2%}",
+                signal_id)
+                
+                logger.info(f"🤖 Auto paper trade created: ID={trade_id} | {signal.symbol} {signal.type.value} | Strength: {signal.strength:.2%}")
+                return trade_id
+                
+        except Exception as e:
+            logger.error(f"Error creating auto paper trade: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+    
+    async def get_auto_trade_performance(self) -> Dict[str, Any]:
+        """
+        📊 Retorna estatísticas de performance dos trades auto-executados
+        """
+        if not self.db_pool or not self.auto_trade_session_id:
+            return {
+                'enabled': False,
+                'message': 'Auto-trade not enabled'
+            }
+        
+        try:
+            async with self.db_pool.acquire() as conn:
+                # Buscar trades da sessão
+                trades = await conn.fetch("""
+                    SELECT 
+                        id, symbol, side, entry_price, exit_price, quantity,
+                        stop_loss, take_profit, status, pnl, pnl_percent,
+                        entry_time, exit_time, signal_source, signal_strength, timeframe
+                    FROM paper_trading_trades
+                    WHERE session_id = $1
+                    ORDER BY entry_time DESC
+                """, self.auto_trade_session_id)
+                
+                # Calcular estatísticas
+                total_trades = len(trades)
+                closed_trades = [t for t in trades if t['status'] == 'closed']
+                open_trades = [t for t in trades if t['status'] == 'open']
+                
+                wins = [t for t in closed_trades if t['pnl'] and t['pnl'] > 0]
+                losses = [t for t in closed_trades if t['pnl'] and t['pnl'] < 0]
+                
+                win_rate = (len(wins) / len(closed_trades) * 100) if closed_trades else 0.0
+                total_pnl = sum(t['pnl'] or 0 for t in closed_trades)
+                avg_win = sum(t['pnl'] for t in wins) / len(wins) if wins else 0.0
+                avg_loss = sum(t['pnl'] for t in losses) / len(losses) if losses else 0.0
+                
+                # Buscar informações da sessão
+                session = await conn.fetchrow("""
+                    SELECT initial_capital, current_capital, total_trades, 
+                           total_pnl, win_rate, created_at
+                    FROM paper_trading_sessions
+                    WHERE session_id = $1
+                """, self.auto_trade_session_id)
+                
+                return {
+                    'enabled': True,
+                    'session_id': self.auto_trade_session_id,
+                    'created_at': session['created_at'].isoformat() if session else None,
+                    'total_trades': total_trades,
+                    'open_trades': len(open_trades),
+                    'closed_trades': len(closed_trades),
+                    'wins': len(wins),
+                    'losses': len(losses),
+                    'win_rate': round(win_rate, 2),
+                    'total_pnl': round(total_pnl, 2),
+                    'avg_win': round(avg_win, 2),
+                    'avg_loss': round(avg_loss, 2),
+                    'profit_factor': round(abs(avg_win / avg_loss), 2) if avg_loss != 0 else 0.0,
+                    'initial_capital': float(session['initial_capital']) if session else 10000.0,
+                    'current_capital': float(session['current_capital']) if session else 10000.0,
+                    'return_pct': round((float(session['current_capital']) / float(session['initial_capital']) - 1) * 100, 2) if session else 0.0,
+                    'recent_trades': [
+                        {
+                            'id': t['id'],
+                            'symbol': t['symbol'],
+                            'side': t['side'],
+                            'entry_price': float(t['entry_price']) if t['entry_price'] else 0.0,
+                            'exit_price': float(t['exit_price']) if t['exit_price'] else 0.0,
+                            'quantity': float(t['quantity']) if t['quantity'] else 0.0,
+                            'pnl': float(t['pnl']) if t['pnl'] else 0.0,
+                            'pnl_percent': float(t['pnl_percent']) if t['pnl_percent'] else 0.0,
+                            'status': t['status'],
+                            'signal_source': t['signal_source'],
+                            'signal_strength': float(t['signal_strength']) if t['signal_strength'] else 0.0,
+                            'entry_time': t['entry_time'].isoformat() if t['entry_time'] else None,
+                            'exit_time': t['exit_time'].isoformat() if t['exit_time'] else None
+                        }
+                        for t in trades[:10]  # Últimos 10 trades
+                    ]
+                }
+                
+        except Exception as e:
+            logger.error(f"Error fetching auto-trade performance: {e}")
+            return {
+                'enabled': True,
+                'error': str(e)
+            }
 
 
 # Adicionar import no topo do arquivo

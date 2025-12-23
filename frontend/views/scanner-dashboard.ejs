@@ -2079,27 +2079,96 @@
     // Carrega estatisticas de paper trading
     async function loadPaperTradingStats() {
         try {
-            // TODO: Implementar endpoint /api/paper-trading/stats no backend
-            // Por enquanto, exibir mensagem de "em desenvolvimento"
-            console.log('[PaperTrading] Endpoint em desenvolvimento');
+            const response = await fetch(API_BASE + '/api/scanner/auto-trade-performance');
+            const result = await response.json();
             
-            // Atualizar UI com mensagem
-            document.getElementById('statsTotalTrades').textContent = '-';
-            document.getElementById('statsWinRate').textContent = '-';
-            document.getElementById('statsPnL').textContent = '-';
-            document.getElementById('statsProfitFactor').textContent = '-';
+            if (!result.success) {
+                console.error('[PaperTrading] Error loading stats:', result);
+                document.getElementById('statsTotalTrades').textContent = '0';
+                document.getElementById('statsWinRate').textContent = '0%';
+                document.getElementById('statsPnL').textContent = '$0.00';
+                document.getElementById('statsProfitFactor').textContent = '-';
+                
+                const tbody = document.getElementById('paperTradingTableBody');
+                tbody.innerHTML = \`
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-3">
+                            <i class="bi bi-info-circle"></i> Auto-trade não habilitado<br>
+                            <small>Ative no backend para começar a executar sinais automaticamente</small>
+                        </td>
+                    </tr>
+                \`;
+                return;
+            }
             
+            // Atualizar cards de estatísticas
+            document.getElementById('statsTotalTrades').textContent = result.total_trades || '0';
+            document.getElementById('statsWinRate').textContent = result.win_rate 
+                ? result.win_rate.toFixed(1) + '%' 
+                : '0%';
+            
+            // Color PnL based on value
+            const pnlElement = document.getElementById('statsPnL');
+            const pnlValue = result.total_pnl || 0;
+            pnlElement.textContent = '$' + pnlValue.toFixed(2);
+            pnlElement.className = 'mb-0 ' + (pnlValue >= 0 ? 'text-success' : 'text-danger');
+            
+            document.getElementById('statsProfitFactor').textContent = result.profit_factor 
+                ? result.profit_factor.toFixed(2) 
+                : '-';
+            
+            // Atualizar tabela de trades
             const tbody = document.getElementById('paperTradingTableBody');
-            tbody.innerHTML = \`
-                <tr>
-                    <td colspan="9" class="text-center text-muted py-3">
-                        <i class="bi bi-tools"></i> Funcionalidade em desenvolvimento<br>
-                        <small>Endpoint /api/paper-trading/stats será implementado em breve</small>
-                    </td>
-                </tr>
-            \`;
+            const trades = result.recent_trades || [];
             
-            return; // Temporariamente desabilitado
+            if (trades.length === 0) {
+                tbody.innerHTML = \`
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-3">
+                            <i class="bi bi-inbox"></i> Nenhum trade auto-executado ainda<br>
+                            <small>Os sinais com força >= 40% serão executados automaticamente</small>
+                        </td>
+                    </tr>
+                \`;
+                return;
+            }
+            
+            // Mostrar últimos trades
+            tbody.innerHTML = trades.map(trade => {
+                const pnlValue = trade.pnl || 0;
+                const pnlClass = pnlValue >= 0 ? 'text-success' : 'text-danger';
+                const pnlIcon = pnlValue >= 0 ? 'arrow-up' : 'arrow-down';
+                const typeClass = trade.side === 'BUY' ? 'success' : 'danger';
+                const statusBadge = trade.status === 'CLOSED' ? 'secondary' : 'primary';
+                
+                const entryTime = new Date(trade.entry_time);
+                const timeStr = entryTime.toLocaleString('pt-BR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                return \`
+                    <tr>
+                        <td><small>#\${trade.id}</small></td>
+                        <td><strong>\${trade.symbol}</strong></td>
+                        <td><span class="badge bg-\${typeClass}">\${trade.side}</span></td>
+                        <td>$\${trade.entry_price.toFixed(4)}</td>
+                        <td>\${trade.quantity.toFixed(4)}</td>
+                        <td>$\${(trade.entry_price * trade.quantity).toFixed(2)}</td>
+                        <td class="\${pnlClass}">
+                            <i class="bi bi-\${pnlIcon}"></i> $\${Math.abs(pnlValue).toFixed(2)}
+                        </td>
+                        <td>
+                            <span class="badge bg-info">\${(trade.signal_strength * 100).toFixed(0)}%</span>
+                        </td>
+                        <td><small>\${timeStr}</small></td>
+                    </tr>
+                \`;
+            }).join('');
+            
+            console.log('[PaperTrading] Stats loaded successfully:', result);
             
             // CODIGO ORIGINAL (comentado temporariamente):
             /*
