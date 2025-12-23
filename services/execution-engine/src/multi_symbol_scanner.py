@@ -436,9 +436,9 @@ class MultiSymbolScanner:
         recent_df = df.iloc[-lookback:]
         
         current_idx = len(df) - 1
-        current_price = df['close'].iloc[-1]
-        current_rsi = df['rsi'].iloc[-1]
-        current_atr = df['atr'].iloc[-1]
+        current_price = float(df['close'].iloc[-1])
+        current_rsi = float(df['rsi'].iloc[-1])
+        current_atr = float(df['atr'].iloc[-1])
         
         if pd.isna(current_rsi) or pd.isna(current_atr):
             return []
@@ -479,8 +479,8 @@ class MultiSymbolScanner:
         
         # NOVO v2.1: Filtro EMA 50/200 para alinhamento com tendência macro
         if self.config.use_ema_filter and 'ema_200' in df.columns:
-            ema_50 = df['ema_50'].iloc[-1]
-            ema_200 = df['ema_200'].iloc[-1]
+            ema_50 = float(df['ema_50'].iloc[-1])
+            ema_200 = float(df['ema_200'].iloc[-1])
             # Bullish divergence funciona melhor quando tendência macro é de alta ou lateral
             # Aceita se EMA 50 > EMA 200 OU se preço está próximo das EMAs (±5%)
             ema_bullish_aligned = ema_50 >= ema_200 * 0.95  # Aceita até 5% abaixo
@@ -497,8 +497,8 @@ class MultiSymbolScanner:
         
         if price_ll and rsi_hl and rsi_oversold:
             strength = self._calculate_strength(
-                price_valleys['low'].iloc[-2], price_valleys['low'].iloc[-1],
-                rsi_valleys['rsi'].iloc[-2], rsi_valleys['rsi'].iloc[-1],
+                float(price_valleys['low'].iloc[-2]), float(price_valleys['low'].iloc[-1]),
+                float(rsi_valleys['rsi'].iloc[-2]), float(rsi_valleys['rsi'].iloc[-1]),
                 df
             )
             
@@ -527,8 +527,8 @@ class MultiSymbolScanner:
         
         # NOVO v2.1: Filtro EMA 50/200 para alinhamento com tendência macro
         if self.config.use_ema_filter and 'ema_200' in df.columns:
-            ema_50 = df['ema_50'].iloc[-1]
-            ema_200 = df['ema_200'].iloc[-1]
+            ema_50 = float(df['ema_50'].iloc[-1])
+            ema_200 = float(df['ema_200'].iloc[-1])
             # Bearish divergence funciona melhor quando tendência macro é de baixa ou lateral
             # Aceita se EMA 50 < EMA 200 OU se preço está próximo das EMAs (±5%)
             ema_bearish_aligned = ema_50 <= ema_200 * 1.05  # Aceita até 5% acima
@@ -545,8 +545,8 @@ class MultiSymbolScanner:
         
         if price_hh and rsi_lh and rsi_overbought:
             strength = self._calculate_strength(
-                price_peaks['high'].iloc[-2], price_peaks['high'].iloc[-1],
-                rsi_peaks['rsi'].iloc[-2], rsi_peaks['rsi'].iloc[-1],
+                float(price_peaks['high'].iloc[-2]), float(price_peaks['high'].iloc[-1]),
+                float(rsi_peaks['rsi'].iloc[-2]), float(rsi_peaks['rsi'].iloc[-1]),
                 df
             )
             
@@ -578,12 +578,12 @@ class MultiSymbolScanner:
         rsi_ll = rsi_valleys['rsi'].iloc[-1] < rsi_valleys['rsi'].iloc[-2]
         
         # Tendência de alta confirmada
-        ema_bullish = df['ema_12'].iloc[-1] > df['ema_26'].iloc[-1]
+        ema_bullish = float(df['ema_12'].iloc[-1]) > float(df['ema_26'].iloc[-1])
         
         if price_hl and rsi_ll and ema_bullish:
             strength = self._calculate_strength(
-                price_valleys['low'].iloc[-2], price_valleys['low'].iloc[-1],
-                rsi_valleys['rsi'].iloc[-2], rsi_valleys['rsi'].iloc[-1],
+                float(price_valleys['low'].iloc[-2]), float(price_valleys['low'].iloc[-1]),
+                float(rsi_valleys['rsi'].iloc[-2]), float(rsi_valleys['rsi'].iloc[-1]),
                 df
             ) * 0.9  # Hidden patterns têm força ligeiramente menor
             
@@ -615,12 +615,12 @@ class MultiSymbolScanner:
         rsi_hh = rsi_peaks['rsi'].iloc[-1] > rsi_peaks['rsi'].iloc[-2]
         
         # Tendência de baixa confirmada
-        ema_bearish = df['ema_12'].iloc[-1] < df['ema_26'].iloc[-1]
+        ema_bearish = float(df['ema_12'].iloc[-1]) < float(df['ema_26'].iloc[-1])
         
         if price_lh and rsi_hh and ema_bearish:
             strength = self._calculate_strength(
-                price_peaks['high'].iloc[-2], price_peaks['high'].iloc[-1],
-                rsi_peaks['rsi'].iloc[-2], rsi_peaks['rsi'].iloc[-1],
+                float(price_peaks['high'].iloc[-2]), float(price_peaks['high'].iloc[-1]),
+                float(rsi_peaks['rsi'].iloc[-2]), float(rsi_peaks['rsi'].iloc[-1]),
                 df
             ) * 0.9
             
@@ -650,17 +650,18 @@ class MultiSymbolScanner:
         base_strength = (price_diff * 100 + rsi_diff * 100) / 2
         base_strength = min(base_strength / 10, 1.0)  # Normalizar para 0-1
         
-        # Bonus por volume
-        volume_ratio = df['volume_ratio'].iloc[-1] if 'volume_ratio' in df.columns else 1.0
+        # Bonus por volume - Converter para float para evitar erros com Decimal
+        volume_ratio = float(df['volume_ratio'].iloc[-1]) if 'volume_ratio' in df.columns else 1.0
         volume_bonus = min(volume_ratio / 2, 0.2) if volume_ratio > 1.5 else 0
         
-        # Bonus por ADX baixo (ideal para reversão)
-        adx = df['adx'].iloc[-1] if 'adx' in df.columns else 25
+        # Bonus por ADX baixo (ideal para reversão) - Converter para float
+        adx = float(df['adx'].iloc[-1]) if 'adx' in df.columns else 25.0
         adx_bonus = 0.1 if adx < 25 else 0
         
-        # Bonus por MACD alinhado
-        macd_hist = df['macd_hist'].iloc[-1] if 'macd_hist' in df.columns else 0
-        macd_bonus = 0.1 if abs(macd_hist) < df['close'].iloc[-1] * 0.001 else 0
+        # Bonus por MACD alinhado - Converter para float
+        macd_hist = float(df['macd_hist'].iloc[-1]) if 'macd_hist' in df.columns else 0.0
+        close_price = float(df['close'].iloc[-1])
+        macd_bonus = 0.1 if abs(macd_hist) < close_price * 0.001 else 0
         
         total_strength = base_strength + volume_bonus + adx_bonus + macd_bonus
         
@@ -704,7 +705,7 @@ class MultiSymbolScanner:
         macd_hist = df['macd_hist'].iloc[-1] if 'macd_hist' in df.columns else 0
         macd_confirmed = (direction == 1 and macd_hist > 0) or (direction == -1 and macd_hist < 0)
         
-        ema_trend = df['ema_12'].iloc[-1] > df['ema_50'].iloc[-1] if 'ema_50' in df.columns else True
+        ema_trend = float(df['ema_12'].iloc[-1]) > float(df['ema_50'].iloc[-1]) if 'ema_50' in df.columns else True
         trend_aligned = (direction == 1 and ema_trend) or (direction == -1 and not ema_trend)
         
         return DivergenceSignal(

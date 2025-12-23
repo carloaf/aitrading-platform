@@ -95,15 +95,17 @@ def save_to_timescale(conn, symbol, timeframe, ohlcv_data):
     values = []
     for candle in ohlcv_data:
         timestamp = datetime.fromtimestamp(candle[0] / 1000)
+        close_price = float(candle[4])
         values.append((
             symbol,
             source,
             timestamp,
+            close_price,       # price (igual ao close)
             float(candle[1]),  # open
             float(candle[2]),  # high
             float(candle[3]),  # low
-            float(candle[4]),  # close
-            float(candle[5])   # volume
+            close_price,       # close
+            int(candle[5])     # volume (como bigint)
         ))
     
     try:
@@ -112,11 +114,12 @@ def save_to_timescale(conn, symbol, timeframe, ohlcv_data):
         # INSERT com ON CONFLICT (usando o índice único symbol+timestamp)
         # Nota: O índice único é (symbol, timestamp), sem o campo source
         insert_query = """
-            INSERT INTO market_data (symbol, source, timestamp, open, high, low, close, volume)
+            INSERT INTO market_data (symbol, source, timestamp, price, open, high, low, close, volume)
             VALUES %s
             ON CONFLICT (symbol, timestamp) 
             DO UPDATE SET 
                 source = EXCLUDED.source,
+                price = EXCLUDED.price,
                 open = EXCLUDED.open,
                 high = EXCLUDED.high,
                 low = EXCLUDED.low,
