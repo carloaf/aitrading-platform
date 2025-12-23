@@ -1262,6 +1262,266 @@ bash scripts/wfo_multi_asset.sh
 
 ---
 
+### 🚀 PASSO 24.6: ML Enhancements Roadmap 🎯 EM PROGRESSO
+
+**Data**: 23 de Dezembro de 2025
+**Status**: 🎯 PRIORIDADE 1 EM IMPLEMENTAÇÃO
+**Objetivo**: Roadmap completo de Machine Learning para melhorar performance 2025
+
+#### MOTIVAÇÃO
+
+Performance 2025 caiu 75% vs histórico:
+- **Return 2025**: 3.9% vs 17% (2022-2024) = -77%
+- **Sharpe 2025**: 0.39 vs 1.40 = -72%
+- **Win Rate**: 56% (bom, mas pode melhorar para 65-70%)
+- **Q3/2025**: Único trimestre negativo (-1.71%)
+
+**Código ML já existe** (PASSO 34) mas não está integrado ao Scanner RSI Divergence.
+
+---
+
+#### 🎯 PRIORIDADE 1: ML Signal Filter Integration ⚡ EM IMPLEMENTAÇÃO
+
+**Timeline**: Esta semana (23-27 Dez/2025)
+**Tempo**: 2-3 horas
+**Status**: 🟡 EM PROGRESSO
+
+**Objetivo**: Integrar `MLSignalFilter` ao Scanner RSI Divergence para rejeitar false positives.
+
+**Impacto Esperado**:
+```
+Win Rate: 56% → 65-70% (+10-14pp)
+False Positives: Redução de ~30%
+Sharpe Ratio: 0.39 → 0.6+ (melhoria significativa)
+Retorno 2025: 3.9% → ~8-10% (estimado)
+```
+
+**Implementação**:
+
+1. ✅ **MLSignalFilter já existe** (`services/execution-engine/src/ml_signal_filter.py`)
+   - LightGBM Classifier (binary: TP/SL)
+   - 16 features técnicas (RSI, ADX, Volume, ATR, EMAs, etc.)
+   - Auto-training com histórico
+   - Persistência de modelo
+
+2. 🔄 **Integração no Scanner** (`multi_symbol_scanner.py`)
+   ```python
+   from ml_signal_filter import MLSignalFilter
+   
+   class MultiSymbolScanner:
+       def __init__(self):
+           self.ml_filter = MLSignalFilter()
+           self.ml_filter.train_from_history()  # Treinar com histórico 2024-2025
+       
+       def _check_divergence(self, symbol, df):
+           # ... detecção de divergência ...
+           
+           if signal_detected:
+               # NOVO: Validar com ML
+               ml_score = self.ml_filter.filter_signal(
+                   df.iloc[-1],  # Candle atual
+                   signal_type='bullish_divergence',
+                   signal_strength=0.65,
+                   setup_quality=75
+               )
+               
+               if ml_score >= 0.6:  # Threshold de confiança
+                   # Ajustar position size por confiança
+                   position_multiplier = 1.0 + (ml_score - 0.6) * 1.5
+                   # 0.6 = 1.0x | 0.8 = 1.3x | 1.0 = 1.6x
+                   
+                   return True, ml_score, position_multiplier
+               else:
+                   logger.info(f"❌ ML rejeitou sinal (score: {ml_score:.2f})")
+                   return False, ml_score, 0
+   ```
+
+3. 📊 **Métricas de Tracking**:
+   - ML Score médio por símbolo
+   - Taxa de rejeição (% sinais filtrados)
+   - Win Rate antes/depois do filtro
+   - Comparação de Sharpe ratio
+
+**Arquivos Modificados**:
+- `services/execution-engine/src/multi_symbol_scanner.py`
+- `services/execution-engine/src/ml_signal_filter.py` (training data loading)
+
+**Como Testar**:
+```bash
+# 1. Treinar modelo com histórico
+docker exec aitrading-execution-engine python3 -c "
+from ml_signal_filter import MLSignalFilter
+ml = MLSignalFilter()
+ml.train_from_backtest_history('BTCUSDT', '2024-01-01', '2025-12-23')
+print('Model trained!')
+"
+
+# 2. Rodar scanner com ML filter
+docker exec aitrading-execution-engine python3 src/multi_symbol_scanner.py
+
+# 3. Verificar logs
+docker logs aitrading-execution-engine | grep "ML"
+```
+
+**Validação de Sucesso**:
+- [ ] ML filter rejeita ~30% dos sinais
+- [ ] Sinais rejeitados têm ML score < 0.6
+- [ ] Win rate aumenta +5pp após 1 semana
+- [ ] Logs mostram "✅ ML aprovou" e "❌ ML rejeitou"
+
+---
+
+#### 🔧 PRIORIDADE 2: Otimização de Parâmetros 2025
+
+**Timeline**: Este mês (Jan/2026)
+**Tempo**: 1 hora
+**Status**: 📋 PLANEJADO
+
+**Objetivo**: Re-otimizar parâmetros RSI Divergence para condições de mercado 2025.
+
+**Problema**: Parâmetros atuais otimizados para 2021-2024, mercado mudou.
+
+**Ação**:
+```bash
+# Grid Search específico para 2025
+curl -X POST "http://localhost:3008/api/optimize/rsi-divergence" \
+  -d '{
+    "symbol": "BTCUSDT",
+    "start_date": "2025-01-01",
+    "end_date": "2025-12-23",
+    "parameter_grid": {
+      "lookback_periods": [6, 8, 10, 12],
+      "min_signal_strength": [0.2, 0.25, 0.3, 0.35],
+      "min_adx_trend": [10, 12, 15, 18]
+    },
+    "optimization_metric": "sharpe_ratio"
+  }'
+```
+
+**Impacto Esperado**: +5-10pp performance em 2025
+
+**Arquivos**:
+- `scripts/optimize_rsi_params_2025.sh` (novo)
+- `services/execution-engine/src/meta_simulation.py` (atualizar parâmetros)
+
+---
+
+#### 📈 PRIORIDADE 3: Multi-Par Expansion (ETH/SOL)
+
+**Timeline**: Janeiro 2026
+**Tempo**: 2 horas
+**Status**: 📋 PLANEJADO
+
+**Objetivo**: Diversificar para ETH/SOL, que historicamente performam melhor que BTC.
+
+**Dados Históricos** (2021-2024):
+- **SOL**: +219% return (8.4x melhor que BTC!) 🥇
+- **ETH**: +38% return (1.4x melhor que BTC)
+- **BTC**: +26% return (baseline)
+
+**Ação**:
+```bash
+# 1. Baixar dados 2025 completo para ETH/SOL
+./download_historical_multi.sh ETHUSDT SOLUSDT \
+  --start 2025-01-01 --end 2025-12-23
+
+# 2. Testar RSI Divergence
+./validate_multipar.sh --symbols BTCUSDT,ETHUSDT,SOLUSDT --year 2025
+
+# 3. Adicionar ao Scanner
+docker exec aitrading-execution-engine python3 -c "
+from multi_symbol_scanner import MultiSymbolScanner
+scanner = MultiSymbolScanner()
+scanner.config.symbols = ['BTC/USDT', 'ETH/USDT', 'SOL/USDT']
+scanner.start()
+"
+```
+
+**Impacto Esperado**: 
+- Diversificação reduz risco
+- Potencial +100-200% se SOL mantém padrão histórico
+- ETH pode ter +30-50% (mais estável que SOL)
+
+**Arquivos**:
+- `services/execution-engine/src/multi_symbol_scanner.py` (adicionar ETH/SOL)
+- `download_historical_multi.sh` (já existe)
+- `validate_multipar.sh` (já existe)
+
+---
+
+#### 🧠 PRIORIDADE 4: CNN Pattern Recognition
+
+**Timeline**: Q1 2026
+**Tempo**: 1-2 semanas
+**Status**: 📋 BACKLOG
+
+**Objetivo**: Usar Deep Learning (CNN 1D) para detectar padrões visuais em charts.
+
+**Vantagens**:
+- Detecta padrões sutis que código tradicional não vê
+- Aprende com TODOS os trades históricos
+- Adapta-se a mudanças de mercado
+
+**Desvantagens**:
+- Requer dataset grande (min 10,000 exemplos)
+- Treinamento demorado (GPU recomendado)
+- Pode overfit (validação rigorosa)
+
+**Arquitetura Proposta**:
+```python
+import tensorflow as tf
+from tensorflow import keras
+
+class CNNPatternDetector:
+    def _build_model(self):
+        model = keras.Sequential([
+            keras.layers.Conv1D(64, 5, activation='relu', input_shape=(100, 3)),
+            keras.layers.MaxPooling1D(2),
+            keras.layers.Conv1D(128, 3, activation='relu'),
+            keras.layers.GlobalAveragePooling1D(),
+            keras.layers.Dense(64, activation='relu'),
+            keras.layers.Dropout(0.3),
+            keras.layers.Dense(3, activation='softmax')  # [bullish, bearish, no_pattern]
+        ])
+        return model
+```
+
+**Input**: 100 candles (price, rsi, volume)
+**Output**: [bullish_div, bearish_div, no_pattern] (3 classes)
+
+**Impacto Esperado**: Descoberta de padrões novos, +5-15pp win rate
+
+**ROI**: MÉDIO-ALTO (mas requer investimento significativo)
+
+---
+
+#### ❌ NÃO RECOMENDADO: Reinforcement Learning
+
+**Motivo**: 
+- Sistema atual já é lucrativo (+36% em 4 anos)
+- RL é muito complexo (2-3 semanas dev)
+- Ganho incerto vs esforço
+- Difícil interpretar decisões (black box)
+- Requer infraestrutura GPU cluster
+
+**Decisão**: Focar em Prioridades 1-4 que têm ROI comprovado.
+
+---
+
+#### 📊 RESUMO DO ROADMAP ML
+
+| Prioridade | Título | Timeline | Tempo | Impacto | ROI | Status |
+|------------|--------|----------|-------|---------|-----|--------|
+| **1** ⚡ | ML Signal Filter | Esta semana | 2-3h | +10pp WR, -30% FP | **ALTÍSSIMO** | 🟡 EM PROGRESSO |
+| **2** 🔧 | Otimização Parâmetros | Jan/2026 | 1h | +5-10pp perf | **ALTO** | 📋 Planejado |
+| **3** 📈 | Multi-Par ETH/SOL | Jan/2026 | 2h | +100-200% pot | **MUITO ALTO** | 📋 Planejado |
+| **4** 🧠 | CNN Pattern Recognition | Q1/2026 | 1-2w | +5-15pp WR | **MÉDIO-ALTO** | 📋 Backlog |
+| ❌ | Reinforcement Learning | - | - | Incerto | **BAIXO** | Rejeitado |
+
+**Foco Imediato**: PRIORIDADE 1 (ML Signal Filter Integration)
+
+---
+
 ---
 
 #### PASSO 27.3: Adaptive Parameters ML ✅ CONCLUÍDO

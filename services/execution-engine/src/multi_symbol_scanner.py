@@ -29,6 +29,11 @@ except ImportError:
     ML_FILTER_AVAILABLE = False
     logging.warning("ML Signal Filter not available. Install: pip install lightgbm")
 
+# PASSO 24.6: Configuração ML Filter
+ML_FILTER_ENABLED = os.getenv('ML_FILTER_ENABLED', 'true').lower() == 'true'
+ML_FILTER_MIN_SCORE = float(os.getenv('ML_FILTER_MIN_SCORE', '0.6'))  # Threshold de confiança
+ML_FILTER_POSITION_MULTIPLIER = float(os.getenv('ML_FILTER_POSITION_MULTIPLIER', '1.5'))  # Max multiplier
+
 logger = logging.getLogger(__name__)
 
 
@@ -178,6 +183,41 @@ class MultiSymbolScanner:
         }
         
         logger.info(f"MultiSymbolScanner initialized with {len(self.config.symbols)} symbols | Auto-trade: {auto_trade_enabled} | ML: {ML_FILTER_AVAILABLE}")
+    
+    async def init_ml_filter(self, symbol: str = 'BTCUSDT', start_date: str = '2024-01-01', end_date: str = '2025-12-23'):
+        """
+        Inicializa e treina ML Signal Filter com histórico de trades.
+        PASSO 24.6: Prioridade 1 - ML Signal Filter Integration
+        
+        Args:
+            symbol: Símbolo para buscar histórico (default: BTCUSDT)
+            start_date: Início do período de treino
+            end_date: Fim do período de treino
+        """
+        if not ML_FILTER_AVAILABLE or not ML_FILTER_ENABLED:
+            logger.warning("⚠️  ML Filter não disponível ou desabilitado")
+            return
+        
+        try:
+            logger.info(f"🧠 Inicializando ML Signal Filter...")
+            
+            # Criar instância do ML Filter
+            self.ml_filter = MLSignalFilter()
+            
+            # TODO: Implementar training a partir do histórico de backtest
+            # Por enquanto, tentamos carregar modelo existente
+            if self.ml_filter.is_trained:
+                self.ml_filter_enabled = True
+                logger.info(f"✅ ML Filter carregado com sucesso (modelo existente)")
+                logger.info(f"   Threshold de confiança: {ML_FILTER_MIN_SCORE:.2f}")
+                logger.info(f"   Position multiplier: 1.0x - {ML_FILTER_POSITION_MULTIPLIER}x")
+            else:
+                logger.warning("⚠️  Modelo ML não encontrado. Rodando sem ML filter.")
+                logger.info("   Para treinar: python3 -c 'from ml_signal_filter import MLSignalFilter; ml = MLSignalFilter(); ml.train_from_backtest()'")
+        
+        except Exception as e:
+            logger.error(f"❌ Erro ao inicializar ML Filter: {e}")
+            self.ml_filter_enabled = False
     
     async def start(self):
         """Inicia o scanner em modo contínuo"""
@@ -667,14 +707,103 @@ class MultiSymbolScanner:
         
         return min(max(total_strength, 0.0), 1.0)
     
+    def _calculate_setup_quality(self, df: pd.DataFrame, signal_type: SignalType, strength: float) -> float:
+        """
+        Calcula qualidade do setup (0-100) - usado pelo ML Filter.
+        PASSO 24.6: Adaptado para RSI Divergence.
+        """
+        quality = 50.0  # Base score
+        
+        # Força do sinal (+30 pts)
+        quality += strength * 30
+        
+        # Volume confirmation (+10 pts)
+        if 'volume_ratio' in df.columns and df['volume_ratio'].iloc[-1] > 1.5:
+            quality += 10
+        
+        # ADX trend strength (+10 pts)
+        if 'adx' in df.columns:
+            adx = df['adx'].iloc[-1]
+            if adx > 25:
+                quality += 10
+        
+        # EMA alignment (+15 pts)
+        if 'ema_50' in df.columns and 'ema_200' in df.columns:
+            ema_50 = df['ema_50'].iloc[-1]
+            ema_200 = df['ema_200'].iloc[-1]
+            
+            if signal_type == SignalType.BULLISH_DIVERGENCE and ema_50 > ema_200:
+                quality += 15
+            elif signal_type == SignalType.BEARISH_DIVERGENCE and ema_50 < ema_200:
+                quality += 15
+        
+        return min(quality, 100.0)
+    
     def _create_signal(self, symbol: str, timeframe: str, signal_type: SignalType,
                        direction: int, strength: float, current_price: float,
                        current_rsi: float, atr: float,
                        price1: float, price2: float, rsi1: float, rsi2: float,
-                       df: pd.DataFrame) -> DivergenceSignal:
+                       df: pd.DataFrame) -> Optional[DivergenceSignal]:
         """
-        Cria um objeto DivergenceSignal completo
+        Cria um objeto DivergenceSignal completo.
+        PASSO 24.6: Validação com ML Filter antes de aprovar sinal.
+        
+        Returns:
+            DivergenceSignal se aprovado (ou ML desabilitado)
+            None se rejeitado pelo ML Filter
         """
+        # 🧠 PASSO 24.6: Validar com ML Filter ANTES de calcular tudo
+        ml_score = 0.0
+        position_multiplier = 1.0
+        
+        if self.ml_filter_enabled and self.ml_filter:
+            try:
+                # Setup quality (usado pelo ML)
+                setup_quality = self._calculate_setup_quality(df, signal_type, strength)
+                
+                # Extrair features do candle atual
+                candle_data = {
+                    'close': float(df['close'].iloc[-1]),
+                    'open': float(df['open'].iloc[-1]),
+                    'rsi': float(current_rsi),
+                    'adx': float(df['adx'].iloc[-1]) if 'adx' in df.columns else 20.0,
+                    'atr': float(atr),
+                    'volume': float(df['volume'].iloc[-1]),
+                    'volume_ma_20': float(df['volume'].rolling(20).mean().iloc[-1]),
+                    'ema_50': float(df['ema_50'].iloc[-1]) if 'ema_50' in df.columns else current_price,
+                    'ema_200': float(df['ema_200'].iloc[-1]) if 'ema_200' in df.columns else current_price
+                }
+                
+                # Market regime (simples)
+                if 'ema_50' in df.columns and 'ema_200' in df.columns:
+                    ema_50, ema_200 = candle_data['ema_50'], candle_data['ema_200']
+                    regime = 'BULL' if ema_50 > ema_200 * 1.02 else ('BEAR' if ema_50 < ema_200 * 0.98 else 'SIDEWAYS')
+                else:
+                    regime = 'SIDEWAYS'
+                
+                # Prever score ML
+                features = self.ml_filter.extract_features(candle_data, signal_type.value, strength, setup_quality, regime)
+                ml_score = self.ml_filter.predict(features)
+                
+                # Stats
+                self.ml_stats['total_signals'] += 1
+                self.ml_stats['avg_score'] = (self.ml_stats['avg_score'] * (self.ml_stats['total_signals'] - 1) + ml_score) / self.ml_stats['total_signals']
+                
+                # Validar threshold
+                if ml_score < ML_FILTER_MIN_SCORE:
+                    self.ml_stats['rejected'] += 1
+                    logger.info(f"❌ ML rejeitou {symbol} {signal_type.value}: score={ml_score:.3f} < {ML_FILTER_MIN_SCORE:.2f} ({self.ml_stats['rejected']}/{self.ml_stats['total_signals']}={self.ml_stats['rejected']/self.ml_stats['total_signals']*100:.1f}%)")
+                    return None  # ❌ REJEITADO
+                
+                # ✅ Aprovado
+                self.ml_stats['approved'] += 1
+                position_multiplier = min(1.0 + (ml_score - ML_FILTER_MIN_SCORE) * ML_FILTER_POSITION_MULTIPLIER, 1.0 + ML_FILTER_POSITION_MULTIPLIER)
+                logger.info(f"✅ ML aprovou {symbol} {signal_type.value}: score={ml_score:.3f}, pos={position_multiplier:.2f}x ({self.ml_stats['approved']}/{self.ml_stats['total_signals']}={self.ml_stats['approved']/self.ml_stats['total_signals']*100:.1f}%)")
+                
+            except Exception as e:
+                logger.warning(f"⚠️  ML Filter erro em {symbol}: {e}")
+                ml_score, position_multiplier = ML_FILTER_MIN_SCORE, 1.0
+        
         # Determinar nível de força
         if strength >= 0.9:
             strength_level = SignalStrength.VERY_STRONG
@@ -707,6 +836,11 @@ class MultiSymbolScanner:
         
         ema_trend = float(df['ema_12'].iloc[-1]) > float(df['ema_50'].iloc[-1]) if 'ema_50' in df.columns else True
         trend_aligned = (direction == 1 and ema_trend) or (direction == -1 and not ema_trend)
+        
+        # Notes com ML info
+        notes = f"RSI: {current_rsi:.1f}, ATR: {atr:.2f}"
+        if ml_score > 0:
+            notes += f", ML: {ml_score:.3f}, Pos: {position_multiplier:.2f}x"
         
         return DivergenceSignal(
             symbol=symbol,
