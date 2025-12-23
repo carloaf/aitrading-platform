@@ -898,6 +898,7 @@
     const AUTOTRADE_STATE_KEY = 'autotradeState';  // Para persistir estado do AutoTrade
     const NEAR_ALERTS_KEY = 'nearAlertsCache';  // Cache para Proximidade de Alerta
     const MARKET_DATA_KEY = 'marketDataCache';  // Cache para Market Overview
+    const SIGNAL_HISTORY_KEY = 'signalHistoryCache';  // Cache para Histórico de Sinais
     
     // Debug: log API base
     console.log('[Scanner] API_BASE:', API_BASE || 'relative (proxy)');
@@ -917,6 +918,7 @@
         // Restaurar cache primeiro (instantaneo), depois atualiza em background
         restoreNearAlertsCache();
         restoreMarketDataCache();
+        restoreSignalHistory();  // Restaurar histórico de sinais
         
         console.log('[Scanner] Loading paper trading stats...');
         loadPaperTradingStats();  // Carrega estatísticas de paper trading
@@ -1548,16 +1550,35 @@
         const container = document.getElementById('nearAlertsRow');
         if (!container) return;
         
-        // BTC sempre visivel + ativos com proximidade > 0 ou RSI extremo
-        const btcData = data.find(item => item.symbol.includes('BTC'));
-        const otherAlerts = data.filter(item => 
-            !item.symbol.includes('BTC') && (item.proximity > 0 || item.rsi <= 35 || item.rsi >= 65)
-        );
+        // Calcular score de interesse para cada ativo (quanto mais extremo o RSI, maior o score)
+        const scoredData = data.map(item => {
+            let score = item.proximity || 0;
+            const rsi = item.rsi || 50;
+            
+            // RSI extremo: <30 ou >70 = alta prioridade
+            if (rsi <= 30) score += 100 + (30 - rsi) * 5;
+            else if (rsi >= 70) score += 100 + (rsi - 70) * 5;
+            // RSI se aproximando: <35 ou >65 = media prioridade
+            else if (rsi <= 35) score += 50 + (35 - rsi) * 8;
+            else if (rsi >= 65) score += 50 + (rsi - 65) * 8;
+            // RSI neutro mas se aproximando: <40 ou >60 = baixa prioridade (para preencher)
+            else if (rsi <= 40) score += 10 + (40 - rsi) * 2;
+            else if (rsi >= 60) score += 10 + (rsi - 60) * 2;
+            
+            return { ...item, _alertScore: score };
+        });
+        
+        // Ordenar por score (maior primeiro), BTC sempre no topo
+        const btcData = scoredData.find(item => item.symbol.includes('BTC'));
+        const otherAlerts = scoredData
+            .filter(item => !item.symbol.includes('BTC'))
+            .sort((a, b) => b._alertScore - a._alertScore)
+            .slice(0, 8);  // Top 8 mais interessantes
         
         // BTC no topo + ate 8 outros ativos (total 9 cards)
         let alertData = [];
         if (btcData) alertData.push(btcData);
-        alertData = alertData.concat(otherAlerts.slice(0, 8));
+        alertData = alertData.concat(otherAlerts);
         
         // Verificar se precisa rebuild completo ou atualizacao incremental
         const currentSymbols = alertData.map(a => a.symbol).sort().join(',');
@@ -1686,7 +1707,7 @@
             \`;
         } else {
             alertData.forEach(item => {
-                const proximityColor = item.proximity >= 70 ? 'danger' : (item.proximity >= 40 ? 'warning' : 'secondary');
+                const alertScore = item._alertScore || 0;
                 
                 // Definir status e descricao com base na proximidade e RSI
                 let statusText = '';
@@ -1709,36 +1730,52 @@
                     statusText = '👀 RSI Alto - Atenção';
                     statusIcon = 'eye';
                     statusDescription = 'Zona de sobrecompra, potencial reversão de baixa';
+                } else if (item.rsi <= 40) {
+                    statusText = '📉 RSI Caindo';
+                    statusIcon = 'arrow-down-short';
+                    statusDescription = 'RSI ' + item.rsi.toFixed(0) + ' - se aproximando de zona de interesse';
+                } else if (item.rsi >= 60) {
+                    statusText = '📈 RSI Subindo';
+                    statusIcon = 'arrow-up-short';
+                    statusDescription = 'RSI ' + item.rsi.toFixed(0) + ' - se aproximando de zona de interesse';
                 } else {
-                    statusText = '📊 Monitorando';
-                    statusIcon = 'hourglass-split';
-                    statusDescription = 'Avaliando condicoes de mercado';
+                    statusText = '📊 Neutro';
+                    statusIcon = 'dash';
+                    statusDescription = 'RSI em zona neutra (' + item.rsi.toFixed(0) + ')';
                 }
                 
-                // Calcular nivel de urgencia
+                // Calcular nivel de urgencia baseado no score de alerta (alertScore já declarado acima)
                 let urgencyBadge = '';
-                if (item.proximity >= 70) {
+                if (item.proximity >= 70 || alertScore >= 100) {
                     urgencyBadge = '<span class="badge bg-danger pulse-animation">IMINENTE</span>';
-                } else if (item.proximity >= 40) {
-                    urgencyBadge = '<span class="badge bg-warning text-dark">FORMANDO</span>';
-                } else if (item.proximity > 0) {
+                } else if (item.proximity >= 40 || alertScore >= 50) {
+                    urgencyBadge = '<span class="badge bg-warning text-dark">ATENÇÃO</span>';
+                } else if (item.proximity > 0 || alertScore >= 10) {
                     urgencyBadge = '<span class="badge bg-secondary">OBSERVANDO</span>';
+                } else {
+                    urgencyBadge = '<span class="badge bg-light text-dark">NEUTRO</span>';
                 }
                 
-                const cardClass = item.proximity >= 70 ? 'near-alert-card forming' : 'near-alert-card';
+                const cardClass = (item.proximity >= 70 || alertScore >= 100) ? 'near-alert-card forming' : 'near-alert-card';
                 const changeClass = item.change_24h >= 0 ? 'text-success' : 'text-danger';
                 const changeIcon = item.change_24h >= 0 ? 'caret-up-fill' : 'caret-down-fill';
                 const symbolId = item.symbol.replace('/', '').replace('USDT', '');
                 
                 // Determinar badge HTML com ID para atualizacao incremental
                 let urgencyBadgeHtml = '';
-                if (item.proximity >= 70) {
+                if (item.proximity >= 70 || alertScore >= 100) {
                     urgencyBadgeHtml = \`<span id="alert-badge-\${symbolId}" class="badge bg-danger pulse-animation">IMINENTE</span>\`;
-                } else if (item.proximity >= 40) {
-                    urgencyBadgeHtml = \`<span id="alert-badge-\${symbolId}" class="badge bg-warning text-dark">FORMANDO</span>\`;
-                } else if (item.proximity > 0) {
+                } else if (item.proximity >= 40 || alertScore >= 50) {
+                    urgencyBadgeHtml = \`<span id="alert-badge-\${symbolId}" class="badge bg-warning text-dark">ATENÇÃO</span>\`;
+                } else if (item.proximity > 0 || alertScore >= 10) {
                     urgencyBadgeHtml = \`<span id="alert-badge-\${symbolId}" class="badge bg-secondary">OBSERVANDO</span>\`;
+                } else {
+                    urgencyBadgeHtml = \`<span id="alert-badge-\${symbolId}" class="badge bg-light text-dark">NEUTRO</span>\`;
                 }
+                
+                // Determinar cor de fundo baseada no score
+                const proximityColor = (item.proximity >= 70 || alertScore >= 100) ? 'danger' : 
+                                       ((item.proximity >= 40 || alertScore >= 50) ? 'warning' : 'secondary');
                 
                 html += \`
                     <div class="col-md-4 mb-3" data-symbol="\${item.symbol}">
@@ -1751,14 +1788,14 @@
                                     </div>
                                     <div class="text-end">
                                         \${urgencyBadgeHtml}
-                                        \${item.proximity > 0 ? \`<div id="alert-prox-\${symbolId}" class="small text-\${proximityColor} fw-bold mt-1">\${item.proximity}% próximo</div>\` : ''}
+                                        \${(item.proximity > 0 || alertScore >= 10) ? \`<div id="alert-prox-\${symbolId}" class="small text-\${proximityColor} fw-bold mt-1">\${item.proximity > 0 ? item.proximity + '% próximo' : 'Score: ' + alertScore.toFixed(0)}</div>\` : ''}
                                     </div>
                                 </div>
                                 
                                 <div class="mb-2">
                                     <div class="d-flex justify-content-between align-items-center small mb-1">
                                         <span class="text-muted">RSI</span>
-                                        <span id="alert-rsi-text-\${symbolId}" class="\${item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : 'text-muted')}">\${item.rsi.toFixed(1)}</span>
+                                        <span id="alert-rsi-text-\${symbolId}" class="\${item.rsi < 35 ? 'text-success fw-bold' : (item.rsi > 65 ? 'text-danger fw-bold' : (item.rsi < 40 || item.rsi > 60 ? 'text-info' : 'text-muted'))}">\${item.rsi.toFixed(1)}</span>
                                     </div>
                                     <div class="rsi-gauge">
                                         <div id="alert-rsi-marker-\${symbolId}" class="rsi-marker" style="left: \${item.rsi}%;"></div>
@@ -1810,14 +1847,15 @@
         
         // Limitar a 100 simbolos total (4 grupos x 25)
         const maxSymbols = 100;
-        const symbolsToUse = selectedSymbols.slice(0, maxSymbols);
+        // IMPORTANTE: Remover barra dos simbolos para API (ex: BTC/USDT → BTCUSDT)
+        const symbolsToUse = selectedSymbols.slice(0, maxSymbols).map(s => s.replace('/', ''));
         
         // Pegar dados atuais do cache para priorizar simbolos HOT
         const currentData = Object.values(accumulatedMarketData);
         const hotSymbols = currentData
             .filter(item => item.proximity > 0)
             .sort((a, b) => b.proximity - a.proximity)  // Maior proximidade primeiro
-            .map(item => item.symbol)
+            .map(item => item.symbol.replace('/', ''))  // Remover barra
             .slice(0, 25);  // Primeiro grupo prioritario: ate 25 simbolos HOT
         
         const coldSymbols = symbolsToUse.filter(s => !hotSymbols.includes(s));
@@ -2395,13 +2433,56 @@
         signals.forEach(signal => {
             signalHistory.unshift({
                 ...signal,
-                time: new Date().toLocaleTimeString()
+                time: new Date().toLocaleTimeString(),
+                timestamp: Date.now()  // Para ordenação e expiração
             });
         });
         
         // Keep only last 50
         signalHistory = signalHistory.slice(0, 50);
         updateHistoryTable();
+        saveSignalHistory();  // Persistir no localStorage
+    }
+    
+    // Salvar histórico de sinais no localStorage
+    function saveSignalHistory() {
+        try {
+            localStorage.setItem(SIGNAL_HISTORY_KEY, JSON.stringify(signalHistory));
+            console.log('[History] Salvos', signalHistory.length, 'sinais');
+        } catch (e) {
+            console.warn('[History] Erro ao salvar:', e);
+        }
+    }
+    
+    // Restaurar histórico de sinais do localStorage
+    function restoreSignalHistory() {
+        try {
+            const saved = localStorage.getItem(SIGNAL_HISTORY_KEY);
+            if (!saved) {
+                console.log('[History] Nenhum histórico salvo');
+                return;
+            }
+            
+            signalHistory = JSON.parse(saved);
+            
+            // Filtrar sinais com mais de 24 horas
+            const now = Date.now();
+            const maxAge = 24 * 60 * 60 * 1000; // 24 horas em ms
+            signalHistory = signalHistory.filter(s => {
+                if (!s.timestamp) return true;  // Manter sinais antigos sem timestamp
+                return (now - s.timestamp) < maxAge;
+            });
+            
+            console.log('[History] Restaurados', signalHistory.length, 'sinais (últimas 24h)');
+            updateHistoryTable();
+            
+            // Atualizar contador no UI
+            document.getElementById('signalCount').textContent = signalHistory.length;
+            
+        } catch (e) {
+            console.warn('[History] Erro ao restaurar:', e);
+            signalHistory = [];
+        }
     }
     
     function updateHistoryTable() {
@@ -2437,6 +2518,7 @@
     function clearHistory() {
         signalHistory = [];
         updateHistoryTable();
+        saveSignalHistory();  // Limpar também do localStorage
         document.getElementById('alertsContainer').innerHTML = '';
         showToast('Histórico Limpo', 'Histórico de sinais foi limpo', 'info');
     }
