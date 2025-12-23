@@ -1737,16 +1737,18 @@ async def backtest_rsi_divergence(request: RSIDivergenceBacktestRequest):
         import pandas as pd
         from strategies.rsi_divergence import RSIDivergenceStrategy
         
+        logger.info(f"✅ Imports OK")
         logger.info(f"🎯 Iniciando backtest RSI Divergence para {request.symbol} ({request.timeframe})")
         
-        # Conectar ao banco
-        db_url = os.getenv('DATABASE_URL', 'postgresql://aitrading_user:aitrading_pass@postgres:5432/aitrading_db')
+        # Conectar ao banco correto (crypto_market, não aitrading_db)
+        db_url = os.getenv('TIMESCALE_URL', 'postgresql://crypto_user:crypto_pass@timescaledb:5432/crypto_market')
+        logger.info(f"🔗 Conectando em: {db_url.replace('crypto_pass', '***')}")
         conn = await asyncpg.connect(db_url)
         
-        # Buscar dados históricos
+        # Buscar dados históricos (tabela market_data não tem coluna timeframe, sempre é 1h)
         query = """
             SELECT 
-                time as timestamp,
+                timestamp,
                 symbol,
                 open,
                 high,
@@ -1755,20 +1757,23 @@ async def backtest_rsi_divergence(request: RSIDivergenceBacktestRequest):
                 volume
             FROM market_data
             WHERE symbol = $1
-                AND time >= $2::timestamptz
-                AND time <= $3::timestamptz
-                AND timeframe = $4
-            ORDER BY time
+                AND timestamp >= $2::timestamptz
+                AND timestamp <= $3::timestamptz
+            ORDER BY timestamp
         """
         
         from datetime import datetime
         start_dt = datetime.fromisoformat(request.start_date)
         end_dt = datetime.fromisoformat(request.end_date)
         
-        rows = await conn.fetch(query, request.symbol, start_dt, end_dt, request.timeframe)
+        logger.info(f"📅 Buscando dados: {request.symbol} de {start_dt} até {end_dt}")
+        rows = await conn.fetch(query, request.symbol, start_dt, end_dt)
         await conn.close()
         
+        logger.info(f"📥 Dados recebidos: {len(rows) if rows else 0} candles para {request.symbol}")
+        
         if not rows or len(rows) < 200:
+            logger.error(f"❌ Dados insuficientes para {request.symbol}: {len(rows) if rows else 0} candles (mínimo: 200)")
             raise HTTPException(
                 status_code=400, 
                 detail=f"Dados insuficientes: {len(rows) if rows else 0} candles (mínimo: 200)"

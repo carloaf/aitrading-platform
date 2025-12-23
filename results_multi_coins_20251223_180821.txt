@@ -1,0 +1,9 @@
+📊 RESULTADOS RSI DIVERGENCE - MÚLTIPLAS MOEDAS
+Data: ter 23 dez 2025 18:08:21 -03
+Período: 2023-12-23 → 2025-12-23
+Parâmetros Manual (1h): lookback=10, min_strength=0.3, min_adx=15
+===============================================
+
+SYMBOL     | PATTERNS |   TRADES |    RETURN% |     WR% |  MAX_DD% |   SHARPE | STATUS
+-----------|----------|----------|------------|---------|----------|----------|--------
+BTCUSDT    |        2 |        2 |       9,00 |   100,0 |     0,00 |     0,00 |   🟡
