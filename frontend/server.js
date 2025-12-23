@@ -51,8 +51,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Rate limiting
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 100 // máximo 100 requests por IP
+  windowMs: 1 * 60 * 1000, // 1 minuto
+  max: 500 // máximo 500 requests por IP por minuto (suficiente para SPA)
 });
 app.use(limiter);
 
