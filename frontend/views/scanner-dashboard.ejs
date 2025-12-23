@@ -617,30 +617,73 @@
     <div class="row mb-4">
         <div class="col-12">
             <div class="card shadow-sm">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="bi bi-clock-history text-secondary"></i> Histórico de Sinais (Últimas 24h)</h5>
-                    <button class="btn btn-outline-secondary btn-sm" onclick="clearHistory()">
-                        <i class="bi bi-trash"></i> Limpar
-                    </button>
+                <div class="card-header bg-white">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0"><i class="bi bi-clock-history text-secondary"></i> Histórico de Sinais (Últimas 24h)</h5>
+                        <div class="btn-group">
+                            <button class="btn btn-outline-primary btn-sm" onclick="filterHistoryByDirection('all')" id="filterAll">
+                                <i class="bi bi-funnel"></i> Todos
+                            </button>
+                            <button class="btn btn-outline-success btn-sm" onclick="filterHistoryByDirection('BUY')" id="filterBuy">
+                                <i class="bi bi-arrow-up"></i> Compra
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" onclick="filterHistoryByDirection('SELL')" id="filterSell">
+                                <i class="bi bi-arrow-down"></i> Venda
+                            </button>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="clearHistory()">
+                                <i class="bi bi-trash"></i> Limpar
+                            </button>
+                        </div>
+                    </div>
+                    <!-- Statistics Bar -->
+                    <div class="row text-center mt-2" id="historyStats">
+                        <div class="col-md-2">
+                            <small class="text-muted">Total</small>
+                            <div class="fw-bold" id="histStatTotal">0</div>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Compras</small>
+                            <div class="fw-bold text-success" id="histStatBuy">0</div>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Vendas</small>
+                            <div class="fw-bold text-danger" id="histStatSell">0</div>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Força Média</small>
+                            <div class="fw-bold" id="histStatAvgStrength">-</div>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Símbolos Únicos</small>
+                            <div class="fw-bold" id="histStatSymbols">0</div>
+                        </div>
+                        <div class="col-md-2">
+                            <small class="text-muted">Último Sinal</small>
+                            <div class="fw-bold text-info" id="histStatLastTime">-</div>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body p-0">
-                    <div class="table-responsive" style="max-height: 300px; overflow-y: auto;">
-                        <table class="table table-sm mb-0">
+                    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+                        <table class="table table-hover table-sm mb-0">
                             <thead class="table-light sticky-top">
                                 <tr>
-                                    <th>Hora</th>
-                                    <th>Símbolo</th>
-                                    <th>Tipo</th>
-                                    <th>Direção</th>
-                                    <th>Força</th>
-                                    <th>Preço</th>
-                                    <th>RSI</th>
+                                    <th style="width: 100px;">Hora</th>
+                                    <th style="width: 120px;">Símbolo</th>
+                                    <th style="width: 150px;">Tipo</th>
+                                    <th style="width: 100px;">Direção</th>
+                                    <th style="width: 80px;">Força</th>
+                                    <th style="width: 120px;">Preço</th>
+                                    <th style="width: 70px;">RSI</th>
+                                    <th style="width: 100px;">Tempo</th>
                                 </tr>
                             </thead>
                             <tbody id="historyTableBody">
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-3">
-                                        Sem histórico ainda
+                                    <td colspan="8" class="text-center text-muted py-4">
+                                        <i class="bi bi-inbox display-4 d-block mb-2"></i>
+                                        <strong>Sem sinais detectados ainda</strong>
+                                        <p class="small mb-0 mt-1">Os sinais aparecerão aqui quando o scanner detectar divergências RSI</p>
                                     </td>
                                 </tr>
                             </tbody>
@@ -825,6 +868,96 @@
     .bg-success-subtle { background-color: #d1e7dd; }
     .bg-danger-subtle { background-color: #f8d7da; }
     .bg-warning-subtle { background-color: #fff3cd; }
+    
+    /* History table improvements */
+    #signalHistoryTable tbody tr {
+        transition: all 0.2s ease;
+    }
+    
+    #signalHistoryTable tbody tr:hover {
+        transform: translateX(5px);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .table-success-subtle {
+        background-color: rgba(25, 135, 84, 0.1) !important;
+        border-left: 3px solid #28a745;
+    }
+    
+    .table-danger-subtle {
+        background-color: rgba(220, 53, 69, 0.1) !important;
+        border-left: 3px solid #dc3545;
+    }
+    
+    .strength-indicator {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    
+    .strength-icon {
+        font-size: 1.1rem;
+        font-weight: bold;
+    }
+    
+    .rsi-value {
+        font-weight: 600;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
+    
+    .rsi-oversold {
+        color: #28a745;
+        background-color: rgba(25, 135, 84, 0.1);
+    }
+    
+    .rsi-overbought {
+        color: #dc3545;
+        background-color: rgba(220, 53, 69, 0.1);
+    }
+    
+    .rsi-neutral {
+        color: #6c757d;
+    }
+    
+    .time-ago {
+        color: #6c757d;
+        font-size: 0.9rem;
+        font-style: italic;
+    }
+    
+    .history-stats-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .history-stats-card .card-body {
+        padding: 12px;
+    }
+    
+    .history-stats-value {
+        font-size: 1.5rem;
+        font-weight: bold;
+        margin-bottom: 4px;
+    }
+    
+    .history-stats-label {
+        font-size: 0.8rem;
+        opacity: 0.9;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .filter-btn-group .btn {
+        transition: all 0.2s ease;
+    }
+    
+    .filter-btn-group .btn.active {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
     .bg-info-subtle { background-color: #cff4fc; }
     
     /* Timeframe badges */
@@ -2485,34 +2618,155 @@
         }
     }
     
+    // Estado do filtro de histórico
+    let historyFilterDirection = 'all';  // 'all', 'BUY', 'SELL'
+    
     function updateHistoryTable() {
         const tbody = document.getElementById('historyTableBody');
         
-        if (signalHistory.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">Sem histórico ainda</td></tr>';
+        // Atualizar estatísticas
+        updateHistoryStats();
+        
+        // Filtrar sinais baseado no filtro ativo
+        let filteredSignals = signalHistory;
+        if (historyFilterDirection !== 'all') {
+            filteredSignals = signalHistory.filter(s => s.direction === historyFilterDirection);
+        }
+        
+        if (filteredSignals.length === 0) {
+            const emptyMessage = historyFilterDirection === 'all' 
+                ? 'Sem sinais detectados ainda' 
+                : 'Nenhum sinal de ' + (historyFilterDirection === 'BUY' ? 'COMPRA' : 'VENDA') + ' nas últimas 24h';
+            
+            tbody.innerHTML = \`
+                <tr>
+                    <td colspan="8" class="text-center text-muted py-4">
+                        <i class="bi bi-inbox display-4 d-block mb-2"></i>
+                        <strong>\${emptyMessage}</strong>
+                        <p class="small mb-0 mt-1">Os sinais aparecerão aqui quando o scanner detectar divergências RSI</p>
+                    </td>
+                </tr>
+            \`;
             return;
         }
         
         let html = '';
-        signalHistory.forEach(signal => {
-            const dirBadge = signal.direction === 'BUY' 
-                ? '<span class="badge bg-success">COMPRA</span>' 
-                : '<span class="badge bg-danger">VENDA</span>';
+        filteredSignals.forEach(signal => {
+            const isBuy = signal.direction === 'BUY';
+            const dirBadge = isBuy 
+                ? '<span class="badge bg-success"><i class="bi bi-arrow-up"></i> COMPRA</span>' 
+                : '<span class="badge bg-danger"><i class="bi bi-arrow-down"></i> VENDA</span>';
+            
+            // Determinar cor da força
+            const strengthVal = signal.strength * 100;
+            let strengthClass = 'text-muted';
+            let strengthIcon = 'bi-circle';
+            if (strengthVal >= 70) {
+                strengthClass = 'text-success fw-bold';
+                strengthIcon = 'bi-circle-fill';
+            } else if (strengthVal >= 50) {
+                strengthClass = 'text-warning fw-bold';
+                strengthIcon = 'bi-circle-fill';
+            } else if (strengthVal >= 30) {
+                strengthClass = 'text-info';
+                strengthIcon = 'bi-circle-half';
+            }
+            
+            // RSI com cor
+            const rsiVal = signal.rsi;
+            let rsiClass = 'text-muted';
+            if (rsiVal <= 30) rsiClass = 'text-success fw-bold';  // Oversold (bullish)
+            else if (rsiVal >= 70) rsiClass = 'text-danger fw-bold';  // Overbought (bearish)
+            else if (rsiVal <= 40) rsiClass = 'text-success';
+            else if (rsiVal >= 60) rsiClass = 'text-danger';
+            
+            // Calcular tempo relativo
+            const timeAgo = signal.timestamp ? getTimeAgo(signal.timestamp) : '-';
+            
+            // Cor da linha baseada na direção
+            const rowClass = isBuy ? 'table-success-subtle' : 'table-danger-subtle';
             
             html += \`
-                <tr>
-                    <td>\${signal.time}</td>
+                <tr class="\${rowClass}">
+                    <td class="small">\${signal.time}</td>
                     <td><strong>\${signal.symbol}</strong></td>
-                    <td><span class="badge bg-info">\${formatSignalType(signal.type)}</span></td>
+                    <td><span class="badge bg-info-subtle text-info-emphasis">\${formatSignalType(signal.type)}</span></td>
                     <td>\${dirBadge}</td>
-                    <td>\${(signal.strength * 100).toFixed(0)}%</td>
-                    <td>\${formatPrice(signal.price)}</td>
-                    <td>\${signal.rsi.toFixed(1)}</td>
+                    <td class="\${strengthClass}">
+                        <i class="\${strengthIcon}"></i> \${strengthVal.toFixed(0)}%
+                    </td>
+                    <td class="small">\${formatPrice(signal.price)}</td>
+                    <td class="\${rsiClass} fw-bold">\${rsiVal.toFixed(1)}</td>
+                    <td class="small text-muted">\${timeAgo}</td>
                 </tr>
             \`;
         });
         
         tbody.innerHTML = html;
+    }
+    
+    function updateHistoryStats() {
+        if (signalHistory.length === 0) {
+            document.getElementById('histStatTotal').textContent = '0';
+            document.getElementById('histStatBuy').textContent = '0';
+            document.getElementById('histStatSell').textContent = '0';
+            document.getElementById('histStatAvgStrength').textContent = '-';
+            document.getElementById('histStatSymbols').textContent = '0';
+            document.getElementById('histStatLastTime').textContent = '-';
+            return;
+        }
+        
+        // Calcular estatísticas
+        const buySignals = signalHistory.filter(s => s.direction === 'BUY').length;
+        const sellSignals = signalHistory.filter(s => s.direction === 'SELL').length;
+        
+        const avgStrength = signalHistory.reduce((sum, s) => sum + s.strength, 0) / signalHistory.length;
+        
+        const uniqueSymbols = new Set(signalHistory.map(s => s.symbol)).size;
+        
+        const lastSignal = signalHistory[0];  // Mais recente (unshift coloca no início)
+        const lastTime = lastSignal.timestamp ? getTimeAgo(lastSignal.timestamp) : lastSignal.time;
+        
+        // Atualizar UI
+        document.getElementById('histStatTotal').textContent = signalHistory.length;
+        document.getElementById('histStatBuy').textContent = buySignals;
+        document.getElementById('histStatSell').textContent = sellSignals;
+        document.getElementById('histStatAvgStrength').textContent = (avgStrength * 100).toFixed(0) + '%';
+        document.getElementById('histStatSymbols').textContent = uniqueSymbols;
+        document.getElementById('histStatLastTime').textContent = lastTime;
+    }
+    
+    function filterHistoryByDirection(direction) {
+        historyFilterDirection = direction;
+        
+        // Atualizar botões ativos
+        document.getElementById('filterAll').classList.remove('active');
+        document.getElementById('filterBuy').classList.remove('active');
+        document.getElementById('filterSell').classList.remove('active');
+        
+        if (direction === 'all') {
+            document.getElementById('filterAll').classList.add('active');
+        } else if (direction === 'BUY') {
+            document.getElementById('filterBuy').classList.add('active');
+        } else if (direction === 'SELL') {
+            document.getElementById('filterSell').classList.add('active');
+        }
+        
+        // Rerender tabela
+        updateHistoryTable();
+    }
+    
+    function getTimeAgo(timestamp) {
+        const now = Date.now();
+        const diff = now - timestamp;
+        
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        
+        if (hours > 0) return hours + 'h atrás';
+        if (minutes > 0) return minutes + 'min atrás';
+        return 'agora';
     }
     
     function clearHistory() {
