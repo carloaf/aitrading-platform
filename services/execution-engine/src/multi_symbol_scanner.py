@@ -12,6 +12,7 @@ import asyncio
 import ccxt
 import pandas as pd
 import numpy as np
+import uuid
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
@@ -121,7 +122,7 @@ class MultiSymbolScanner:
     - Integra com Paper Trading
     """
     
-    def __init__(self, config: ScannerConfig = None):
+    def __init__(self, config: ScannerConfig = None, db_pool=None):
         self.config = config or ScannerConfig()
         self.exchange = ccxt.binance({
             'enableRateLimit': True,
@@ -143,6 +144,9 @@ class MultiSymbolScanner:
         
         # Callbacks
         self.on_signal_detected: Optional[callable] = None
+        
+        # Database connection
+        self.db_pool = db_pool
         
         logger.info(f"MultiSymbolScanner initialized with {len(self.config.symbols)} symbols")
     
@@ -201,6 +205,12 @@ class MultiSymbolScanner:
         
         # Ordenar por força do sinal
         all_signals.sort(key=lambda x: x.strength, reverse=True)
+        
+        # 💾 Salvar novos sinais no banco de dados
+        if all_signals and self.db_pool:
+            logger.info(f"💾 Saving {len(all_signals)} signals to database...")
+            for signal in all_signals:
+                await self._save_signal_to_db(signal)
         
         return all_signals
     
@@ -698,6 +708,110 @@ class MultiSymbolScanner:
         self.last_scan_time = datetime.utcnow()
         
         return self.get_scan_summary()
+    
+    async def _save_signal_to_db(self, signal: DivergenceSignal):
+        """
+        Salva sinal detectado no banco de dados (autotrade_signals)
+        """
+        if not self.db_pool:
+            logger.warning("Database pool not configured, signal not saved")
+            return
+        
+        try:
+            async with self.db_pool.acquire() as conn:
+                signal_id = f"scan_{uuid.uuid4().hex[:12]}"
+                session_id = f"scanner_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+                
+                query = """
+                INSERT INTO autotrade_signals (
+                    signal_id, session_id, symbol, timeframe, signal_type, direction,
+                    strength, entry_price, stop_loss, take_profit, current_price,
+                    rsi, adx, volume, volatility, market_regime, reason, timestamp
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+                """
+                
+                await conn.execute(
+                    query,
+                    signal_id,
+                    session_id,
+                    signal.symbol,
+                    signal.timeframe,
+                    signal.type.value,  # 'bullish_divergence', 'bearish_divergence', etc
+                    'BUY' if 'bullish' in signal.type.value else 'SELL',
+                    signal.strength,
+                    signal.entry,
+                    signal.stop_loss,
+                    signal.take_profit,
+                    signal.price,
+                    signal.rsi,
+                    signal.confirmations.get('adx', 0.0) if isinstance(signal.confirmations, dict) else 0.0,
+                    signal.confirmations.get('volume', 0.0) if isinstance(signal.confirmations, dict) else 0.0,
+                    0.0,  # volatility placeholder
+                    None,  # market_regime placeholder
+                    f"RSI Divergence: {signal.type.value} | Strength: {signal.strength:.2f}",
+                    datetime.utcnow()
+                )
+                
+                logger.info(f"💾 Signal saved to DB: {signal_id} - {signal.symbol} {signal.type.value}")
+                
+        except Exception as e:
+            logger.error(f"Error saving signal to DB: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    async def get_recent_signals_from_db(self, limit: int = 50, hours: int = 24):
+        """
+        Busca sinais recentes do banco de dados
+        """
+        if not self.db_pool:
+            return []
+        
+        try:
+            async with self.db_pool.acquire() as conn:
+                query = """
+                SELECT 
+                    signal_id, timestamp, symbol, timeframe, signal_type, direction,
+                    strength, entry_price, stop_loss, take_profit, current_price,
+                    rsi, adx, reason, executed, execution_reason
+                FROM autotrade_signals
+                WHERE timestamp >= NOW() - INTERVAL '%s hours'
+                  AND signal_type LIKE '%%divergence%%'
+                ORDER BY timestamp DESC
+                LIMIT $1
+                """
+                
+                rows = await conn.fetch(query % hours, limit)
+                
+                signals = []
+                for row in rows:
+                    signals.append({
+                        'signal_id': row['signal_id'],
+                        'timestamp': row['timestamp'].isoformat() if row['timestamp'] else None,
+                        'symbol': row['symbol'],
+                        'timeframe': row['timeframe'],
+                        'type': row['signal_type'],
+                        'direction': row['direction'],
+                        'strength': float(row['strength']) if row['strength'] else 0.0,
+                        'entry': float(row['entry_price']) if row['entry_price'] else 0.0,
+                        'stop_loss': float(row['stop_loss']) if row['stop_loss'] else 0.0,
+                        'take_profit': float(row['take_profit']) if row['take_profit'] else 0.0,
+                        'price': float(row['current_price']) if row['current_price'] else 0.0,
+                        'rsi': float(row['rsi']) if row['rsi'] else 0.0,
+                        'adx': float(row['adx']) if row['adx'] else 0.0,
+                        'reason': row['reason'],
+                        'executed': row['executed'],
+                        'execution_reason': row['execution_reason']
+                    })
+                
+                return signals
+                
+        except Exception as e:
+            logger.error(f"Error fetching signals from DB: {e}")
+            return []
+
+
+# Adicionar import no topo do arquivo
+import uuid
 
 
 # Instância global do scanner

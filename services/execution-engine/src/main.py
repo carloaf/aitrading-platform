@@ -3360,7 +3360,9 @@ async def init_rsi_scanner(request: ScannerConfigRequest):
         config.take_profit_atr_mult = request.take_profit_atr_mult
         config.use_ema_filter = request.use_ema_filter  # NOVO v2.1
         
-        rsi_scanner = MultiSymbolScanner(config)
+        # Pass database pool for signal persistence
+        pool = await get_market_data_pool()
+        rsi_scanner = MultiSymbolScanner(config, db_pool=pool)
         
         return {
             'success': True,
@@ -3445,7 +3447,9 @@ async def run_full_scan(request: ScanRequest = None, background_tasks: Backgroun
                 config.symbols = request.symbols
             if request and request.timeframes:
                 config.timeframes = request.timeframes
-            rsi_scanner = MultiSymbolScanner(config)
+            # Pass database pool for signal persistence
+            pool = await get_market_data_pool()
+            rsi_scanner = MultiSymbolScanner(config, db_pool=pool)
         
         # Executar scan completo
         result = await rsi_scanner.scan_once()
@@ -3574,7 +3578,9 @@ async def start_continuous_scanning(background_tasks: BackgroundTasks, interval_
     global rsi_scanner
     
     if rsi_scanner is None:
-        rsi_scanner = MultiSymbolScanner(ScannerConfig())
+        # Pass database pool for signal persistence
+        pool = await get_market_data_pool()
+        rsi_scanner = MultiSymbolScanner(ScannerConfig(), db_pool=pool)
     
     if rsi_scanner.is_running:
         return {'success': False, 'message': 'Scanner já está rodando'}
@@ -3609,6 +3615,76 @@ async def stop_continuous_scanning():
         'message': 'Scanner parado',
         'total_scans': rsi_scanner.scan_count
     }
+
+
+@app.get("/api/scanner/history")
+async def get_scanner_history(limit: int = 50, hours: int = 24):
+    """
+    Retorna histórico de sinais do banco de dados
+    
+    Query params:
+    - limit: Número máximo de sinais (default: 50)
+    - hours: Janela de tempo em horas (default: 24)
+    
+    Retorna sinais persistidos no banco, mesmo após restart do container.
+    """
+    global rsi_scanner
+    
+    try:
+        # Se scanner existir e tiver db_pool, usar ele
+        if rsi_scanner and rsi_scanner.db_pool:
+            signals = await rsi_scanner.get_recent_signals_from_db(limit, hours)
+        else:
+            # Criar conexão temporária
+            pool = await get_market_data_pool()
+            async with pool.acquire() as conn:
+                query = """
+                SELECT 
+                    signal_id, timestamp, symbol, timeframe, signal_type, direction,
+                    strength, entry_price, stop_loss, take_profit, current_price,
+                    rsi, adx, reason, executed, execution_reason
+                FROM autotrade_signals
+                WHERE timestamp >= NOW() - INTERVAL '%s hours'
+                  AND signal_type LIKE '%%divergence%%'
+                ORDER BY timestamp DESC
+                LIMIT $1
+                """
+                
+                rows = await conn.fetch(query % hours, limit)
+                
+                signals = []
+                for row in rows:
+                    signals.append({
+                        'signal_id': row['signal_id'],
+                        'timestamp': row['timestamp'].isoformat() if row['timestamp'] else None,
+                        'symbol': row['symbol'],
+                        'timeframe': row['timeframe'],
+                        'type': row['signal_type'],
+                        'direction': row['direction'],
+                        'strength': float(row['strength']) if row['strength'] else 0.0,
+                        'entry': float(row['entry_price']) if row['entry_price'] else 0.0,
+                        'stop_loss': float(row['stop_loss']) if row['stop_loss'] else 0.0,
+                        'take_profit': float(row['take_profit']) if row['take_profit'] else 0.0,
+                        'price': float(row['current_price']) if row['current_price'] else 0.0,
+                        'rsi': float(row['rsi']) if row['rsi'] else 0.0,
+                        'adx': float(row['adx']) if row['adx'] else 0.0,
+                        'reason': row['reason'],
+                        'executed': row['executed'],
+                        'execution_reason': row['execution_reason']
+                    })
+        
+        return {
+            'success': True,
+            'total': len(signals),
+            'signals': signals,
+            'period_hours': hours
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching signal history: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/scanner/market-data")

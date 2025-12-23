@@ -1051,7 +1051,10 @@
         // Restaurar cache primeiro (instantaneo), depois atualiza em background
         restoreNearAlertsCache();
         restoreMarketDataCache();
-        restoreSignalHistory();  // Restaurar histórico de sinais
+        
+        // 💾 PRIORIDADE: Carregar histórico do BANCO DE DADOS (persistente)
+        console.log('[Scanner] Loading signal history from database...');
+        loadSignalHistoryFromDB(24);  // Async, não bloqueia UI
         
         console.log('[Scanner] Loading paper trading stats...');
         loadPaperTradingStats();  // Carrega estatísticas de paper trading
@@ -1535,36 +1538,78 @@
         }
     }
     
-    function toggleContinuousScan() {
+    async function toggleContinuousScan() {
         const btn = document.getElementById('btnContinuous');
         const statusBadge = document.getElementById('scannerStatus');
         
         if (isContinuousRunning) {
-            // Stop
-            clearInterval(scanInterval);
-            isContinuousRunning = false;
-            btn.innerHTML = '<i class="bi bi-play-circle"></i> Iniciar Contínuo';
-            btn.classList.remove('btn-danger');
-            btn.classList.add('btn-outline-primary');
-            statusBadge.textContent = 'Parado';
-            statusBadge.classList.remove('bg-success');
-            statusBadge.classList.add('bg-secondary');
-            showToast('Scanner Parado', 'Monitoramento contínuo desativado', 'info');
-            saveState();  // Persist state
+            // Stop continuous scanning on backend
+            try {
+                const response = await fetch('http://localhost:3008/api/scanner/stop', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                const data = await response.json();
+                
+                // Stop frontend polling
+                if (scanInterval) {
+                    clearInterval(scanInterval);
+                    scanInterval = null;
+                }
+                
+                isContinuousRunning = false;
+                btn.innerHTML = '<i class="bi bi-play-circle"></i> Iniciar Contínuo';
+                btn.classList.remove('btn-danger');
+                btn.classList.add('btn-outline-primary');
+                statusBadge.textContent = 'Parado';
+                statusBadge.classList.remove('bg-success');
+                statusBadge.classList.add('bg-secondary');
+                showToast('Scanner Parado', data.message || 'Monitoramento contínuo desativado', 'info');
+                saveState();
+            } catch (error) {
+                console.error('Error stopping scanner:', error);
+                showToast('Erro', 'Falha ao parar scanner: ' + error.message, 'danger');
+            }
         } else {
-            // Start
-            const interval = parseInt(document.getElementById('scanInterval').value) * 1000;
-            runScan(); // Run immediately
-            scanInterval = setInterval(runScan, interval);
-            isContinuousRunning = true;
-            btn.innerHTML = '<i class="bi bi-stop-circle"></i> Parar';
-            btn.classList.remove('btn-outline-primary');
-            btn.classList.add('btn-danger');
-            statusBadge.textContent = 'Rodando';
-            statusBadge.classList.remove('bg-secondary');
-            statusBadge.classList.add('bg-success');
-            showToast('Scanner Iniciado', 'Escaneando a cada ' + (interval/1000) + ' segundos', 'success');
-            saveState();  // Persist state
+            // Start continuous scanning on backend
+            try {
+                const intervalSeconds = parseInt(document.getElementById('scanInterval').value);
+                
+                // First, initialize scanner with selected symbols
+                await initializeScanner();
+                
+                // Then start continuous scanning
+                const response = await fetch(\`http://localhost:3008/api/scanner/start-continuous?interval_seconds=\${intervalSeconds}\`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+                
+                if (!response.ok) {
+                    throw new Error(\`HTTP \${response.status}\`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    // Start frontend polling to refresh results
+                    scanInterval = setInterval(runScan, intervalSeconds * 1000);
+                    
+                    isContinuousRunning = true;
+                    btn.innerHTML = '<i class="bi bi-stop-circle"></i> Parar';
+                    btn.classList.remove('btn-outline-primary');
+                    btn.classList.add('btn-danger');
+                    statusBadge.textContent = 'Rodando';
+                    statusBadge.classList.remove('bg-secondary');
+                    statusBadge.classList.add('bg-success');
+                    showToast('Scanner Iniciado', \`Escaneando \${data.symbols.length} símbolos a cada \${intervalSeconds}s\`, 'success');
+                    saveState();
+                } else {
+                    showToast('Aviso', data.message, 'warning');
+                }
+            } catch (error) {
+                console.error('Error starting scanner:', error);
+                showToast('Erro', 'Falha ao iniciar scanner: ' + error.message, 'danger');
+            }
         }
     }
     
@@ -2587,7 +2632,58 @@
         }
     }
     
-    // Restaurar histórico de sinais do localStorage
+    // 💾 NOVO: Carregar histórico do banco de dados (persistente)
+    async function loadSignalHistoryFromDB(hours = 24) {
+        try {
+            const response = await fetch(\`\${API_BASE}/api/scanner/history?limit=50&hours=\${hours}\`);
+            if (!response.ok) {
+                throw new Error(\`HTTP \${response.status}\`);
+            }
+            
+            const data = await response.json();
+            
+            if (data.success && data.signals && data.signals.length > 0) {
+                console.log(\`[History] Carregados \${data.signals.length} sinais do banco de dados\`);
+                
+                // Converter formato do banco para formato do frontend
+                signalHistory = data.signals.map(s => ({
+                    signal_id: s.signal_id,
+                    symbol: s.symbol,
+                    timeframe: s.timeframe,
+                    type: s.type,
+                    direction: s.direction,
+                    strength: s.strength,
+                    entry: s.entry,
+                    stop_loss: s.stop_loss,
+                    take_profit: s.take_profit,
+                    price: s.price,
+                    rsi: s.rsi,
+                    adx: s.adx,
+                    reason: s.reason,
+                    executed: s.executed,
+                    execution_reason: s.execution_reason,
+                    time: new Date(s.timestamp).toLocaleTimeString(),
+                    timestamp: new Date(s.timestamp).getTime()
+                }));
+                
+                updateHistoryTable();
+                updateHistoryStats();
+                
+                showToast('Histórico Carregado', 
+                    \`\${data.signals.length} sinais carregados do banco (últimas \${hours}h)\`, 
+                    'success');
+            } else {
+                console.log('[History] Nenhum sinal encontrado no banco de dados');
+            }
+            
+        } catch (error) {
+            console.error('[History] Erro ao carregar do banco:', error);
+            // Fallback: tentar localStorage
+            restoreSignalHistory();
+        }
+    }
+    
+    // Restaurar histórico de sinais do localStorage (FALLBACK)
     function restoreSignalHistory() {
         try {
             const saved = localStorage.getItem(SIGNAL_HISTORY_KEY);
