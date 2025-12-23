@@ -21,12 +21,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Database configuration (from environment or defaults matching docker-compose)
-DB_HOST = os.getenv('POSTGRES_HOST', 'postgres')
-DB_PORT = int(os.getenv('POSTGRES_PORT', '5432'))
-DB_NAME = os.getenv('POSTGRES_DB', 'aitrading_db')
-DB_USER = os.getenv('POSTGRES_USER', 'aitrading_user')
-DB_PASSWORD = os.getenv('POSTGRES_PASSWORD', 'aitrading_pass')
+# Database configuration (TimescaleDB)
+DB_HOST = os.getenv('TIMESCALE_HOST', 'timescaledb')
+DB_PORT = int(os.getenv('TIMESCALE_PORT', '5432'))
+DB_NAME = os.getenv('TIMESCALE_DB', 'crypto_market')
+DB_USER = os.getenv('TIMESCALE_USER', 'crypto_user')
+DB_PASSWORD = os.getenv('TIMESCALE_PASSWORD', os.getenv('TIMESCALE_PASS', 'crypto_pass'))
 
 
 async def download_binance_data(
@@ -64,24 +64,24 @@ async def download_binance_data(
         return False
     
     try:
-        # Create table if not exists
-        await conn.execute('''
-            CREATE TABLE IF NOT EXISTS market_data (
-                time TIMESTAMPTZ NOT NULL,
-                symbol VARCHAR(20) NOT NULL,
-                timeframe VARCHAR(10) NOT NULL DEFAULT '1h',
-                open DOUBLE PRECISION,
-                high DOUBLE PRECISION,
-                low DOUBLE PRECISION,
-                close DOUBLE PRECISION,
-                volume DOUBLE PRECISION,
-                PRIMARY KEY (time, symbol, timeframe)
-            );
+        # Table already exists in TimescaleDB, just verify schema
+        table_check = await conn.fetchval('''
+            SELECT COUNT(*) FROM information_schema.tables 
+            WHERE table_name = 'market_data'
         ''')
+        
+        if table_check == 0:
+            logger.error("❌ market_data table does not exist in TimescaleDB!")
+            return False
+        
+        logger.info(f"✅ market_data table exists")
         
         # Convert symbol format
         binance_symbol = symbol.replace('/', '')
         db_symbol = binance_symbol
+        
+        # Source name (binance_1h, binance_4h, binance_1d)
+        source_name = f"binance_{timeframe}"
         
         # Parse dates
         start_ts = int(datetime.strptime(start_date, '%Y-%m-%d').timestamp() * 1000)
@@ -118,17 +118,19 @@ async def download_binance_data(
                     # Convert timestamp to datetime
                     dt = datetime.utcfromtimestamp(timestamp / 1000)
                     
-                    # Upsert data
+                    # Upsert data (TimescaleDB schema)
                     await conn.execute('''
-                        INSERT INTO market_data (time, symbol, timeframe, open, high, low, close, volume)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                        ON CONFLICT (time, symbol, timeframe) DO UPDATE SET
+                        INSERT INTO market_data (symbol, timestamp, open, high, low, close, price, volume, source)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                        ON CONFLICT (symbol, timestamp) DO UPDATE SET
                             open = EXCLUDED.open,
                             high = EXCLUDED.high,
                             low = EXCLUDED.low,
                             close = EXCLUDED.close,
-                            volume = EXCLUDED.volume
-                    ''', dt, db_symbol, timeframe, open_p, high_p, low_p, close_p, volume)
+                            price = EXCLUDED.close,
+                            volume = EXCLUDED.volume,
+                            source = EXCLUDED.source
+                    ''', db_symbol, dt, open_p, high_p, low_p, close_p, close_p, volume, source_name)
                     rows_inserted += 1
                 
                 total_candles += rows_inserted
@@ -154,16 +156,16 @@ async def download_binance_data(
         
         # Verify data
         count = await conn.fetchval(
-            "SELECT COUNT(*) FROM market_data WHERE symbol = $1 AND timeframe = $2",
-            db_symbol, timeframe
+            "SELECT COUNT(*) FROM market_data WHERE symbol = $1 AND source = $2",
+            db_symbol, source_name
         )
-        logger.info(f"📈 Database now has {count:,} candles for {db_symbol} ({timeframe})")
+        logger.info(f"📈 Database now has {count:,} candles for {db_symbol} ({source_name})")
         
         # Show date range
         result = await conn.fetchrow('''
-            SELECT MIN(time) as min_time, MAX(time) as max_time
-            FROM market_data WHERE symbol = $1 AND timeframe = $2
-        ''', db_symbol, timeframe)
+            SELECT MIN(timestamp) as min_time, MAX(timestamp) as max_time
+            FROM market_data WHERE symbol = $1 AND source = $2
+        ''', db_symbol, source_name)
         logger.info(f"📅 Date range: {result['min_time']} to {result['max_time']}")
         
         return True

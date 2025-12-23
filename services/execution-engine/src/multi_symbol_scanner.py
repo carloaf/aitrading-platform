@@ -9,6 +9,7 @@ Data: 17 de Dezembro de 2025
 """
 
 import asyncio
+import os
 import ccxt
 import pandas as pd
 import numpy as np
@@ -132,7 +133,10 @@ class MultiSymbolScanner:
     
     def __init__(self, config: ScannerConfig = None, db_pool=None, auto_trade_enabled: bool = False):
         self.config = config or ScannerConfig()
-        self.exchange = ccxt.binance({
+        self.use_local_cache_only = os.getenv("USE_LOCAL_MARKET_DATA", "true").lower() == "true"
+
+        # Quando USE_LOCAL_MARKET_DATA=true não criamos client da Binance
+        self.exchange = None if self.use_local_cache_only else ccxt.binance({
             'enableRateLimit': True,
             'options': {'defaultType': 'spot'}
         })
@@ -247,7 +251,10 @@ class MultiSymbolScanner:
             # Buscar dados OHLCV
             df = await self._fetch_ohlcv(symbol, timeframe)
             
+            # ✅ VALIDAÇÃO: Dados insuficientes (mínimo 100 candles)
             if df is None or len(df) < 100:
+                if df is not None and len(df) < 100:
+                    logger.warning(f"⚠️  {symbol} tem apenas {len(df)} candles (mínimo: 100). Pulando scan.")
                 return []
             
             # Calcular indicadores
@@ -264,7 +271,8 @@ class MultiSymbolScanner:
     
     async def _fetch_ohlcv(self, symbol: str, timeframe: str, limit: int = 200) -> Optional[pd.DataFrame]:
         """
-        Busca dados OHLCV da Binance
+        Busca dados OHLCV do banco (Timescale) quando USE_LOCAL_MARKET_DATA=true.
+        Não faz chamadas externas para a Binance neste modo.
         """
         cache_key = f"{symbol}_{timeframe}"
         
@@ -274,19 +282,64 @@ class MultiSymbolScanner:
             if last_update and (datetime.utcnow() - last_update).seconds < 60:
                 return self.ohlcv_cache[cache_key]
         
+        # Sempre priorizar dados locais
+        if self.use_local_cache_only:
+            if not self.db_pool:
+                logger.warning("[Scanner] db_pool não disponível para fetch OHLCV local")
+                return None
+
+            db_symbol = symbol.replace('/', '')  # Binance usa formato BTCUSDT no banco
+            source = f"binance_{timeframe}"
+
+            try:
+                async with self.db_pool.acquire() as conn:
+                    rows = await conn.fetch(
+                        """
+                        SELECT timestamp, open, high, low, close, volume
+                        FROM market_data
+                        WHERE symbol = $1 AND source = $2
+                        ORDER BY timestamp DESC
+                        LIMIT $3
+                        """,
+                        db_symbol,
+                        source,
+                        limit
+                    )
+
+                if not rows:
+                    logger.warning(f"[Scanner] Sem dados locais para {db_symbol} {timeframe}")
+                    return None
+
+                df = pd.DataFrame(rows, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                df['timestamp'] = pd.to_datetime(df['timestamp'])
+                df.set_index('timestamp', inplace=True)
+                df = df.sort_index()
+
+                self.ohlcv_cache[cache_key] = df
+                self.last_update[cache_key] = datetime.utcnow()
+                return df
+
+            except Exception as e:
+                logger.error(f"[Scanner] Erro ao ler OHLCV local {db_symbol} {timeframe}: {e}")
+                return None
+
+        # Se explicitamente permitido, pode usar Binance (modo antigo)
+        if not self.exchange:
+            logger.warning("[Scanner] Exchange não inicializado (USE_LOCAL_MARKET_DATA=true). Retornando vazio.")
+            return None
+
         try:
             ohlcv = self.exchange.fetch_ohlcv(symbol, timeframe, limit=limit)
-            
+
             df = pd.DataFrame(ohlcv, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
             df.set_index('timestamp', inplace=True)
-            
-            # Atualizar cache
+
             self.ohlcv_cache[cache_key] = df
             self.last_update[cache_key] = datetime.utcnow()
-            
+
             return df
-            
+
         except Exception as e:
             logger.error(f"Error fetching OHLCV for {symbol}: {e}")
             return None

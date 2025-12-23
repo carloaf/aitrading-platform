@@ -14,7 +14,7 @@ API_URL = "http://localhost:3008"
 
 SYMBOLS = [
     "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT",
-    "ADAUSDT", "AVAXUSDT", "DOTUSDT", "MATICUSDT", "LINKUSDT"
+    "ADAUSDT", "AVAXUSDT", "DOTUSDT", "LINKUSDT"  # MATICUSDT removido (migrado para POL)
 ]
 
 TIMEFRAMES = ["1h", "4h", "1d"]

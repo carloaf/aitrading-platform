@@ -24,6 +24,9 @@ import ccxt.async_support as ccxt_async
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Evitar chamadas externas à Binance quando USE_LOCAL_MARKET_DATA=true (padrão)
+USE_LOCAL_MARKET_DATA = os.getenv("USE_LOCAL_MARKET_DATA", "true").lower() == "true"
+
 # ==========================================
 # MARKET DATA CACHE SYSTEM (Database-backed)
 # ==========================================
@@ -44,26 +47,26 @@ DEFAULT_MARKET_SYMBOLS = [
     
     # Top 20 - Large Cap
     "TRXUSDT", "TONUSDT", "BCHUSDT", "ETCUSDT", "ICPUSDT",
-    "FILUSDT", "VETUSDT", "HBARUSDT", "MATICUSDT", "SHIBUSDT",
+    "FILUSDT", "VETUSDT", "HBARUSDT", "SHIBUSDT",  # MATICUSDT removido (migrado para POL)
     
     # Top 40 - Mid Cap + Layer 2
     "LTCUSDT", "ATOMUSDT", "UNIUSDT", "XLMUSDT", "NEARUSDT",
     "IMXUSDT", "STXUSDT", "MANTAUSDT", "METISUSDT", "ZKUSDT",
-    "STRKUSDT", "LOOMUSDT", "SKLUSDT", "CELOUSDT", "ZETAUSDT",
+    "STRKUSDT", "SKLUSDT", "CELOUSDT", "ZETAUSDT",  # LOOMUSDT removido (baixo volume)
     "CYBERUSDT", "GLMUSDT", "CELRUSDT", "CTSIUSDT",
     
     # DeFi Protocol Tokens
-    "AAVEUSDT", "MKRUSDT", "CRVUSDT", "SNXUSDT", "COMPUSDT",
+    "AAVEUSDT", "CRVUSDT", "SNXUSDT", "COMPUSDT",  # MKRUSDT removido (baixo volume)
     "LDOUSDT", "SUSHIUSDT", "1INCHUSDT", "DYDXUSDT", "GMXUSDT",
-    "PENDLEUSDT", "JUPUSDT", "RUNEUSDT", "YFIUSDT", "BALUSDT",
+    "PENDLEUSDT", "JUPUSDT", "RUNEUSDT", "YFIUSDT",  # BALUSDT removido (baixo volume)
     
-    # AI / Oracle / Data
-    "FETUSDT", "AGIXUSDT", "OCEANUSDT", "TAOUSDT", "WLDUSDT",
+    # AI / Oracle / Data (AGIXUSDT e OCEANUSDT migrados para FET)
+    "FETUSDT", "TAOUSDT", "WLDUSDT",
     "ARKMUSDT", "GRTUSDT", "NMRUSDT", "IOTXUSDT", "RENDERUSDT",
     "THETAUSDT", "ARUSDT",
     
-    # Alt Layer-1 / Infrastructure
-    "KASUSDT", "ROSEUSDT", "FTMUSDT", "EGLDUSDT", "FLOWUSDT",
+    # Alt Layer-1 / Infrastructure  
+    "KASUSDT", "ROSEUSDT", "EGLDUSDT", "FLOWUSDT",  # FTMUSDT removido (baixo volume)
     
     # Hot / Trending
     "APTUSDT", "ARBUSDT", "OPUSDT", "INJUSDT", "SUIUSDT",
@@ -171,6 +174,9 @@ async def update_market_data_cache(symbols: List[str] = None):
     Salva em market_data_cache (tempo real) E market_data (histórico).
     Chamado periodicamente pelo worker.
     """
+    if USE_LOCAL_MARKET_DATA:
+        logger.info("[MarketDataCache] USE_LOCAL_MARKET_DATA=true → pulando fetch externo da Binance.")
+        return 0
     import ta
     import pandas as pd
     from datetime import datetime
@@ -397,6 +403,10 @@ async def start_market_data_worker():
     """Inicia o background worker de market data"""
     global _market_data_worker_task
     
+    if USE_LOCAL_MARKET_DATA:
+        logger.info("[MarketDataWorker] USE_LOCAL_MARKET_DATA=true → não iniciar worker Binance; usando apenas dados já armazenados no banco.")
+        return
+
     # Inicializar tabela
     await init_market_data_cache_table()
     
@@ -433,6 +443,9 @@ async def get_market_data_exchange():
     
     async with _market_data_lock:
         if _market_data_exchange is None:
+            if USE_LOCAL_MARKET_DATA:
+                logger.warning("[MarketData] Exchange Binance desabilitado (USE_LOCAL_MARKET_DATA=true)")
+                return None
             import ccxt.async_support as ccxt_async
             _market_data_exchange = ccxt_async.binance({
                 'enableRateLimit': True,
