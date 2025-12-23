@@ -72,12 +72,31 @@ DEFAULT_MARKET_SYMBOLS = [
 ]
 
 async def get_market_data_pool():
-    """Retorna pool de conexões para market data cache"""
+    """Retorna pool de conexões para market data cache com retry"""
     global _market_data_pool
     if _market_data_pool is None:
         db_url = f"postgresql://{os.getenv('TIMESCALE_USER', 'crypto_user')}:{os.getenv('TIMESCALE_PASSWORD', 'crypto_pass')}@{os.getenv('TIMESCALE_HOST', 'timescaledb')}:{os.getenv('TIMESCALE_PORT', '5432')}/{os.getenv('TIMESCALE_DB', 'crypto_market')}"
-        _market_data_pool = await asyncpg.create_pool(db_url, min_size=2, max_size=10)
-        logger.info("[MarketDataCache] Pool de conexões criado")
+        
+        # Retry com backoff para conexão inicial
+        for attempt in range(3):
+            try:
+                _market_data_pool = await asyncio.wait_for(
+                    asyncpg.create_pool(db_url, min_size=2, max_size=10, command_timeout=30),
+                    timeout=15  # 15s timeout para criar pool
+                )
+                logger.info("[MarketDataCache] Pool de conexões criado")
+                break
+            except asyncio.TimeoutError:
+                logger.warning(f"[MarketDataCache] Timeout ao criar pool (attempt {attempt+1}/3)")
+                if attempt == 2:
+                    logger.error("[MarketDataCache] Falha ao criar pool após 3 tentativas")
+                    raise
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+            except Exception as e:
+                logger.error(f"[MarketDataCache] Erro ao criar pool: {e}")
+                if attempt == 2:
+                    raise
+                await asyncio.sleep(2 ** attempt)
     return _market_data_pool
 
 async def init_market_data_cache_table():
@@ -1994,6 +2013,51 @@ async def calculate_position_risk(request: RiskCalculationRequest):
     except Exception as e:
         logger.error(f"❌ Erro no cálculo de risco: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==========================================
+# HEALTH CHECK RÁPIDO (sem dependência de DB)
+# ==========================================
+
+@app.get("/health")
+async def health_check():
+    """
+    🏥 Health check rápido - responde em <100ms sem dependência de DB
+    
+    Usado pelo frontend para verificar se o backend está respondendo
+    antes de fazer requisições pesadas.
+    """
+    global rsi_scanner, autotrade_state, _market_data_worker_running
+    
+    return {
+        "status": "healthy",
+        "service": "execution-engine",
+        "timestamp": datetime.utcnow().isoformat(),
+        "components": {
+            "scanner": "ready" if rsi_scanner else "not_initialized",
+            "autotrade": "active" if autotrade_state.get("active") else "inactive",
+            "market_data_worker": "running" if _market_data_worker_running else "stopped"
+        }
+    }
+
+
+@app.get("/api/autotrade/health")
+async def autotrade_health():
+    """
+    🏥 Health check específico do AutoTrade - responde em <100ms
+    
+    Usado pelo frontend para verificar status do autotrade rapidamente
+    antes de restaurar o estado.
+    """
+    global autotrade_state
+    
+    return {
+        "healthy": True,
+        "active": autotrade_state.get("active", False),
+        "dry_run": autotrade_state.get("dry_run", True),
+        "signals_processed": autotrade_state.get("signals_processed", 0),
+        "trades_executed": autotrade_state.get("trades_executed", 0)
+    }
 
 
 @app.get("/")

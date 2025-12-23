@@ -3330,43 +3330,66 @@
         console.log('[AutoTrade] Full state saved');
     }
     
+    // Check if backend is healthy before making heavy requests
+    async function checkBackendHealth() {
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+            
+            const response = await fetch(API_BASE + '/api/autotrade/health', { 
+                signal: controller.signal 
+            });
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+                const data = await response.json();
+                console.log('[Health] Backend healthy:', data);
+                return data;
+            }
+            return null;
+        } catch (e) {
+            console.warn('[Health] Backend not responding:', e.message);
+            return null;
+        }
+    }
+    
     // Restore AutoTrade state from localStorage AND sync with backend
     async function restoreAutotradeState() {
-        // FIRST: Check backend state (source of truth)
-        try {
-            const response = await fetch(API_BASE + '/api/autotrade/status');
-            const backendState = await response.json();
-            console.log('[AutoTrade] Backend state:', backendState);
-            
-            if (backendState.active) {
-                // Backend is active - sync frontend to match
-                console.log('[AutoTrade] Syncing with active backend session');
-                autotradeActive = true;
-                autotradeStats = backendState.stats || { signals_processed: 0, trades_executed: 0, start_time: Date.now() };
-                autotradeConfig = {
-                    dryRun: backendState.dry_run,
-                    minStrength: backendState.min_signal_strength,
-                    capital: 10000,
-                    symbols: backendState.symbols || []
-                };
-                
-                // Update UI
-                updateAutotradeUILocal();
-                
-                // Start polling if not already
-                if (!autotradeStatusInterval) {
-                    autotradeStatusInterval = setInterval(() => updateAutotradeUILocal(), 5000);
-                }
-                
-                showToast('AutoTrade Ativo', 'Sessao do backend restaurada: ' + (backendState.session_id || 'N/A'), 'success');
-                console.log('[AutoTrade] Synced with backend, session:', backendState.session_id);
-                return; // Skip localStorage restore
-            }
-        } catch (e) {
-            console.warn('[AutoTrade] Backend status check failed:', e.message);
+        // FIRST: Quick health check (5s timeout)
+        const health = await checkBackendHealth();
+        if (!health) {
+            console.warn('[AutoTrade] Backend not healthy, using localStorage only');
+            restoreFromLocalStorage();
+            return;
         }
         
-        // Backend is not active - try localStorage
+        // Backend is healthy - use fast health response for autotrade state
+        if (health.active) {
+            console.log('[AutoTrade] Backend reports active session');
+            autotradeActive = true;
+            autotradeStats = {
+                signals_processed: health.signals_processed || 0,
+                trades_executed: health.trades_executed || 0,
+                start_time: Date.now()
+            };
+            updateAutotradeUILocal();
+            
+            // Start polling if not already
+            if (!autotradeStatusInterval) {
+                autotradeStatusInterval = setInterval(() => updateAutotradeUILocal(), 5000);
+            }
+            
+            showToast('AutoTrade Ativo', 'Sessão do backend restaurada', 'success');
+            console.log('[AutoTrade] State restored: {active: true, signals: ' + health.signals_processed + '}');
+            return;
+        }
+        
+        // Backend not active - try localStorage
+        restoreFromLocalStorage();
+    }
+    
+    // Restore from localStorage only (fallback)
+    function restoreFromLocalStorage() {
         const savedState = localStorage.getItem(AUTOTRADE_STATE_KEY);
         if (!savedState) {
             console.log('[AutoTrade] No saved state found');

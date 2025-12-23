@@ -273,6 +273,27 @@ app.post('/api/scanner/*', async (req, res) => {
   }
 });
 
+// Proxy para AutoTrade Health (rápido - 10s timeout)
+app.get('/api/autotrade/health', async (req, res) => {
+  try {
+    const url = `${EXECUTION_ENGINE_URL}/api/autotrade/health`;
+    console.log(`[Proxy] GET /api/autotrade/health → ${url}`);
+    
+    const response = await axios.get(url, {
+      timeout: 10000  // 10s timeout para health check
+    });
+    
+    res.json(response.data);
+  } catch (error) {
+    console.error('[Proxy] Health check error:', error.message);
+    res.status(error.response?.status || 500).json({
+      healthy: false,
+      error: error.message,
+      code: error.code
+    });
+  }
+});
+
 // Proxy para AutoTrade API (POST requests)
 app.post('/api/autotrade/*', async (req, res) => {
   try {
@@ -283,14 +304,14 @@ app.post('/api/autotrade/*', async (req, res) => {
     
     const response = await axios.post(url, req.body, {
       headers: { 'Content-Type': 'application/json' },
-      timeout: 30000  // 30s para autotrade
+      timeout: 60000  // 60s para autotrade (aumentado)
     });
     
     res.json(response.data);
   } catch (error) {
     console.error('[Proxy] Error:', error.message);
     if (error.code === 'ECONNABORTED') {
-      console.error('[Proxy] Timeout ao acessar AutoTrade!');
+      console.error('[Proxy] Timeout ao acessar AutoTrade (60s)!');
     }
     res.status(error.response?.status || 500).json({
       success: false,
@@ -310,14 +331,14 @@ app.get('/api/autotrade/*', async (req, res) => {
     
     const response = await axios.get(url, {
       params: req.query,
-      timeout: 30000  // 30s para autotrade
+      timeout: 60000  // 60s para autotrade (aumentado)
     });
     
     res.json(response.data);
   } catch (error) {
     console.error('[Proxy] Error:', error.message);
     if (error.code === 'ECONNABORTED') {
-      console.error('[Proxy] Timeout ao acessar AutoTrade!');
+      console.error('[Proxy] Timeout ao acessar AutoTrade (60s)!');
     }
     res.status(error.response?.status || 500).json({
       success: false,

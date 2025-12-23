@@ -874,20 +874,21 @@ class MultiSymbolScanner:
             self.ml_filter = MLSignalFilter()
             
             # Buscar histórico de trades do banco
+            # Usa autotrade_signals que tem todas as informações necessárias
             async with self.db_pool.acquire() as conn:
                 trades = await conn.fetch("""
                     SELECT 
-                        t.entry_price, t.exit_price, t.quantity,
-                        t.side, t.status, t.pnl, t.signal_strength,
-                        t.entry_time, t.exit_time, t.stop_loss, t.take_profit,
-                        s.rsi as rsi_current, s.adx, s.current_price as price_current, 
-                        s.signal_type, s.timeframe, s.strength
-                    FROM paper_trading_trades t
-                    LEFT JOIN autotrade_signals s ON t.signal_id = s.signal_id
-                    WHERE t.status = 'closed'
+                        s.signal_id, s.symbol, s.signal_type, s.direction,
+                        s.strength, s.entry_price, s.stop_loss, s.take_profit,
+                        s.rsi, s.adx, s.current_price, s.market_regime,
+                        s.executed, s.timestamp,
+                        t.pnl, t.pnl_percent, t.trade_type
+                    FROM autotrade_signals s
+                    LEFT JOIN paper_trading_trades t ON t.signal_id = s.signal_id
+                    WHERE s.executed = true
                         AND t.pnl IS NOT NULL
-                        AND t.entry_time >= NOW() - INTERVAL '60 days'
-                    ORDER BY t.entry_time DESC
+                        AND s.timestamp >= NOW() - INTERVAL '60 days'
+                    ORDER BY s.timestamp DESC
                     LIMIT 500
                 """)
             
@@ -902,7 +903,7 @@ class MultiSymbolScanner:
             training_data = []
             for trade in trades:
                 # Determinar label (0=bad, 1=good)
-                pnl = trade['pnl'] if trade['pnl'] else 0
+                pnl = float(trade['pnl']) if trade['pnl'] else 0
                 label = 1 if pnl > 0 else 0
                 
                 entry_price = float(trade['entry_price']) if trade['entry_price'] else 40000.0
@@ -912,7 +913,7 @@ class MultiSymbolScanner:
                     'entry_state': {
                         'close': entry_price,
                         'open': entry_price * 0.999,
-                        'rsi': float(trade['rsi_current']) if trade['rsi_current'] else 50.0,
+                        'rsi': float(trade['rsi']) if trade['rsi'] else 50.0,
                         'adx': float(trade['adx']) if trade['adx'] else 25.0,
                         'volume': 1000.0,
                         'atr': abs(entry_price - stop_loss),
@@ -921,9 +922,9 @@ class MultiSymbolScanner:
                         'ema_200': entry_price
                     },
                     'strategy': 'rsi_divergence',
-                    'signal_strength': float(trade['signal_strength']) if trade['signal_strength'] else 0.5,
+                    'signal_strength': float(trade['strength']) if trade['strength'] else 0.5,
                     'setup_quality': 70.0,
-                    'regime': 'SIDEWAYS',
+                    'regime': trade['market_regime'] or 'SIDEWAYS',
                     'exit_reason': 'TAKE_PROFIT' if label == 1 else 'STOP_LOSS'
                 })
             
