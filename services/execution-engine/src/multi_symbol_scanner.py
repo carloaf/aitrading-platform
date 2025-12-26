@@ -351,6 +351,12 @@ class MultiSymbolScanner:
                     return None
 
                 df = pd.DataFrame(rows, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+                
+                # Converter Decimal para float (evita erros de operação)
+                numeric_cols = ['open', 'high', 'low', 'close', 'volume']
+                for col in numeric_cols:
+                    df[col] = df[col].astype(float)
+                
                 df['timestamp'] = pd.to_datetime(df['timestamp'])
                 df.set_index('timestamp', inplace=True)
                 df = df.sort_index()
@@ -388,6 +394,11 @@ class MultiSymbolScanner:
         """
         Calcula indicadores técnicos necessários
         """
+        # Garantir que todas as colunas OHLCV sejam float (evita Decimal do banco)
+        for col in ['open', 'high', 'low', 'close', 'volume']:
+            if col in df.columns:
+                df[col] = df[col].astype(float)
+        
         # RSI
         df['rsi'] = ta.momentum.rsi(df['close'], window=self.config.rsi_period)
         
@@ -427,6 +438,10 @@ class MultiSymbolScanner:
         df['ema_50'] = ta.trend.ema_indicator(df['close'], window=50)
         df['ema_200'] = ta.trend.ema_indicator(df['close'], window=200)  # NOVO: Para filtro EMA v2.1
         
+        # Converter TODOS os indicadores para float (garantia final)
+        for col in df.columns:
+            if col != 'timestamp' and df[col].dtype != 'datetime64[ns]':
+                df[col] = df[col].astype(float)
         # Detectar picos e vales
         df = self._detect_peaks_valleys(df)
         
@@ -718,19 +733,19 @@ class MultiSymbolScanner:
         quality += strength * 30
         
         # Volume confirmation (+10 pts)
-        if 'volume_ratio' in df.columns and df['volume_ratio'].iloc[-1] > 1.5:
+        if 'volume_ratio' in df.columns and float(df['volume_ratio'].iloc[-1]) > 1.5:
             quality += 10
         
         # ADX trend strength (+10 pts)
         if 'adx' in df.columns:
-            adx = df['adx'].iloc[-1]
+            adx = float(df['adx'].iloc[-1])
             if adx > 25:
                 quality += 10
         
         # EMA alignment (+15 pts)
         if 'ema_50' in df.columns and 'ema_200' in df.columns:
-            ema_50 = df['ema_50'].iloc[-1]
-            ema_200 = df['ema_200'].iloc[-1]
+            ema_50 = float(df['ema_50'].iloc[-1])
+            ema_200 = float(df['ema_200'].iloc[-1])
             
             if signal_type == SignalType.BULLISH_DIVERGENCE and ema_50 > ema_200:
                 quality += 15
@@ -814,7 +829,10 @@ class MultiSymbolScanner:
         else:
             strength_level = SignalStrength.WEAK
         
-        # Calcular níveis de entrada
+        # Calcular níveis de entrada (converter para float para evitar Decimal)
+        current_price = float(current_price)
+        atr = float(atr)
+        
         if direction == 1:  # BUY
             entry_price = current_price
             stop_loss = current_price - (atr * self.config.stop_loss_atr_mult)
@@ -828,10 +846,10 @@ class MultiSymbolScanner:
         reward = abs(take_profit - entry_price)
         risk_reward = reward / risk if risk > 0 else 0
         
-        # Verificar confirmações
-        volume_confirmed = df['volume_ratio'].iloc[-1] > self.config.min_volume_ratio if 'volume_ratio' in df.columns else False
+        # Verificar confirmações (converter para float)
+        volume_confirmed = float(df['volume_ratio'].iloc[-1]) > self.config.min_volume_ratio if 'volume_ratio' in df.columns else False
         
-        macd_hist = df['macd_hist'].iloc[-1] if 'macd_hist' in df.columns else 0
+        macd_hist = float(df['macd_hist'].iloc[-1]) if 'macd_hist' in df.columns else 0.0
         macd_confirmed = (direction == 1 and macd_hist > 0) or (direction == -1 and macd_hist < 0)
         
         ema_trend = float(df['ema_12'].iloc[-1]) > float(df['ema_50'].iloc[-1]) if 'ema_50' in df.columns else True
