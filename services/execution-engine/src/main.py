@@ -3765,9 +3765,18 @@ async def enable_scanner_ml_filter(min_score: float = 0.6, min_trades: int = 50)
     result = await rsi_scanner.initialize_ml_filter(min_trades=min_trades)
     
     if not result.get('success'):
+        # Retornar 400 (Bad Request) ao invés de 500 quando não há dados suficientes
+        error_msg = result.get('error', 'ML Filter initialization failed')
+        trades_found = result.get('trades_found', 0)
+        
         raise HTTPException(
-            status_code=500, 
-            detail=result.get('error', 'ML Filter initialization failed')
+            status_code=400, 
+            detail={
+                'error': error_msg,
+                'trades_found': trades_found,
+                'trades_needed': min_trades,
+                'instructions': 'Execute auto-trades primeiro para gerar histórico de treino. O ML Filter precisa de trades executados com PNL para aprender.'
+            }
         )
     
     rsi_scanner.min_ml_score = min_score
@@ -3798,6 +3807,58 @@ async def disable_scanner_ml_filter():
         'success': True,
         'message': 'ML Filter disabled'
     }
+
+
+@app.get("/api/scanner/ml-filter-training-status")
+async def get_ml_filter_training_status():
+    """
+    📊 Retorna status de prontidão para treinamento do ML Filter
+    """
+    try:
+        # Verificar quantos trades existem no banco
+        autotrade_manager = await get_autotrade_manager()
+        if not autotrade_manager or not autotrade_manager.db_conn:
+            return {
+                'ready_to_train': False,
+                'error': 'Database not connected',
+                'trades_available': 0
+            }
+        
+        result = await autotrade_manager.db_conn.fetchrow("""
+            SELECT 
+                COUNT(*) as total_trades,
+                COUNT(CASE WHEN t.pnl IS NOT NULL THEN 1 END) as trades_with_pnl,
+                COUNT(CASE WHEN t.pnl > 0 THEN 1 END) as winning_trades,
+                COUNT(CASE WHEN t.pnl <= 0 THEN 1 END) as losing_trades
+            FROM autotrade_signals s
+            LEFT JOIN paper_trading_trades t ON t.signal_id = s.signal_id
+            WHERE s.executed = true
+                AND s.timestamp >= NOW() - INTERVAL '60 days'
+        """)
+        
+        trades_with_pnl = result['trades_with_pnl'] or 0
+        ready_to_train = trades_with_pnl >= 30  # Mínimo recomendado
+        
+        return {
+            'ready_to_train': ready_to_train,
+            'trades_available': trades_with_pnl,
+            'trades_needed': 30,
+            'total_executed': result['total_trades'] or 0,
+            'winning_trades': result['winning_trades'] or 0,
+            'losing_trades': result['losing_trades'] or 0,
+            'recommendation': (
+                'ML Filter pronto para treinar!' if ready_to_train 
+                else f'Execute auto-trades primeiro. Você tem {trades_with_pnl} trades, precisa de 30+'
+            )
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting ML training status: {e}")
+        return {
+            'ready_to_train': False,
+            'error': str(e),
+            'trades_available': 0
+        }
 
 
 @app.get("/api/scanner/ml-filter-stats")
