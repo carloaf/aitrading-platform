@@ -4896,12 +4896,112 @@ async def list_autotrade_sessions(active_only: bool = False, limit: int = 10):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+async def startup_health_check():
+    """
+    🏥 Health Check na inicialização do container
+    
+    Verifica:
+    1. Dados históricos completos no banco
+    2. Trades suficientes para ML training
+    3. Baixa dados faltantes automaticamente
+    """
+    logger.info("=" * 80)
+    logger.info("🏥 STARTUP HEALTH CHECK - Verificando integridade do sistema...")
+    logger.info("=" * 80)
+    
+    try:
+        # Importar módulos de health check
+        from data_health_check import DataHealthChecker
+        from auto_download_missing_data import AutoDownloader
+        from populate_historical_trades import HistoricalTradePopulator
+        
+        # 1. Conectar ao banco
+        checker = DataHealthChecker()
+        await checker.connect()
+        
+        # 2. Executar health check completo
+        results = await checker.run_full_check()
+        
+        # 3. Se faltam dados de mercado, baixar automaticamente
+        if results['partial'] or results['missing']:
+            logger.warning(f"⚠️  Dados incompletos detectados: {len(results['partial'])} parciais, {len(results['missing'])} faltando")
+            
+            # Decidir se deve baixar automaticamente
+            auto_download = os.getenv("AUTO_DOWNLOAD_MISSING_DATA", "true").lower() == "true"
+            
+            if auto_download:
+                logger.info("📥 AUTO_DOWNLOAD_MISSING_DATA=true - Iniciando download automático...")
+                
+                downloader = AutoDownloader()
+                downloader.conn = checker.conn  # Reusar conexão
+                
+                stats = await downloader.auto_fix_missing_data(min_completeness=90.0)
+                
+                if stats['downloads'] > 0:
+                    logger.info(f"✅ Download completo: {stats['total_candles']:,} candles inseridos")
+                else:
+                    logger.warning("⚠️  Nenhum dado baixado (pode ser erro de API ou símbolos inválidos)")
+            else:
+                logger.info("ℹ️  AUTO_DOWNLOAD_MISSING_DATA=false - Pulando download automático")
+        
+        # 4. Se faltam trades para ML, popular com histórico
+        ml_ready = results['ml_readiness']
+        if not ml_ready['ready']:
+            logger.warning(f"⚠️  ML Training não está pronto: {ml_ready['trades_count']}/{ml_ready['trades_needed']} trades")
+            
+            auto_populate = os.getenv("AUTO_POPULATE_HISTORICAL_TRADES", "true").lower() == "true"
+            
+            if auto_populate:
+                logger.info("🤖 AUTO_POPULATE_HISTORICAL_TRADES=true - Populando banco com trades históricos...")
+                
+                populator = HistoricalTradePopulator()
+                populator.conn = checker.conn  # Reusar conexão
+                
+                # Popular com 50 trades por símbolo (top 10 = 500 trades total)
+                total = await populator.populate(
+                    symbols=['BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
+                            'ADAUSDT', 'DOGEUSDT', 'AVAXUSDT', 'DOTUSDT', 'LINKUSDT'],
+                    timeframe='1h',
+                    start_date='2023-01-01',
+                    end_date='2025-12-23',
+                    trades_per_symbol=50
+                )
+                
+                if total >= 30:
+                    logger.info(f"✅ População concluída: {total} trades inseridos - ML Filter pronto!")
+                else:
+                    logger.warning(f"⚠️  Apenas {total} trades inseridos - ML Filter precisa de 30+")
+            else:
+                logger.info("ℹ️  AUTO_POPULATE_HISTORICAL_TRADES=false - Pulando população de trades")
+        else:
+            logger.info(f"✅ ML Training pronto: {ml_ready['trades_count']} trades disponíveis")
+        
+        # 5. Desconectar
+        await checker.disconnect()
+        
+        logger.info("=" * 80)
+        logger.info("✅ STARTUP HEALTH CHECK - CONCLUÍDO!")
+        logger.info("=" * 80)
+        
+    except Exception as e:
+        logger.error(f"❌ Erro no startup health check: {e}")
+        logger.warning("⚠️  Sistema continuará inicializando, mas alguns recursos podem estar indisponíveis")
+
+
 if __name__ == "__main__":
     import uvicorn
     
     port = int(os.getenv("PORT", 8001))
     
     logger.info(f"🚀 Iniciando Execution Engine na porta {port}")
+    
+    # Executar health check antes de iniciar servidor
+    enable_startup_check = os.getenv("ENABLE_STARTUP_HEALTH_CHECK", "true").lower() == "true"
+    
+    if enable_startup_check:
+        asyncio.run(startup_health_check())
+    else:
+        logger.info("ℹ️  ENABLE_STARTUP_HEALTH_CHECK=false - Pulando health check")
     
     uvicorn.run(
         app,
